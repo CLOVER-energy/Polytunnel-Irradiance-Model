@@ -1,16 +1,16 @@
 ---
-name: Bug Report
-description: File a bug report.
-title: "[:bug:]: "
-labels: ["bug", "triage"]
+name: Feature request
+description: Request a new feature
+title: "[:bulb:]: "
+labels: ["feature request", "enhancement"]
 assignees:
   - BenWinchester
-type: Bug
+type: Feature
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to fill out this bug report! :pray:
+        Thanks for taking the time to fill out this feature request, your ideas are really welcome!
   - type: input
     id: contact
     attributes:
@@ -20,32 +20,28 @@ body:
     validations:
       required: false
   - type: textarea
-    id: what-happened
+    id: key-idea
     attributes:
-      label: What happened?
-      description: Also, please tell us what you expected to happen?
+      label: What's your idea?
+      description: Did you encounter something that you think could be improved or have you got a new idea?
       placeholder: Report on the bug
       value: |-
-        ## Describe the bug
+        ### Issue
+        The issue that you are facing and would like fixed or implemented.
+        **Is your feature request related to a problem? Please describe.**
+        A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+        **Is this problem within the standard codebase? If so, consider raising a bug report instead.**
 
-        A clear and concise description of what the bug is.
+        ### Proposal
+        **Describe the solution you'd like**
+        A clear and concise description of what you want to happen.
 
-        ### To Reproduce
+        **Describe alternatives you've considered**
+        A clear and concise description of any alternative solutions or features you've considered.
 
-        Steps to reproduce the behavior:
-
-        1. Run '...'
-        2. Click on '....'
-        3. Scroll down to '....'
-        4. See error
-
-        ### Expected behaviour
-
-        A clear and concise description of what you expected to happen.
-
-        ### Screenshots
-
-        If applicable, add screenshots to help explain your problem."
+        ### Note
+        **Additional context**
+        Add any other context or screenshots about the feature request here including information that may be of use to someone trying to understand your feature request.
 
     validations:
       required: true
