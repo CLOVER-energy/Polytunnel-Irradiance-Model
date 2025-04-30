@@ -1,3 +1,4 @@
+---
 name: Bug Report
 description: File a bug report.
 title: "[:bug:]: "
@@ -25,27 +26,28 @@ body:
       label: What happened?
       description: Also, please tell us what you expected to happen?
       placeholder: Report on the bug
-      value: |
-      	### Describe the bug
+      value: |-
+        ## Describe the bug
 
-	A clear and concise description of what the bug is.
+        A clear and concise description of what the bug is.
 
-	### To Reproduce
+        ### To Reproduce
 
-	Steps to reproduce the behavior:
+        Steps to reproduce the behavior:
 
-	1. Run '...'
-	2. Click on '....'
-	3. Scroll down to '....'
-	4. See error
+        1. Run '...'
+        2. Click on '....'
+        3. Scroll down to '....'
+        4. See error
 
-	### Expected behaviour
+        ### Expected behaviour
 
-	A clear and concise description of what you expected to happen.
+        A clear and concise description of what you expected to happen.
 
-	### Screenshots
+        ### Screenshots
 
-	If applicable, add screenshots to help explain your problem."
+        If applicable, add screenshots to help explain your problem."
+
     validations:
       required: true
   - type: dropdown
@@ -77,14 +79,15 @@ body:
     id: logs
     attributes:
       label: Relevant log output
-      description: Please copy and paste any relevant log output. This will be automatically formatted into code, so no need for backticks.
+      description: >
+        Please copy and paste any relevant log output.
+        This will be automatically formatted into code, so no need for backticks.
       render: shell
   - type: checkboxes
     id: terms
     attributes:
       label: Code of Conduct
-      description: By submitting this issue, you agree to follow our [Code of Conduct](https://example.com). 
+      description: By submitting this issue, you agree to follow our [Code of Conduct](https://github.com/CLOVER-energy/Polytunnel-Irradiance-Model/CODE_OF_CONDUCT.md).
       options:
         - label: I agree to follow this project's Code of Conduct
           required: true
-
