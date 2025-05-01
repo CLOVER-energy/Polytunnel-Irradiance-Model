@@ -2,8 +2,19 @@ import numpy as np
 import pandas as pd
 import os
 
+
 class Tracing:
-    def __init__(self, main_tunnel, sun_vecs, surface_grid, surface_tilts, R1, R2=None, left_tunnel=None, right_tunnel=None):
+    def __init__(
+        self,
+        main_tunnel,
+        sun_vecs,
+        surface_grid,
+        surface_tilts,
+        R1,
+        R2=None,
+        left_tunnel=None,
+        right_tunnel=None,
+    ):
         """
         Initialize the Tracing class.
 
@@ -21,19 +32,19 @@ class Tracing:
         self.surface_tilts = surface_tilts
         self.R1 = R1
         if R2:
-            self.R2 = R2 
+            self.R2 = R2
         else:
-            self.R2 = R1 
+            self.R2 = R1
 
     def ray_intersects_triangle(self, ray_origin, ray_direction, p0, p1, p2):
         """
         Möller–Trumbore intersection algorithm to check if a ray intersects with a triangle.
-        
+
         Parameters:
             ray_origin (np.array): The origin of the ray.
             ray_direction (np.array): The direction of the ray (unit vector).
             p0, p1, p2 (np.array): Vertices of the triangle.
-            
+
         Returns:
             bool: True if the ray intersects the triangle, False otherwise.
         """
@@ -79,23 +90,59 @@ class Tracing:
         for i in range(len(surface_grid[0]) - 1):
             for j in range(len(surface_grid[0][0]) - 1):
                 # Extract vertices of the first triangle in the grid square
-                p0 = np.array([surface_grid[0][i][j], surface_grid[1][i][j], surface_grid[2][i][j]])
-                p1 = np.array([surface_grid[0][i+1][j], surface_grid[1][i+1][j], surface_grid[2][i+1][j]])
-                p2 = np.array([surface_grid[0][i][j+1], surface_grid[1][i][j+1], surface_grid[2][i][j+1]])
+                p0 = np.array(
+                    [
+                        surface_grid[0][i][j],
+                        surface_grid[1][i][j],
+                        surface_grid[2][i][j],
+                    ]
+                )
+                p1 = np.array(
+                    [
+                        surface_grid[0][i + 1][j],
+                        surface_grid[1][i + 1][j],
+                        surface_grid[2][i + 1][j],
+                    ]
+                )
+                p2 = np.array(
+                    [
+                        surface_grid[0][i][j + 1],
+                        surface_grid[1][i][j + 1],
+                        surface_grid[2][i][j + 1],
+                    ]
+                )
 
                 if self.ray_intersects_triangle(ray_origin, ray_direction, p0, p1, p2):
                     return True
 
                 # Extract vertices of the second triangle in the grid square
-                p0 = np.array([surface_grid[0][i+1][j], surface_grid[1][i+1][j], surface_grid[2][i+1][j]])
-                p1 = np.array([surface_grid[0][i+1][j+1], surface_grid[1][i+1][j+1], surface_grid[2][i+1][j+1]])
-                p2 = np.array([surface_grid[0][i][j+1], surface_grid[1][i][j+1], surface_grid[2][i][j+1]])
+                p0 = np.array(
+                    [
+                        surface_grid[0][i + 1][j],
+                        surface_grid[1][i + 1][j],
+                        surface_grid[2][i + 1][j],
+                    ]
+                )
+                p1 = np.array(
+                    [
+                        surface_grid[0][i + 1][j + 1],
+                        surface_grid[1][i + 1][j + 1],
+                        surface_grid[2][i + 1][j + 1],
+                    ]
+                )
+                p2 = np.array(
+                    [
+                        surface_grid[0][i][j + 1],
+                        surface_grid[1][i][j + 1],
+                        surface_grid[2][i][j + 1],
+                    ]
+                )
 
                 if self.ray_intersects_triangle(ray_origin, ray_direction, p0, p1, p2):
                     return True
 
         return False
-    
+
     def find_tangent_gradient(self):
         n_rows, n_cols = self.surface_grid[0].shape  # Assuming the grid is n x n
 
@@ -118,17 +165,17 @@ class Tracing:
                 # a = (-2*self.d*x_s-(self.d**2) + (self.R1**2) - (x_s**2))
                 # b = 2*z_s*x_s + 2*z_s*self.d
                 # c = (self.R1**2) - (z_s**2)
-                a = (self.R1) ** 2 - ( x_s + 2 * self.R1 )**2
-                b = 2 * z_s * ( x_s + 2 * self.R1 )
-                c = ( 2 * self.R2 )**2 - ( z_s )**2
-                discriminant = (b**2) - 4*a*c
+                a = (self.R1) ** 2 - (x_s + 2 * self.R1) ** 2
+                b = 2 * z_s * (x_s + 2 * self.R1)
+                c = (2 * self.R2) ** 2 - (z_s) ** 2
+                discriminant = (b**2) - 4 * a * c
 
                 if discriminant >= 0:
                     if a != 0:
-                        gradient = (-b + np.sqrt(discriminant)) / (2*a)
-                        surface_gradient = -x_s/z_s
+                        gradient = (-b + np.sqrt(discriminant)) / (2 * a)
+                        surface_gradient = -x_s / z_s
 
-                    else: 
+                    else:
                         gradient = -1e50
                         surface_gradient = 1e50
 
@@ -139,33 +186,37 @@ class Tracing:
                 # a = (2*self.d*x_s-(self.d**2) + (self.R1**2) - (x_s**2))
                 # b = 2*z_s*x_s - 2*z_s*self.d
                 # c = (self.R1**2) - (z_s**2)
-                a = (self.R1) ** 2 - ( x_s - 2 * self.R1 )**2
-                b = 2 * z_s * ( x_s - 2 * self.R1 )
-                c = ( 2 * self.R2 )**2 - ( z_s )**2
-                discriminant = (b**2) - 4*a*c
+                a = (self.R1) ** 2 - (x_s - 2 * self.R1) ** 2
+                b = 2 * z_s * (x_s - 2 * self.R1)
+                c = (2 * self.R2) ** 2 - (z_s) ** 2
+                discriminant = (b**2) - 4 * a * c
 
                 if discriminant >= 0:
                     if a != 0:
-                        gradient = (-b - np.sqrt(discriminant)) / (2*a)
-                        surface_gradient = -x_s/z_s
-                    else: 
+                        gradient = (-b - np.sqrt(discriminant)) / (2 * a)
+                        surface_gradient = -x_s / z_s
+                    else:
                         gradient = 1e50
                         surface_gradient = -1e50
 
                     angle_radians = np.arctan(gradient)
                     surface_angle_radians = np.arctan(surface_gradient) + np.pi
-                
-            # Store the calculated gradient and angle for all y-values at this x,z cross-section
-            gradients_grid[i, :] = gradient  # Replicate gradient across the row for each y value
-            angles_grid[i, :] = angle_radians  # Replicate angle across the row for each y value
 
-            surface_gradients_grid[i, :] = surface_gradient 
+            # Store the calculated gradient and angle for all y-values at this x,z cross-section
+            gradients_grid[i, :] = (
+                gradient  # Replicate gradient across the row for each y value
+            )
+            angles_grid[i, :] = (
+                angle_radians  # Replicate angle across the row for each y value
+            )
+
+            surface_gradients_grid[i, :] = surface_gradient
             surface_angles_grid[i, :] = surface_angle_radians
 
         return gradients_grid, angles_grid, surface_gradients_grid, surface_angles_grid
-    
+
     def solid_angle_grid(self, angle_grid1, angle_grid2):
-        
+
         solid_angle_map = np.zeros(angle_grid1.shape)
 
         for i in range(angle_grid1.shape[0]):
@@ -174,10 +225,10 @@ class Tracing:
                 theta1 = angle_grid1[i, j]
                 theta2 = angle_grid2[i, j]
 
-                solid_angle_map[i, j] = np.pi*(2- np.cos(theta1) - np.cos(theta2))
+                solid_angle_map[i, j] = np.pi * (2 - np.cos(theta1) - np.cos(theta2))
 
         return solid_angle_map
-    
+
     def read_nk_from_csv(self, material):
         """
         Reads wavelength and spectral data from a CSV file for a given material.
@@ -192,11 +243,11 @@ class Tracing:
         """
         # Construct the file path based on the material name
         try:
-            file_path = os.path.join('..', 'data', 'materials', f'{material}.csv')
-        
+            file_path = os.path.join("..", "data", "materials", f"{material}.csv")
+
             # L# Read CSV file into a DataFrame
             df = pd.read_csv(file_path, skipinitialspace=True)
-            
+
             # Extract relevant columns
             wavelengths_n_nm = df["λ,n (nm)"].values
             wavelengths_k_nm = df["λ,n (nm)"].values
@@ -204,17 +255,19 @@ class Tracing:
             k_data = df["k"].values
         except:
 
-            df = pd.read_excel('../data/Index_of_refraction_materials.xls')
+            df = pd.read_excel("../data/Index_of_refraction_materials.xls")
             wavelengths_n_nm = df[f"{material}_w"].values
             wavelengths_k_nm = df[f"{material}_w"].values
             n_data = df[f"{material}_n"].values
             k_data = df[f"{material}_k"].values
 
         return wavelengths_n_nm, wavelengths_k_nm, n_data, k_data
-    
+
     def spectrum_interpolation(self, wavelengths_sample, material):
 
-        wavelengths_n_data, wavelengths_k_data, n_data, k_data = self.read_nk_from_csv(material)
+        wavelengths_n_data, wavelengths_k_data, n_data, k_data = self.read_nk_from_csv(
+            material
+        )
 
         wavelengths_sample = np.array(wavelengths_sample)
         wavelengths_n_data = np.array(wavelengths_n_data)
@@ -229,16 +282,18 @@ class Tracing:
         complex_array = int_n_data + 1j * int_k_data
 
         return int_n_data, int_k_data, complex_array
-    
+
     def n_list_wavelength(self, mat_list, wavelengths_sample):
 
         # Generate complex matrices for each material
-        complex_mats = [self.spectrum_interpolation(wavelengths_sample, mat)[2] for mat in mat_list] #n.b. material must exclude air
-        
+        complex_mats = [
+            self.spectrum_interpolation(wavelengths_sample, mat)[2] for mat in mat_list
+        ]  # n.b. material must exclude air
+
         # Create a list of complex arrays at each wavelength, with 1 at the start and end
-        complex_array_list = [[1] + [complex_mats[j][i] for j in range(len(mat_list))] + [1] for i in range(len(wavelengths_sample))]
+        complex_array_list = [
+            [1] + [complex_mats[j][i] for j in range(len(mat_list))] + [1]
+            for i in range(len(wavelengths_sample))
+        ]
 
         return complex_array_list
-            
-        
-

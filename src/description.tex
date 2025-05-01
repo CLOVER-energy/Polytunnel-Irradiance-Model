@@ -1,0 +1,124 @@
+\documentclass{report}
+\usepackage[utf8]{inputenc}
+
+\begin{document}
+
+\section{Parameters description and geometry}
+
+
+
+Figure 1. Geometry for polytunnel. The length of the polytunnel is aligned with y-axis coordinate in code, radius1 is aligned with x-axis in code and radius2 is aligned with z-axis in code.
+
+
+Figure 2. Configuration of an OPV on the roof of polytunnel, in the example, the active layer has the same thickness, 100 nm (PTQ-10: 50 nm and Y6 : 50 nm). a) it is configure to have only a bilayer, while b) is configured to divide active layer in two consecutive bilayers. Multistack parameter must be an integer number.
+
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+Figure 3. Projection of Polytunnel Roof on xy plane. The separation of every PV module is controlled by cell_gap variable, every PV module has dimensions of cell_thickness in from the side oriented with y-axis. Variable initial_cell_gap controls the distance between the edge of polytunnel and first PV module. 
+\section{Simulation Excecution}
+
+The script can be executed in two different ways: by parsing the name of the variables or by using a CSV file with two columns, “Parameter” and “Value”. 
+
+\section{Running using argparse}
+
+python main.py --start_time_str 2024-06-06T00:00:00Z --end_time_str 2024-06-06T23:59:59Z --latitude 51.249814 --longitude 0.347779 --res_minutes 15 --length 2.5 --radius1 2.5 --radius2 1.5 --xy_angle 0 --z_angle 0 --transmissivity 1 --material_list ag ag ag ag ag ag --material_thick 80 80 80 80 80 80 --multistack 1 --cell_thickness 0.35 --cell_gap 2.8 --initial_cell_gap 2.1 --res_meshgrid 0.35 
+
+Running using a external csv file with the name of the parameters and their values:
+
+python main.py –csv /path/to/parameters_simulation.csv
+
+if the file parameters_simulation.csv is in the same directory as the main.py, then the execution should be:
+
+python main.py –csv parameters_simulation.csv
+
+The content of parameters_simulation.csv can be organized as follows, a column called “Parameter” contains the name of variables used by the script main.py to execute the simulation, and a column called  “Value”, which  contains the respective value for every parameter:
+
+Parameter,Value
+start_time_str,2024-06-06T00:00:00Z           
+end_time_str,2024-06-06T23:59:59Z
+latitude,51.249814
+longitude,0.347779
+res_minutes,15
+length,2.5
+radius1,2.5
+radius2,1.5
+xy_angle,0
+z_angle,0
+transmissivity,1
+material_list,ag ag ag ag ag ag
+material_thick,80 80 80 80 80 80
+multistack,1
+cell_thickness,0.35
+cell_gap,2.8
+initial_cell_gap,2.1
+res_meshgrid,0.35
+
+NOTE: Considerations in PV modules configuration:
+In the previous example, the simulation considers a a silver module with thickness of 480 nm, that will block all the light in the positions of the PV modules. It is necessary to divide the material_list and material_thick in at least 6 segments, since it is configured to consider the structure of an OPV solar cell module, like the one is presented in Figure 2. 
+
+\subsection{Running a simulation without PV modules}:
+
+To simulate the case without PV modules in the roof of Polytunnel, you need to use the next set of variables:
+
+cell_thickness,0.0
+cell_gap, 0.0
+initial_cell_gap,0.0
+
+\section{Spectral Sensitivity of BF5 Sensor}
+
+The spectral response of BF5 Sunshine Sensor - Pyranometer  has been included in main.py script, in specific in lines:
+
+
+Document with spectral data can be found in directory resources: “BF5-User-Manual-v2.2.pdf”. The spectral response of BF5 sunshine sensor can be found in page 34. The data was extracted with 
+Inkscape vector graphics editor.
+
+
+\section{Possible future work}
+Consider to use diffuse and direct components from pvlib module spectrum.spectrl2, currently the code considers direct intensity as “poa_global” in sun.py module:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+However,  outputs from wrapper  spectrum.spectrl2 include:
+    • wavelength
+    • dni_extra
+    • dhi
+    • dni
+    • poa_sky_diffuse
+    • poa_ground_diffuse
+    • poa_direct
+    • poa_global
+
+
+
+\section{Web Scrapping Data From Renewables Ninja INCLUDED}
+
+A script to scrap data from renewables ninja is in directory ninjaData, and the name of the script is ninja_scrap_api.py, however, it is necessary to be edited to obtain the data from the place and dates you need. Additionally it requires a token, and  renewables ninja only allow you to extract 50 querys per user per hour. 
+
+
+
+\end{document}

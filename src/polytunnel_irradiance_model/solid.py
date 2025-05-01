@@ -1,4 +1,6 @@
 import numpy as np
+
+
 class Angle:
 
     def __init__(self, main_tunnel, surface_grid, d, R):
@@ -15,10 +17,11 @@ class Angle:
         self.surface_grid = surface_grid
         self.d = d
         self.radius = R
+
     # Compute visible solid angle function
-    
+
     def calculate_max_tangent_angles_grid(self):
-    # Extract grid dimensions
+        # Extract grid dimensions
         n_rows, n_cols = self.surface_grid[0].shape
 
         # Initialize the grid for maximum angles
@@ -26,7 +29,9 @@ class Angle:
 
         # Extract the unique x coordinates (assuming they are along the rows)
         x_values = self.surface_grid[0][:, 0]
-        z_values = self.surface_grid[2][0, :]  # z-values along one row (same for all rows)
+        z_values = self.surface_grid[2][
+            0, :
+        ]  # z-values along one row (same for all rows)
 
         # Iterate over unique x coordinates (rows of the grid)
         for i, x_s in enumerate(x_values):
@@ -58,7 +63,9 @@ class Angle:
 
                 else:  # Point is exactly at the center (x_s = 0)
                     max_angle = np.pi
-                    max_angles_row.append(max_angle)  # No tangent can be calculated exactly at the center
+                    max_angles_row.append(
+                        max_angle
+                    )  # No tangent can be calculated exactly at the center
 
             # Fill the entire row with computed angles
             angles_grid[i, :] = max_angles_row

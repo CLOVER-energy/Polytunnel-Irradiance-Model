@@ -1,0 +1,19 @@
+Parameter,Value
+start_time_str,2024-05-16T00:00:00Z
+end_time_str,2024-05-16T23:59:59Z
+latitude,51.249814
+longitude,0.347779
+res_minutes,15
+length,10.08
+radius1,2.50
+radius2,1.50
+xy_angle,0
+z_angle,0
+transmissivity,1
+material_list,ag ag ag ag ag ag
+material_thick,80 80 80 80 80 80
+multistack,1
+cell_thickness,0
+cell_gap,0.00
+initial_cell_gap,0.00
+res_meshgrid,0.12
