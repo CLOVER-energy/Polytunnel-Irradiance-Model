@@ -1,0 +1,24 @@
+{
+    "access_right": "open",
+    "creators": [
+        {
+            "name": "Pomfret, Taylor"
+        },
+        {
+            "name": "Emilio Alexis de la Cruz Nuñez Andrade"
+        },
+        {
+            "orcid": "0000-0002-2880-1243",
+            "name": "Winchester, Benedict"
+        }
+    ],
+    "description": "Polytunnel-Irradiance-Model: A model for the irradiance within curved protected-cropping structures.",
+    "license": {
+        "id": "MIT"
+    },
+    "notes": "If you use this software, please cite it as below.",
+    "publication_date": "2025-05-01",
+    "title": "Polytunnel-Irradiance-Model",
+    "upload_type": "software",
+    "version": "v0.1.0a1"
+}
