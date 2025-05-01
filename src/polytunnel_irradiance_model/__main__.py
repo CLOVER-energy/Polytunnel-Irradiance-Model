@@ -16,6 +16,7 @@ distribution within a curved structure, _e.g._, a polytunnel.
 
 import argparse
 import os
+import sys
 import time
 
 # import tmm
@@ -82,6 +83,230 @@ def main(
     res_meshgrid=1.0,
     initial_cell_gap=0.0,
 ):
+
+    parser = argparse.ArgumentParser(description="Ray-tracer for PV Polyntunnel")
+
+    # Define individual arguments
+    parser.add_argument(
+        "--start_time_str",
+        type=str,
+        default="2024-07-30T00:00:00Z",
+        help="start_time_str   (default: '2024-07-30T00:00:00Z'         )",
+    )
+    parser.add_argument(
+        "--end_time_str",
+        type=str,
+        default="2024-07-30T23:59:59Z",
+        help="end_time_str     (default: '2024-07-30T23:59:59Z'         )",
+    )
+    parser.add_argument(
+        "--latitude",
+        type=float,
+        default=51.1950,
+        help="latitude         (default: 51.1950                        )",
+    )
+    parser.add_argument(
+        "--longitude",
+        type=float,
+        default=0.2757,
+        help="longitude        (default: 0.2757                         )",
+    )
+    parser.add_argument(
+        "--res_minutes",
+        type=float,
+        default=10,
+        help="res_minutes      (default: 10                             )",
+    )
+    parser.add_argument(
+        "--length",
+        type=float,
+        default=5,
+        help="length           (default: 5                              )",
+    )
+    parser.add_argument(
+        "--radius1",
+        type=float,
+        default=8,
+        help="radius1          (default: 8                              )",
+    )
+    parser.add_argument(
+        "--radius2",
+        type=float,
+        default=2,
+        help="radius2          (default: 2                              )",
+    )
+    parser.add_argument(
+        "--xy_angle",
+        type=float,
+        default=0.0,
+        help="xy_angle         (default: 0.0                            )",
+    )
+    parser.add_argument(
+        "--z_angle",
+        type=float,
+        default=0.0,
+        help="z_angle          (default: 0.0                            )",
+    )
+    parser.add_argument(
+        "--transmissivity",
+        type=float,
+        default=1,
+        help="transmissivity   (default: 1                              )",
+    )
+    parser.add_argument(
+        "--material_list",
+        type=str,
+        default="ag moo3 PTQ10 Y6 zno ito",
+        help="ordered material_list (default: ag moo3 PTQ10 Y6 zno ito  )",
+    )
+    parser.add_argument(
+        "--material_thick",
+        type=str,
+        default="30 10 50 50 35 100",
+        help="ordered material_thick (default: 30 10 50 50 35 100       )",
+    )
+    parser.add_argument(
+        "--multistack",
+        type=int,
+        default=1,
+        help="multistack       (default: 1                              )",
+    )
+    parser.add_argument(
+        "--cell_thickness",
+        type=float,
+        default=1.0,
+        help="cell_thickness   (default: 1                              )",
+    )
+    parser.add_argument(
+        "--cell_gap",
+        type=float,
+        default=1.0,
+        help="cell_gap         (default: 1                              )",
+    )
+    parser.add_argument(
+        "--initial_cell_gap",
+        type=float,
+        default=0.0,
+        help="initial_cell_gap (default: 1.0 (1 meter)                  )",
+    )
+    parser.add_argument(
+        "--res_meshgrid",
+        type=float,
+        default=1.0,
+        help="res_meshgrid     (default: 1.0 (1 meter)                  )",
+    )
+
+    # Define argument for the CSV file
+    parser.add_argument(
+        "--csv", type=str, help="Path to CSV file containing parameters."
+    )
+
+    args = parser.parse_args()
+
+    if args.csv:
+        # If a CSV file is provided, ignore other arguments
+        try:
+            df = pd.read_csv(args.csv)
+
+            # Validate that the CSV has the expected columns
+            if set(df.columns) != {"Parameter", "Value"}:
+                raise ValueError(
+                    "CSV file must have exactly two columns: 'Parameter' and 'Value'."
+                )
+
+            # Convert the DataFrame to a dictionary
+            params_dict = df.set_index("Parameter")["Value"].to_dict()
+
+            material_list = [
+                str(item) for item in params_dict["material_list"].split(" ")
+            ]
+            material_thick = [
+                float(item) for item in params_dict["material_thick"].split(" ")
+            ]
+
+            # Convert types as necessary
+            params = {
+                "start_time_str": str(
+                    params_dict.get("start_time_str", "2024-07-30T00:00:00Z")
+                ),
+                "end_time_str": str(
+                    params_dict.get("end_time_str", "2024-07-30T23:59:59Z")
+                ),
+                "latitude": float(params_dict.get("latitude", 51.1950)),
+                "longitude": float(params_dict.get("longitude", 0.2757)),
+                "res_minutes": float(params_dict.get("res_minutes", 10)),
+                "length": float(params_dict.get("length", 5)),
+                "radius1": float(params_dict.get("radius1", 8)),
+                "radius2": float(params_dict.get("radius2", 2)),
+                "xy_angle": float(params_dict.get("xy_angle", 0.0)),
+                "z_angle": float(params_dict.get("z_angle", 0.0)),
+                "transmissivity": float(params_dict.get("transmissivity", 1)),
+                "multistack": int(params_dict.get("multistack", 1)),
+                "cell_thickness": float(params_dict.get("cell_thickness", 1.0)),
+                "cell_gap": float(params_dict.get("cell_gap", 1.0)),
+                "initial_cell_gap": float(params_dict.get("initial_cell_gap", 0.0)),
+                "res_meshgrid": float(params_dict.get("res_meshgrid", 1.0)),
+                "material_list": material_list,
+                "material_thick": material_thick,
+            }
+            print("")
+            print(f"Running calculation with parameters: ")
+            for item in params:
+                print(f"{item:16s}: {params[item]}")
+            print("")
+        except Exception as e:
+            print(f"Error reading CSV file: {e}")
+            exit(1)
+    else:
+        # Use command-line arguments or default values
+        material_list = [str(item) for item in args.material_list.split(" ")]
+        material_thick = [float(item) for item in args.material_thick.split(" ")]
+
+        params = {
+            "start_time_str": str(args.start_time_str),
+            "end_time_str": str(args.end_time_str),
+            "latitude": float(args.latitude),
+            "longitude": float(args.longitude),
+            "res_minutes": float(args.res_minutes),
+            "length": float(args.length),
+            "radius1": float(args.radius1),
+            "radius2": float(args.radius2),
+            "xy_angle": float(args.xy_angle),
+            "z_angle": float(args.z_angle),
+            "transmissivity": float(args.transmissivity),
+            "material_list": material_list,
+            "material_thick": material_thick,
+            "multistack": int(args.multistack),
+            "cell_thickness": float(args.cell_thickness),
+            "cell_gap": float(args.cell_gap),
+            "initial_cell_gap": float(args.initial_cell_gap),
+            "res_meshgrid": float(args.res_meshgrid),
+        }
+
+        print("")
+        print(f"Running calculation with DEFAULT parameters: ")
+        for item in params:
+            print(f"{item:16s}: {params[item]}")
+        print("")
+
+    date_simulation = params["start_time_str"][:10].replace("-", "")
+    simulation_data = f"{date_simulation}_stack_{params['multistack']}_r1_{params['radius1']}_r2_{params['radius2']}"
+    simulation_data += f"_donor_{material_list[2]}_acceptor_{material_list[3]}_cell_thickness_{params['cell_thickness']}"
+    simulation_data += f"_cell_gap_{params['cell_gap']}_resolution_{params['res_meshgrid']}_ptunnelLength_{params['length']}"
+
+    if not os.path.exists("Matched_Dates"):
+        os.makedirs("Matched_Dates")
+
+    if not os.path.exists("Logs_Dates"):
+        os.makedirs("Logs_Dates")
+
+    memory_profile_log = f"Logs_Dates/memory_profile_{simulation_data}.log"
+
+    # Configure memory profiler stream before running main(**params)
+    with open(memory_profile_log, "w+") as f:
+        # assign decorator
+        profiler_stream = f
+        main(**params)
 
     # Obtain date (Format): YYYYMMDD
     # Default date_simulation == '20240730', 30th July 2024
@@ -805,226 +1030,4 @@ def main(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Ray-tracer for PV Polyntunnel")
-
-    # Define individual arguments
-    parser.add_argument(
-        "--start_time_str",
-        type=str,
-        default="2024-07-30T00:00:00Z",
-        help="start_time_str   (default: '2024-07-30T00:00:00Z'         )",
-    )
-    parser.add_argument(
-        "--end_time_str",
-        type=str,
-        default="2024-07-30T23:59:59Z",
-        help="end_time_str     (default: '2024-07-30T23:59:59Z'         )",
-    )
-    parser.add_argument(
-        "--latitude",
-        type=float,
-        default=51.1950,
-        help="latitude         (default: 51.1950                        )",
-    )
-    parser.add_argument(
-        "--longitude",
-        type=float,
-        default=0.2757,
-        help="longitude        (default: 0.2757                         )",
-    )
-    parser.add_argument(
-        "--res_minutes",
-        type=float,
-        default=10,
-        help="res_minutes      (default: 10                             )",
-    )
-    parser.add_argument(
-        "--length",
-        type=float,
-        default=5,
-        help="length           (default: 5                              )",
-    )
-    parser.add_argument(
-        "--radius1",
-        type=float,
-        default=8,
-        help="radius1          (default: 8                              )",
-    )
-    parser.add_argument(
-        "--radius2",
-        type=float,
-        default=2,
-        help="radius2          (default: 2                              )",
-    )
-    parser.add_argument(
-        "--xy_angle",
-        type=float,
-        default=0.0,
-        help="xy_angle         (default: 0.0                            )",
-    )
-    parser.add_argument(
-        "--z_angle",
-        type=float,
-        default=0.0,
-        help="z_angle          (default: 0.0                            )",
-    )
-    parser.add_argument(
-        "--transmissivity",
-        type=float,
-        default=1,
-        help="transmissivity   (default: 1                              )",
-    )
-    parser.add_argument(
-        "--material_list",
-        type=str,
-        default="ag moo3 PTQ10 Y6 zno ito",
-        help="ordered material_list (default: ag moo3 PTQ10 Y6 zno ito  )",
-    )
-    parser.add_argument(
-        "--material_thick",
-        type=str,
-        default="30 10 50 50 35 100",
-        help="ordered material_thick (default: 30 10 50 50 35 100       )",
-    )
-    parser.add_argument(
-        "--multistack",
-        type=int,
-        default=1,
-        help="multistack       (default: 1                              )",
-    )
-    parser.add_argument(
-        "--cell_thickness",
-        type=float,
-        default=1.0,
-        help="cell_thickness   (default: 1                              )",
-    )
-    parser.add_argument(
-        "--cell_gap",
-        type=float,
-        default=1.0,
-        help="cell_gap         (default: 1                              )",
-    )
-    parser.add_argument(
-        "--initial_cell_gap",
-        type=float,
-        default=0.0,
-        help="initial_cell_gap (default: 1.0 (1 meter)                  )",
-    )
-    parser.add_argument(
-        "--res_meshgrid",
-        type=float,
-        default=1.0,
-        help="res_meshgrid     (default: 1.0 (1 meter)                  )",
-    )
-
-    # Define argument for the CSV file
-    parser.add_argument(
-        "--csv", type=str, help="Path to CSV file containing parameters."
-    )
-
-    args = parser.parse_args()
-
-    if args.csv:
-        # If a CSV file is provided, ignore other arguments
-        try:
-            df = pd.read_csv(args.csv)
-
-            # Validate that the CSV has the expected columns
-            if set(df.columns) != {"Parameter", "Value"}:
-                raise ValueError(
-                    "CSV file must have exactly two columns: 'Parameter' and 'Value'."
-                )
-
-            # Convert the DataFrame to a dictionary
-            params_dict = df.set_index("Parameter")["Value"].to_dict()
-
-            material_list = [
-                str(item) for item in params_dict["material_list"].split(" ")
-            ]
-            material_thick = [
-                float(item) for item in params_dict["material_thick"].split(" ")
-            ]
-
-            # Convert types as necessary
-            params = {
-                "start_time_str": str(
-                    params_dict.get("start_time_str", "2024-07-30T00:00:00Z")
-                ),
-                "end_time_str": str(
-                    params_dict.get("end_time_str", "2024-07-30T23:59:59Z")
-                ),
-                "latitude": float(params_dict.get("latitude", 51.1950)),
-                "longitude": float(params_dict.get("longitude", 0.2757)),
-                "res_minutes": float(params_dict.get("res_minutes", 10)),
-                "length": float(params_dict.get("length", 5)),
-                "radius1": float(params_dict.get("radius1", 8)),
-                "radius2": float(params_dict.get("radius2", 2)),
-                "xy_angle": float(params_dict.get("xy_angle", 0.0)),
-                "z_angle": float(params_dict.get("z_angle", 0.0)),
-                "transmissivity": float(params_dict.get("transmissivity", 1)),
-                "multistack": int(params_dict.get("multistack", 1)),
-                "cell_thickness": float(params_dict.get("cell_thickness", 1.0)),
-                "cell_gap": float(params_dict.get("cell_gap", 1.0)),
-                "initial_cell_gap": float(params_dict.get("initial_cell_gap", 0.0)),
-                "res_meshgrid": float(params_dict.get("res_meshgrid", 1.0)),
-                "material_list": material_list,
-                "material_thick": material_thick,
-            }
-            print("")
-            print(f"Running calculation with parameters: ")
-            for item in params:
-                print(f"{item:16s}: {params[item]}")
-            print("")
-        except Exception as e:
-            print(f"Error reading CSV file: {e}")
-            exit(1)
-    else:
-        # Use command-line arguments or default values
-        material_list = [str(item) for item in args.material_list.split(" ")]
-        material_thick = [float(item) for item in args.material_thick.split(" ")]
-
-        params = {
-            "start_time_str": str(args.start_time_str),
-            "end_time_str": str(args.end_time_str),
-            "latitude": float(args.latitude),
-            "longitude": float(args.longitude),
-            "res_minutes": float(args.res_minutes),
-            "length": float(args.length),
-            "radius1": float(args.radius1),
-            "radius2": float(args.radius2),
-            "xy_angle": float(args.xy_angle),
-            "z_angle": float(args.z_angle),
-            "transmissivity": float(args.transmissivity),
-            "material_list": material_list,
-            "material_thick": material_thick,
-            "multistack": int(args.multistack),
-            "cell_thickness": float(args.cell_thickness),
-            "cell_gap": float(args.cell_gap),
-            "initial_cell_gap": float(args.initial_cell_gap),
-            "res_meshgrid": float(args.res_meshgrid),
-        }
-
-        print("")
-        print(f"Running calculation with DEFAULT parameters: ")
-        for item in params:
-            print(f"{item:16s}: {params[item]}")
-        print("")
-
-    date_simulation = params["start_time_str"][:10].replace("-", "")
-    simulation_data = f"{date_simulation}_stack_{params['multistack']}_r1_{params['radius1']}_r2_{params['radius2']}"
-    simulation_data += f"_donor_{material_list[2]}_acceptor_{material_list[3]}_cell_thickness_{params['cell_thickness']}"
-    simulation_data += f"_cell_gap_{params['cell_gap']}_resolution_{params['res_meshgrid']}_ptunnelLength_{params['length']}"
-
-    if not os.path.exists("Matched_Dates"):
-        os.makedirs("Matched_Dates")
-
-    if not os.path.exists("Logs_Dates"):
-        os.makedirs("Logs_Dates")
-
-    memory_profile_log = f"Logs_Dates/memory_profile_{simulation_data}.log"
-
-    # Configure memory profiler stream before running main(**params)
-    with open(memory_profile_log, "w+") as f:
-        # assign decorator
-        profiler_stream = f
-        main(**params)
+    main(sys.argv[1:])
