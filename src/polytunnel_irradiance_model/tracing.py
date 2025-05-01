@@ -3,7 +3,7 @@ import pandas as pd
 import os
 
 class Tracing:
-    def __init__(self, main_tunnel, sun_vecs, surface_grid, surface_tilts, d, R, left_tunnel=None, right_tunnel=None):
+    def __init__(self, main_tunnel, sun_vecs, surface_grid, surface_tilts, R1, R2=None, left_tunnel=None, right_tunnel=None):
         """
         Initialize the Tracing class.
 
@@ -19,8 +19,11 @@ class Tracing:
         self.sun_vecs = sun_vecs
         self.surface_grid = surface_grid
         self.surface_tilts = surface_tilts
-        self.d = d
-        self.R = R
+        self.R1 = R1
+        if R2:
+            self.R2 = R2 
+        else:
+            self.R2 = R1 
 
     def ray_intersects_triangle(self, ray_origin, ray_direction, p0, p1, p2):
         """
@@ -104,16 +107,20 @@ class Tracing:
 
         x_values = self.surface_grid[0][:, 0]  # x values for the first cross-section
         z_values = self.surface_grid[2][:, 0]  # z values for the first cross-section
-        
+
         # Calculate the gradient for each x, z pair in the first cross-section
         for i in range(len(x_values)):
             x_s = x_values[i]
             z_s = z_values[i]
+            # print( f'Iter for gradient {i}, x_s {x_s}, z_s {z_s}')
 
             if x_s < 0:  # Surface point is to the left of the center
-                a = (-2*self.d*x_s-(self.d**2) + (self.R**2) - (x_s**2))
-                b = 2*z_s*x_s + 2*z_s*self.d
-                c = (self.R**2) - (z_s**2)
+                # a = (-2*self.d*x_s-(self.d**2) + (self.R1**2) - (x_s**2))
+                # b = 2*z_s*x_s + 2*z_s*self.d
+                # c = (self.R1**2) - (z_s**2)
+                a = (self.R1) ** 2 - ( x_s + 2 * self.R1 )**2
+                b = 2 * z_s * ( x_s + 2 * self.R1 )
+                c = ( 2 * self.R2 )**2 - ( z_s )**2
                 discriminant = (b**2) - 4*a*c
 
                 if discriminant >= 0:
@@ -129,9 +136,12 @@ class Tracing:
                     surface_angle_radians = np.arctan(surface_gradient)
 
             elif x_s > 0:  # Surface point is to the right of the center
-                a = (2*self.d*x_s-(self.d**2) + (self.R**2) - (x_s**2))
-                b = 2*z_s*x_s - 2*z_s*self.d
-                c = (self.R**2) - (z_s**2)
+                # a = (2*self.d*x_s-(self.d**2) + (self.R1**2) - (x_s**2))
+                # b = 2*z_s*x_s - 2*z_s*self.d
+                # c = (self.R1**2) - (z_s**2)
+                a = (self.R1) ** 2 - ( x_s - 2 * self.R1 )**2
+                b = 2 * z_s * ( x_s - 2 * self.R1 )
+                c = ( 2 * self.R2 )**2 - ( z_s )**2
                 discriminant = (b**2) - 4*a*c
 
                 if discriminant >= 0:
@@ -144,7 +154,7 @@ class Tracing:
 
                     angle_radians = np.arctan(gradient)
                     surface_angle_radians = np.arctan(surface_gradient) + np.pi
-
+                
             # Store the calculated gradient and angle for all y-values at this x,z cross-section
             gradients_grid[i, :] = gradient  # Replicate gradient across the row for each y value
             angles_grid[i, :] = angle_radians  # Replicate angle across the row for each y value
@@ -181,16 +191,24 @@ class Tracing:
             - spectral_data: The spectral data from the second column.
         """
         # Construct the file path based on the material name
-        file_path = os.path.join('..', 'data', 'materials', f'{material}.csv')
-    
-        # L# Read CSV file into a DataFrame
-        df = pd.read_csv(file_path, skipinitialspace=True)
+        try:
+            file_path = os.path.join('..', 'data', 'materials', f'{material}.csv')
         
-        # Extract relevant columns
-        wavelengths_n_nm = df["λ,n (nm)"].values
-        wavelengths_k_nm = df["λ,n (nm)"].values
-        n_data = df["n"].values
-        k_data = df["k"].values
+            # L# Read CSV file into a DataFrame
+            df = pd.read_csv(file_path, skipinitialspace=True)
+            
+            # Extract relevant columns
+            wavelengths_n_nm = df["λ,n (nm)"].values
+            wavelengths_k_nm = df["λ,n (nm)"].values
+            n_data = df["n"].values
+            k_data = df["k"].values
+        except:
+
+            df = pd.read_excel('../data/Index_of_refraction_materials.xls')
+            wavelengths_n_nm = df[f"{material}_w"].values
+            wavelengths_k_nm = df[f"{material}_w"].values
+            n_data = df[f"{material}_n"].values
+            k_data = df[f"{material}_k"].values
 
         return wavelengths_n_nm, wavelengths_k_nm, n_data, k_data
     

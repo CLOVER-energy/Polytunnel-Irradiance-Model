@@ -1,7 +1,9 @@
 import pandas as pd
 import numpy as np
 import pvlib 
-from pvlib import spectrum, solarposition, irradiance, atmosphere
+from pvlib import spectrum, solarposition, irradiance, atmosphere, location
+
+
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 from scipy.integrate import trapezoid
@@ -80,7 +82,8 @@ class Sun:
             angle_grid = np.zeros((len(normals_grid[0]), len(normals_grid[0][0])))
 
             # Iterate through each (i, j) index in the normals_grid
-            for j in range(len(normals_grid[0][0])):
+            # for j in range(len(normals_grid[0][0])): # Changes to adapt to differnt tile points
+            for j in range(len(normals_grid[0])):
                 for k in range(len(normals_grid[0][0])):
                     # Perform dot product between sun_vec and each normal vector at normals_grid[i][j]
                     vec = np.array([normals_grid[0][j][k], normals_grid[1][j][k], normals_grid[2][j][k]])
@@ -168,3 +171,67 @@ class Sun:
 
         return optical_wavelengths, solar_spectra_frames, spectral_irradiance_frames
     
+
+    def get_clearsky_data_new(self, start_time_str, end_time_str, latitude=51.1950, longitude=0.2757, res_minutes=1):
+        """
+        Obtiene los datos de irradiancia de cielo despejado (GHI y DNI) para un rango de fechas dado.
+    
+        Args:
+            start_time_str (str): Fecha y hora de inicio en formato 'YYYY-MM-DD HH:MM:SS'.
+            end_time_str (str): Fecha y hora de fin en formato 'YYYY-MM-DD HH:MM:SS'.
+            latitude (float): Latitud de la localización. Por defecto es 51.1950.
+            longitude (float): Longitud de la localización. Por defecto es 0.2757.
+            res_minutes (int): Resolución temporal en minutos para resamplear los datos. Por defecto es 1.
+    
+        Returns:
+            pd.DataFrame: DataFrame con las columnas ['ghi', 'dni', 'ghi_clear', 'dni_clear'].
+        """
+        # Convertir las fechas de inicio y fin a formato datetime
+        start_time = pd.to_datetime(start_time_str)
+        end_time = pd.to_datetime(end_time_str)
+        
+        # Crear un objeto Location con la ubicación
+        tz = 'Europe/London'
+        site = location.Location(latitude, longitude, tz=tz)
+    
+        # Crear un DatetimeIndex para el rango de fechas con la resolución deseada
+        times = pd.date_range(start=start_time, end=end_time, freq=f'{res_minutes}T', tz='UTC')
+        
+        # Calcular la irradiancia de cielo despejado (GHI y DNI)
+        clear_sky = site.get_clearsky(times)
+        
+        # Resamplear a la resolución temporal deseada si es necesario
+        cs_resampled = clear_sky.resample(f'{res_minutes}T').mean()
+        
+        return cs_resampled
+
+
+    def calculate_diffuse_irradiance_meshgrid(self, ghi, dhi, normals_unit_surface):
+        """
+        Calcula la irradiancia difusa sobre cada superficie del meshgrid.
+    
+        Args:
+            ghi (pd.Series): Irradiancia global horizontal (GHI).
+            dhi (pd.Series): Irradiancia difusa horizontal (DHI).
+            normals_unit_surface (np.ndarray): Normales unitarias de las superficies del túnel (Nx3 array).
+    
+        Returns:
+            diffuse_irradiance_grid (np.ndarray): Irradiancia difusa sobre cada superficie (Nx1 array).
+        """
+        # Asegurar que las dimensiones sean compatibles
+        normals_unit_surface = np.array(normals_unit_surface)  # Normales unitarias (Nx3)
+        num_surfaces = normals_unit_surface.shape[0]
+    
+        # Inicializar irradiancia difusa sobre cada superficie
+        diffuse_irradiance_grid = np.zeros((len(dhi), num_surfaces))  # DHI por superficie para todos los tiempos
+    
+        for t_idx, dhi_t in enumerate(dhi):  # Iterar sobre cada instante de tiempo
+            for i in range(num_surfaces):  # Iterar sobre cada superficie
+                # Suposición isotrópica: factor de corrección basado en el ángulo de inclinación
+                normal = normals_unit_surface[i]  # Normal de la superficie
+                cos_theta_surface = max(0, normal[2])  # Componente Z de la normal (para inclinación horizontal)
+    
+                # Distribuir irradiancia difusa
+                diffuse_irradiance_grid[t_idx, i] = dhi_t * cos_theta_surface
+    
+        return diffuse_irradiance_grid
