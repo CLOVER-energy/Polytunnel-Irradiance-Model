@@ -1,0 +1,13 @@
+cff-version: 1.1.0
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: Pomfret
+    given-names: Taylor
+  - family-names: Nuñez Andrade
+    given-names: Emilio Alexis de la Cruz
+  - family-names: Winchester
+    given-names: Benedict
+    orcid: https://orcid.org/0000-0002-2880-1243
+title: CLOVER
+version: v0.1.0a1
+date-released: 2025-05-01
