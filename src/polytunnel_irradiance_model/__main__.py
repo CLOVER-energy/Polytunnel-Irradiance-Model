@@ -28,7 +28,6 @@ import visualisation as viz
 
 from geometry import Polytunnel
 from sun import Sun
-from memory_profiler import profile
 from irradiance import TunnelIrradiance
 from tracing import Tracing
 from typing import Any
