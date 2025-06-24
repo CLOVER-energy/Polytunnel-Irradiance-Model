@@ -83,19 +83,3 @@ def compute_region_means(list_of_frames):
         (stdl_list, stdc_list, stdr_list, stda_list),
         (maxl_list, maxc_list, maxr_list, maxa_list),
     )
-
-
-def dictionary_update(data_dict, key, data_array):
-    """
-    Updates a dictionary with the memory size (in bytes) of a given array.
-
-    Args:
-        data_dict (dict): The dictionary to be updated.
-        key (str): The key under which the memory size will be stored.
-        data_array (list or array-like): The array whose memory size will be calculated.
-
-    Returns:
-        data_dict (dict): The updated dictionary
-    """
-    data_dict.update({key: np.array(data_array).nbytes})
-    return data_dict

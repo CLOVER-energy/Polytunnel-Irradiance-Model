@@ -237,20 +237,10 @@ def main(args: list[Any]) -> None:
     if not os.path.exists("Logs_Dates"):
         os.makedirs("Logs_Dates")
 
-    memory_profile_log = f"Logs_Dates/memory_profile_{simulation_data}.log"
-
-    # Configure memory profiler stream before running main(**params)
-    with open(memory_profile_log, "w+") as f:
-        # assign decorator
-        profiler_stream = f
-        main(**params)
-
     # Obtain date (Format): YYYYMMDD
     # Default date_simulation == '20240730', 30th July 2024
     date_simulation = start_time_str[:10].replace("-", "")
     parameters_sim = f"{date_simulation}_stack_{multistack}_r1_{radius1}_r2_{radius2}_donor_{material_list[2]}_acceptor_{material_list[3]}_cell_thickness_{cell_thickness}_cell_spacing_{cell_spacing}_resolution_{res_meshgrid}_ptunnelLength_{length}"
-
-    memory_information = {}
 
     if not os.path.isdir(f"figures/Date_{date_simulation}"):
         os.makedirs(f"figures/Date_{date_simulation}")
