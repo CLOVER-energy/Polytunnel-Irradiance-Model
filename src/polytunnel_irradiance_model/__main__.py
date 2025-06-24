@@ -151,7 +151,7 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
     eliptical_arguments.add_argument(
         "--semi-major-axis",
         "--radius-a",
-        "-smaj-ax"
+        "-smaj-ax",
         type=float,
         default=8,
         help="The length of the longer axis in the elipse. Default value of 8 m.",
@@ -159,7 +159,7 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
     eliptical_arguments.add_argument(
         "--semi-minor-axis",
         "--radius-b",
-        "-smin-ax"
+        "-smin-ax",
         type=float,
         default=8,
         help="The length of the shorter axis in the elipse. Default value of 8 m.",
@@ -168,13 +168,13 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
         "--tilt",
         type=float,
         default=0.0,
-        help="tilt         (default: 0.0                            )",
+        help="The angle by which the central axis of the polytunnel is tilted, in degrees.",
     )
     parser.add_argument(
         "--azimuthal_orientation",
         type=float,
         default=0.0,
-        help="azimuthal_orientation          (default: 0.0                            )",
+        help="The orientation, relative to North--South, of the central polytunnel axis.",
     )
     parser.add_argument(
         "--transmissivity",
@@ -230,7 +230,7 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
         "--csv", type=str, help="Path to CSV file containing parameters."
     )
 
-    args = parser.parse_args()
+    return parser.parse_args(args)
 
 
 @dynamic_profile
@@ -291,7 +291,9 @@ def main(
                 "radius1": float(params_dict.get("radius1", 8)),
                 "radius2": float(params_dict.get("radius2", 2)),
                 "tilt": float(params_dict.get("tilt", 0.0)),
-                "azimuthal_orientation": float(params_dict.get("azimuthal_orientation", 0.0)),
+                "azimuthal_orientation": float(
+                    params_dict.get("azimuthal_orientation", 0.0)
+                ),
                 "transmissivity": float(params_dict.get("transmissivity", 1)),
                 "multistack": int(params_dict.get("multistack", 1)),
                 "cell_thickness": float(params_dict.get("cell_thickness", 1.0)),
