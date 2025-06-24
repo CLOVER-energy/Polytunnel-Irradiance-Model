@@ -55,8 +55,16 @@ class Polytunnel:
         # Rotation around Z
         R_z = np.array(
             [
-                [np.cos(self.azimuthal_orientation), -np.sin(self.azimuthal_orientation), 0],
-                [np.sin(self.azimuthal_orientation), np.cos(self.azimuthal_orientation), 0],
+                [
+                    np.cos(self.azimuthal_orientation),
+                    -np.sin(self.azimuthal_orientation),
+                    0,
+                ],
+                [
+                    np.sin(self.azimuthal_orientation),
+                    np.cos(self.azimuthal_orientation),
+                    0,
+                ],
                 [0, 0, 1],
             ]
         )
