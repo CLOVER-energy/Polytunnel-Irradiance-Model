@@ -31,6 +31,7 @@ from sun import Sun
 from memory_profiler import profile
 from irradiance import TunnelIrradiance
 from tracing import Tracing
+from typing import Any
 
 from functions import *
 
@@ -62,66 +63,90 @@ def dynamic_profile(func):
     return wrapper
 
 
-@dynamic_profile
-def main(
-    start_time_str="2024-07-30T00:00:00Z",
-    end_time_str="2024-07-30T23:59:59Z",
-    latitude=51.1950,
-    longitude=0.2757,
-    res_minutes=10,
-    length=5,
-    radius1=8,
-    xy_angle=0.0,
-    z_angle=0.0,
-    transmissivity=1,
-    radius2=2,
-    material_list=["ag", "moo3", "PTQ10", "Y6", "zno", "ito"],
-    material_thick=[30, 10, 50, 50, 35, 100],
-    multistack=2,
-    cell_thickness=1,
-    cell_gap=1,
-    res_meshgrid=1.0,
-    initial_cell_gap=0.0,
-):
+def parse_args(args: list[Any]) -> argparse.Namespace:
+    """
+    Parse the CLI arguments.
 
-    parser = argparse.ArgumentParser(description="Ray-tracer for PV Polyntunnel")
+    :param: args:
+        The unparsed CLI arguments.
 
-    # Define individual arguments
-    parser.add_argument(
-        "--start_time_str",
+    :return: The parsed arguments as a :class:`argparse.Namespace`
+
+    """
+
+    parser = argparse.ArgumentParser(description="Ray-tracer for PV Polytunnel")
+
+    # Simulation arguments
+    simulation_arguments = parser.add_argument_group(
+        "simulation arguments", description="Arguments used for running a simulation."
+    )
+    simulation_arguments.add_argument(
+        "--start-time",
+        "-st",
         type=str,
         default="2024-07-30T00:00:00Z",
-        help="start_time_str   (default: '2024-07-30T00:00:00Z'         )",
+        help="The start-time string, in a YYYY-MM-DDTHH:MM:SSZ format, with literal T"
+        " and Z characters.",
     )
-    parser.add_argument(
-        "--end_time_str",
+    simulation_arguments.add_argument(
+        "--end-time",
+        "-et",
         type=str,
         default="2024-07-30T23:59:59Z",
-        help="end_time_str     (default: '2024-07-30T23:59:59Z'         )",
+        help="The end-time string, in a YYYY-MM-DDTHH:MM:SSZ format, with literal T"
+        " and Z characters.",
     )
-    parser.add_argument(
+
+    simulation_arguments.add_argument(
         "--latitude",
+        "-lat",
         type=float,
         default=51.1950,
-        help="latitude         (default: 51.1950                        )",
+        help="The latitude of the location for which weather data should be used.",
     )
-    parser.add_argument(
+    simulation_arguments.add_argument(
         "--longitude",
+        "-lon",
         type=float,
         default=0.2757,
-        help="longitude        (default: 0.2757                         )",
+        help="The longitude of the location for which weather data should be used.",
     )
-    parser.add_argument(
-        "--res_minutes",
+    simulation_arguments.add_argument(
+        "--modelling-temporal-resolution",
+        "-rtm",
         type=float,
         default=10,
-        help="res_minutes      (default: 10                             )",
+        help="The temporal resolution, in minutes, to use when simulating throughout "
+        "the day.",
     )
-    parser.add_argument(
+
+    # Polytunnel arguments
+    polytunnel_arguments = parser.add_argument_group(
+        "polytunnel arguments",
+        description="Arguments used to specify the technical details of the polytunnel.",
+    )
+    polytunnel_arguments.add_argument(
         "--length",
+        "-l",
         type=float,
         default=5,
-        help="length           (default: 5                              )",
+        help="The length, in metres, of the polytunnel segment to model.",
+    )
+    polytunnel_arguments.add_argument(
+        "--polytunnel-type",
+        "-pt",
+        type=int,
+        choices={0, 1},
+        default=0,
+        help="The type of polytunnel being modelled:\n"
+        "0 - A circular cross section\n"
+        "1 - An eliptical cross section.",
+    )
+
+    # Eliptical polytunnel arguments
+    eliptical_arguments = parser.add_argument_group(
+        "eliptical arguments",
+        description="Arguments to use only when specifying an elipitical geometry.",
     )
     parser.add_argument(
         "--radius1",
@@ -202,6 +227,29 @@ def main(
     )
 
     args = parser.parse_args()
+
+
+@dynamic_profile
+def main(
+    start_time_str="2024-07-30T00:00:00Z",
+    end_time_str="2024-07-30T23:59:59Z",
+    latitude=51.1950,
+    longitude=0.2757,
+    res_minutes=10,
+    length=5,
+    radius1=8,
+    xy_angle=0.0,
+    z_angle=0.0,
+    transmissivity=1,
+    radius2=2,
+    material_list=["ag", "moo3", "PTQ10", "Y6", "zno", "ito"],
+    material_thick=[30, 10, 50, 50, 35, 100],
+    multistack=2,
+    cell_thickness=1,
+    cell_gap=1,
+    res_meshgrid=1.0,
+    initial_cell_gap=0.0,
+):
 
     if args.csv:
         # If a CSV file is provided, ignore other arguments
