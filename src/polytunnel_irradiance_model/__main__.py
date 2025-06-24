@@ -19,18 +19,19 @@ import os
 import sys
 import time
 
+from typing import Any
+
 # import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import visualisation as viz
 import yaml
 
-from functions import *
-from geometry import Polytunnel
-from sun import Sun
-from irradiance import TunnelIrradiance
-from tracing import Tracing
-from typing import Any
+from src.polytunnel_irradiance_model.functions import *
+from src.polytunnel_irradiance_model.geometry import Polytunnel
+from src.polytunnel_irradiance_model.sun import Sun
+from src.polytunnel_irradiance_model.irradiance import TunnelIrradiance
+from src.polytunnel_irradiance_model.tracing import Tracing
+import src.polytunnel_irradiance_model.visualisation as viz
 
 
 import warnings
@@ -182,7 +183,7 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
         description="Arguments for specifying the configuration of the PV cells/modules.",
     )
     solar_cell_arguments.add_argument(
-        "--sloar-cell-file",
+        "--solar-cell-file",
         "--materials-file",
         type=str,
         default="solar_cell.yaml",
@@ -218,8 +219,8 @@ def main(args: list[Any]) -> None:
     parsed_args = parse_args(args)
 
     # Open the material information.
-    with open(parse_args.material_file, "r", encoding="UTF-8") as material_file:
-        material_information = yaml.safe_load(material_file)
+    with open(parsed_args.solar_cell_file, "r", encoding="UTF-8") as solar_cell_file:
+        material_information = yaml.safe_load(solar_cell_file)
 
     import pdb
 

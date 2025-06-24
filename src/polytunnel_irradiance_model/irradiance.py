@@ -5,7 +5,6 @@ from scipy.integrate import trapezoid
 import tracing as tracer
 import os
 import pandas as pd
-import visualisation as viz
 import torch
 
 
