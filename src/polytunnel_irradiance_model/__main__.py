@@ -48,21 +48,6 @@ def compute_surface_grid():
     """Returns the surface grid"""
 
 
-profiler_stream = None
-
-
-# Conditional decorator to allow a dynamic stream
-def dynamic_profile(func):
-    def wrapper(*args, **kwargs):
-        global profiler_stream
-        if profiler_stream:
-            return profile(stream=profiler_stream)(func)(*args, **kwargs)
-        else:
-            return profile(func)(*args, **kwargs)
-
-    return wrapper
-
-
 def parse_args(args: list[Any]) -> argparse.Namespace:
     """
     Parse the CLI arguments.
@@ -168,31 +153,29 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
         "--tilt",
         type=float,
         default=0.0,
-        help="The angle by which the central axis of the polytunnel is tilted, in degrees.",
+        help="The angle by which the central axis of the polytunnel is tilted, in "
+        "degrees.",
     )
     parser.add_argument(
         "--azimuthal_orientation",
         type=float,
         default=0.0,
-        help="The orientation, relative to North--South, of the central polytunnel axis.",
+        help="The orientation, relative to North--South, of the central polytunnel "
+        "axis.",
     )
     parser.add_argument(
         "--transmissivity",
+        "-tau",
         type=float,
         default=1,
-        help="transmissivity   (default: 1                              )",
+        help="The transmissivity of the polytunnel material; i.e., the plastic in the "
+        "region where no PV modules are present.",
     )
     parser.add_argument(
-        "--material_list",
+        "--material-file",
         type=str,
-        default="ag moo3 PTQ10 Y6 zno ito",
-        help="ordered material_list (default: ag moo3 PTQ10 Y6 zno ito  )",
-    )
-    parser.add_argument(
-        "--material_thick",
-        type=str,
-        default="30 10 50 50 35 100",
-        help="ordered material_thick (default: 30 10 50 50 35 100       )",
+        default="materials.yaml",
+        help="The path to the materials inputs file.",
     )
     parser.add_argument(
         "--multistack",
@@ -219,10 +202,10 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
         help="initial_cell_gap (default: 1.0 (1 meter)                  )",
     )
     parser.add_argument(
-        "--res_meshgrid",
+        "--res-meshgrid",
         type=float,
         default=1.0,
-        help="res_meshgrid     (default: 1.0 (1 meter)                  )",
+        help="The resolution of the mesh grid; default of 1 m.",
     )
 
     # Define argument for the CSV file
@@ -233,115 +216,19 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
     return parser.parse_args(args)
 
 
-@dynamic_profile
-def main(
-    start_time_str="2024-07-30T00:00:00Z",
-    end_time_str="2024-07-30T23:59:59Z",
-    latitude=51.1950,
-    longitude=0.2757,
-    res_minutes=10,
-    length=5,
-    radius1=8,
-    tilt=0.0,
-    azimuthal_orientation=0.0,
-    transmissivity=1,
-    radius2=2,
-    material_list=["ag", "moo3", "PTQ10", "Y6", "zno", "ito"],
-    material_thick=[30, 10, 50, 50, 35, 100],
-    multistack=2,
-    cell_thickness=1,
-    cell_gap=1,
-    res_meshgrid=1.0,
-    initial_cell_gap=0.0,
-):
+def main(args: list[Any]) -> None:
+    """
+    Main function for operating the Polytunnel-Irradiance-Model.
 
-    if args.csv:
-        # If a CSV file is provided, ignore other arguments
-        try:
-            df = pd.read_csv(args.csv)
+    :param: args:
+        The unparsed command-line arguments.
 
-            # Validate that the CSV has the expected columns
-            if set(df.columns) != {"Parameter", "Value"}:
-                raise ValueError(
-                    "CSV file must have exactly two columns: 'Parameter' and 'Value'."
-                )
+    """
 
-            # Convert the DataFrame to a dictionary
-            params_dict = df.set_index("Parameter")["Value"].to_dict()
+    # Parse the command-line arguments.
+    parsed_args = parse_args(args)
 
-            material_list = [
-                str(item) for item in params_dict["material_list"].split(" ")
-            ]
-            material_thick = [
-                float(item) for item in params_dict["material_thick"].split(" ")
-            ]
-
-            # Convert types as necessary
-            params = {
-                "start_time_str": str(
-                    params_dict.get("start_time_str", "2024-07-30T00:00:00Z")
-                ),
-                "end_time_str": str(
-                    params_dict.get("end_time_str", "2024-07-30T23:59:59Z")
-                ),
-                "latitude": float(params_dict.get("latitude", 51.1950)),
-                "longitude": float(params_dict.get("longitude", 0.2757)),
-                "res_minutes": float(params_dict.get("res_minutes", 10)),
-                "length": float(params_dict.get("length", 5)),
-                "radius1": float(params_dict.get("radius1", 8)),
-                "radius2": float(params_dict.get("radius2", 2)),
-                "tilt": float(params_dict.get("tilt", 0.0)),
-                "azimuthal_orientation": float(
-                    params_dict.get("azimuthal_orientation", 0.0)
-                ),
-                "transmissivity": float(params_dict.get("transmissivity", 1)),
-                "multistack": int(params_dict.get("multistack", 1)),
-                "cell_thickness": float(params_dict.get("cell_thickness", 1.0)),
-                "cell_gap": float(params_dict.get("cell_gap", 1.0)),
-                "initial_cell_gap": float(params_dict.get("initial_cell_gap", 0.0)),
-                "res_meshgrid": float(params_dict.get("res_meshgrid", 1.0)),
-                "material_list": material_list,
-                "material_thick": material_thick,
-            }
-            print("")
-            print(f"Running calculation with parameters: ")
-            for item in params:
-                print(f"{item:16s}: {params[item]}")
-            print("")
-        except Exception as e:
-            print(f"Error reading CSV file: {e}")
-            exit(1)
-    else:
-        # Use command-line arguments or default values
-        material_list = [str(item) for item in args.material_list.split(" ")]
-        material_thick = [float(item) for item in args.material_thick.split(" ")]
-
-        params = {
-            "start_time_str": str(args.start_time_str),
-            "end_time_str": str(args.end_time_str),
-            "latitude": float(args.latitude),
-            "longitude": float(args.longitude),
-            "res_minutes": float(args.res_minutes),
-            "length": float(args.length),
-            "radius1": float(args.radius1),
-            "radius2": float(args.radius2),
-            "tilt": float(args.tilt),
-            "azimuthal_orientation": float(args.azimuthal_orientation),
-            "transmissivity": float(args.transmissivity),
-            "material_list": material_list,
-            "material_thick": material_thick,
-            "multistack": int(args.multistack),
-            "cell_thickness": float(args.cell_thickness),
-            "cell_gap": float(args.cell_gap),
-            "initial_cell_gap": float(args.initial_cell_gap),
-            "res_meshgrid": float(args.res_meshgrid),
-        }
-
-        print("")
-        print(f"Running calculation with DEFAULT parameters: ")
-        for item in params:
-            print(f"{item:16s}: {params[item]}")
-        print("")
+    # Open the material information.
 
     date_simulation = params["start_time_str"][:10].replace("-", "")
     simulation_data = f"{date_simulation}_stack_{params['multistack']}_r1_{params['radius1']}_r2_{params['radius2']}"
