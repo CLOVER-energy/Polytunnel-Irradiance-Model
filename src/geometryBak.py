@@ -11,8 +11,8 @@ class Polytunnel:
         length=10,
         n_points=1000,
         n_points_angular=1000,
-        xy_angle=0,
-        z_angle=0,
+        tilt=0,
+        azimuthal_orientation=0,
         x_shift=0.0,
         y_shift=0.0,
         z_shift=0.0,
@@ -25,8 +25,8 @@ class Polytunnel:
         self.length = length
         self.n = int(n_points)
         self.n_angular = int(n_points_angular)
-        self.xy_angle = xy_angle
-        self.z_angle = z_angle
+        self.tilt = tilt
+        self.azimuthal_orientation = azimuthal_orientation
         self.x_shift = x_shift
         self.y_shift = y_shift
         self.z_shift = z_shift
@@ -47,14 +47,14 @@ class Polytunnel:
     def apply_rotations(self, X, Y, Z):
         """
         Appy two rotations:
-        - First: Around Z by z_angle (in radians).
-        - Second: Around X by xy_angle  (in radians).
+        - First: Around Z by azimuthal_orientation (in radians).
+        - Second: Around X by tilt  (in radians).
         """
         # Rotation around Z
         R_z = np.array(
             [
-                [np.cos(self.z_angle), -np.sin(self.z_angle), 0],
-                [np.sin(self.z_angle), np.cos(self.z_angle), 0],
+                [np.cos(self.azimuthal_orientation), -np.sin(self.azimuthal_orientation), 0],
+                [np.sin(self.azimuthal_orientation), np.cos(self.azimuthal_orientation), 0],
                 [0, 0, 1],
             ]
         )
@@ -63,8 +63,8 @@ class Polytunnel:
         R_x = np.array(
             [
                 [1, 0, 0],
-                [0, np.cos(self.xy_angle), -np.sin(self.xy_angle)],
-                [0, np.sin(self.xy_angle), np.cos(self.xy_angle)],
+                [0, np.cos(self.tilt), -np.sin(self.tilt)],
+                [0, np.sin(self.tilt), np.cos(self.tilt)],
             ]
         )
 
@@ -89,20 +89,20 @@ class Polytunnel:
 
         # MODIFICATION
         # Rotation in the XY plane
-        # cos_xy = np.cos(self.xy_angle)
-        # sin_xy = np.sin(self.xy_angle)
+        # cos_xy = np.cos(self.tilt)
+        # sin_xy = np.sin(self.tilt)
 
         # X_rot_xy = X * cos_xy - Y * sin_xy
         # Y = X * sin_xy + Y * cos_xy
 
         # # Rotation around the Z-axis
-        # cos_z = np.cos(self.z_angle)
-        # sin_z = np.sin(self.z_angle)
+        # cos_z = np.cos(self.azimuthal_orientation)
+        # sin_z = np.sin(self.azimuthal_orientation)
 
         # X = X_rot_xy * cos_z - Z * sin_z
         # Z = X_rot_xy * sin_z + Z * cos_z  # Z_final will still be zero since Z is zero initially
 
-        if self.xy_angle != 0 or self.z_angle != 0:
+        if self.tilt != 0 or self.azimuthal_orientation != 0:
             X, Y, Z = self.apply_rotations(X, Y, Z)
 
         X = X + self.x_shift
@@ -134,19 +134,19 @@ class Polytunnel:
 
         # MODIFICATION
         # # Rotation in the XY plane
-        # cos_xy = np.cos(self.xy_angle)
-        # sin_xy = np.sin(self.xy_angle)
+        # cos_xy = np.cos(self.tilt)
+        # sin_xy = np.sin(self.tilt)
 
         # X_rot_xy = X * cos_xy - Y * sin_xy
         # Y = X * sin_xy + Y * cos_xy
 
         # # Rotation around the Z-axis
-        # cos_z = np.cos(self.z_angle)
-        # sin_z = np.sin(self.z_angle)
+        # cos_z = np.cos(self.azimuthal_orientation)
+        # sin_z = np.sin(self.azimuthal_orientation)
 
         # X = X_rot_xy * cos_z - Z * sin_z
         # Z = X_rot_xy * sin_z + Z * cos_z
-        if self.xy_angle != 0 or self.z_angle != 0:
+        if self.tilt != 0 or self.azimuthal_orientation != 0:
             X, Y, Z = self.apply_rotations(X, Y, Z)
 
         X = X + self.x_shift

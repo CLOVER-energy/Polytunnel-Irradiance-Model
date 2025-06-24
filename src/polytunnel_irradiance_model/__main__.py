@@ -148,29 +148,33 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
         "eliptical arguments",
         description="Arguments to use only when specifying an elipitical geometry.",
     )
-    parser.add_argument(
-        "--radius1",
+    eliptical_arguments.add_argument(
+        "--semi-major-axis",
+        "--radius-a",
+        "-smaj-ax"
         type=float,
         default=8,
-        help="radius1          (default: 8                              )",
+        help="The length of the longer axis in the elipse. Default value of 8 m.",
     )
-    parser.add_argument(
-        "--radius2",
+    eliptical_arguments.add_argument(
+        "--semi-minor-axis",
+        "--radius-b",
+        "-smin-ax"
         type=float,
-        default=2,
-        help="radius2          (default: 2                              )",
+        default=8,
+        help="The length of the shorter axis in the elipse. Default value of 8 m.",
     )
     parser.add_argument(
-        "--xy_angle",
-        type=float,
-        default=0.0,
-        help="xy_angle         (default: 0.0                            )",
-    )
-    parser.add_argument(
-        "--z_angle",
+        "--tilt",
         type=float,
         default=0.0,
-        help="z_angle          (default: 0.0                            )",
+        help="tilt         (default: 0.0                            )",
+    )
+    parser.add_argument(
+        "--azimuthal_orientation",
+        type=float,
+        default=0.0,
+        help="azimuthal_orientation          (default: 0.0                            )",
     )
     parser.add_argument(
         "--transmissivity",
@@ -238,8 +242,8 @@ def main(
     res_minutes=10,
     length=5,
     radius1=8,
-    xy_angle=0.0,
-    z_angle=0.0,
+    tilt=0.0,
+    azimuthal_orientation=0.0,
     transmissivity=1,
     radius2=2,
     material_list=["ag", "moo3", "PTQ10", "Y6", "zno", "ito"],
@@ -286,8 +290,8 @@ def main(
                 "length": float(params_dict.get("length", 5)),
                 "radius1": float(params_dict.get("radius1", 8)),
                 "radius2": float(params_dict.get("radius2", 2)),
-                "xy_angle": float(params_dict.get("xy_angle", 0.0)),
-                "z_angle": float(params_dict.get("z_angle", 0.0)),
+                "tilt": float(params_dict.get("tilt", 0.0)),
+                "azimuthal_orientation": float(params_dict.get("azimuthal_orientation", 0.0)),
                 "transmissivity": float(params_dict.get("transmissivity", 1)),
                 "multistack": int(params_dict.get("multistack", 1)),
                 "cell_thickness": float(params_dict.get("cell_thickness", 1.0)),
@@ -319,8 +323,8 @@ def main(
             "length": float(args.length),
             "radius1": float(args.radius1),
             "radius2": float(args.radius2),
-            "xy_angle": float(args.xy_angle),
-            "z_angle": float(args.z_angle),
+            "tilt": float(args.tilt),
+            "azimuthal_orientation": float(args.azimuthal_orientation),
             "transmissivity": float(args.transmissivity),
             "material_list": material_list,
             "material_thick": material_thick,
@@ -372,8 +376,8 @@ def main(
     tunnel = Polytunnel(
         radius1=radius1,
         length=length,
-        xy_angle=xy_angle,
-        z_angle=z_angle,
+        tilt=tilt,
+        azimuthal_orientation=azimuthal_orientation,
         theta_margin=0,
         cell_thickness=cell_thickness,
         cell_gap=cell_gap,
@@ -384,16 +388,16 @@ def main(
     tunnel_l = Polytunnel(
         radius1=radius1,
         length=length,
-        xy_angle=xy_angle,
-        z_angle=z_angle,
+        tilt=tilt,
+        azimuthal_orientation=azimuthal_orientation,
         x_shift=3.0,
         res_meshgrid=res_meshgrid,
     )
     tunnel_r = Polytunnel(
         radius1=radius1,
         length=length,
-        xy_angle=xy_angle,
-        z_angle=z_angle,
+        tilt=tilt,
+        azimuthal_orientation=azimuthal_orientation,
         x_shift=-3.0,
         res_meshgrid=res_meshgrid,
     )
