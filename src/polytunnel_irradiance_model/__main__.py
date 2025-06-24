@@ -15,11 +15,13 @@ distribution within a curved structure, _e.g._, a polytunnel.
 """
 
 import argparse
+import datetime
 import os
 import sys
 import time
 
-from typing import Any
+from contextlib import contextmanager
+from typing import Any, Callable, Generator
 
 # import matplotlib.pyplot as plt
 import numpy as np
@@ -41,6 +43,27 @@ warnings.filterwarnings(
 )
 
 __all__ = ("compute_surface_grid", "main")
+
+
+# DONE:
+#   Snippet to print when code is succesffully executed.
+DONE: str = "[  DONE  ]"
+
+# FAILED:
+#   Snippet to print when code fails to execute.
+FAILED: str = "[ FAILED ]"
+
+
+def code_print(string_to_print: str) -> None:
+    """
+    Print a line with dots.
+
+    :param: string_to_print:
+        The string to print.
+
+    """
+
+    print(string_to_print + "." * (65 - len(string_to_print)) + " ", end="")
 
 
 def compute_surface_grid():
@@ -206,6 +229,29 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
     return parser.parse_args(args)
 
 
+@contextmanager
+def time_execution() -> Generator[Callable[[], float], Any, None]:
+    """
+    Times a period of code execution.
+
+    :yields:
+        The elapsed time taken for the code to execute.
+
+    """
+
+    start_time: float = time.perf_counter()
+    end_time: float | None = None
+
+    try:
+        yield lambda: (
+            end_time - start_time
+            if end_time is not None
+            else time.perf_counter() - start_time
+        )
+    finally:
+        end_time = time.perf_counter()
+
+
 def main(args: list[Any]) -> None:
     """
     Main function for operating the Polytunnel-Irradiance-Model.
@@ -222,88 +268,81 @@ def main(args: list[Any]) -> None:
     with open(parsed_args.solar_cell_file, "r", encoding="UTF-8") as solar_cell_file:
         material_information = yaml.safe_load(solar_cell_file)
 
+    # Compute the simulation date and time.
+    simulation_datetime = datetime.datetime.strptime(
+        parsed_args.start_time, "%Y-%m-%dT%H:%M:%SZ"
+    )
+
+    if not os.path.isdir(
+        output_figures_dir := os.path.join(
+            "output_files", "figures", simulation_datetime.strftime("%Y_%m_%d")
+        )
+    ):
+        os.makedirs(output_figures_dir)
+
     import pdb
 
     pdb.set_trace()
 
-    date_simulation = params["start_time_str"][:10].replace("-", "")
-    simulation_data = f"{date_simulation}_stack_{params['multistack']}_r1_{params['radius1']}_r2_{params['radius2']}"
-    simulation_data += f"_donor_{material_list[2]}_acceptor_{material_list[3]}_cell_thickness_{params['cell_thickness']}"
-    simulation_data += f"_cell_spacing_{params['cell_spacing']}_resolution_{params['res_meshgrid']}_ptunnelLength_{params['length']}"
+    code_print("Geometry calculation")
+    try:
+        with time_execution() as geometry_timer:
+            # tunnel geometry#
+            tunnel = Polytunnel(
+                radius1=radius1,
+                length=length,
+                tilt=tilt,
+                azimuthal_orientation=azimuthal_orientation,
+                theta_margin=0,
+                cell_thickness=cell_thickness,
+                cell_spacing=cell_spacing,
+                radius2=radius2,
+                res_meshgrid=res_meshgrid,
+                initial_cell_spacing=initial_cell_spacing,
+            )
+            tunnel_l = Polytunnel(
+                radius1=radius1,
+                length=length,
+                tilt=tilt,
+                azimuthal_orientation=azimuthal_orientation,
+                x_shift=3.0,
+                res_meshgrid=res_meshgrid,
+            )
+            tunnel_r = Polytunnel(
+                radius1=radius1,
+                length=length,
+                tilt=tilt,
+                azimuthal_orientation=azimuthal_orientation,
+                x_shift=-3.0,
+                res_meshgrid=res_meshgrid,
+            )
 
-    if not os.path.exists("Matched_Dates"):
-        os.makedirs("Matched_Dates")
+            ground_grid = tunnel.generate_ground_grid()
+            ground_grid_x, ground_grid_y, ground_grid_z = (
+                ground_grid[0],
+                ground_grid[1],
+                ground_grid[2],
+            )
 
-    if not os.path.exists("Logs_Dates"):
-        os.makedirs("Logs_Dates")
+            normals_unit_surface, areas_surface = tunnel.surface_element_unit_vectors()
+            normals_unit_ground, areas_ground = tunnel.ground_element_unit_vectors()
+            tilts_unit = tunnel.surface_tilt(normals_unit_surface)
 
-    # Obtain date (Format): YYYYMMDD
-    # Default date_simulation == '20240730', 30th July 2024
-    date_simulation = start_time_str[:10].replace("-", "")
-    parameters_sim = f"{date_simulation}_stack_{multistack}_r1_{radius1}_r2_{radius2}_donor_{material_list[2]}_acceptor_{material_list[3]}_cell_thickness_{cell_thickness}_cell_spacing_{cell_spacing}_resolution_{res_meshgrid}_ptunnelLength_{length}"
+            surface_grid, solar_cells = tunnel.generate_surface()
+            surface_grid_x, surface_grid_y, surface_grid_z = (
+                surface_grid[0],
+                surface_grid[1],
+                surface_grid[2],
+            )
 
-    if not os.path.isdir(f"figures/Date_{date_simulation}"):
-        os.makedirs(f"figures/Date_{date_simulation}")
-
-    start_simulation_time = time.time()
-
-    # tunnel geometry#
-    tunnel = Polytunnel(
-        radius1=radius1,
-        length=length,
-        tilt=tilt,
-        azimuthal_orientation=azimuthal_orientation,
-        theta_margin=0,
-        cell_thickness=cell_thickness,
-        cell_spacing=cell_spacing,
-        radius2=radius2,
-        res_meshgrid=res_meshgrid,
-        initial_cell_spacing=initial_cell_spacing,
-    )
-    tunnel_l = Polytunnel(
-        radius1=radius1,
-        length=length,
-        tilt=tilt,
-        azimuthal_orientation=azimuthal_orientation,
-        x_shift=3.0,
-        res_meshgrid=res_meshgrid,
-    )
-    tunnel_r = Polytunnel(
-        radius1=radius1,
-        length=length,
-        tilt=tilt,
-        azimuthal_orientation=azimuthal_orientation,
-        x_shift=-3.0,
-        res_meshgrid=res_meshgrid,
-    )
-
-    ground_grid = tunnel.generate_ground_grid()
-    ground_grid_x, ground_grid_y, ground_grid_z = (
-        ground_grid[0],
-        ground_grid[1],
-        ground_grid[2],
-    )
-
-
-    normals_unit_surface, areas_surface = tunnel.surface_element_unit_vectors()
-    normals_unit_ground, areas_ground = tunnel.ground_element_unit_vectors()
-    tilts_unit = tunnel.surface_tilt(normals_unit_surface)
-
-    surface_grid, solar_cells = tunnel.generate_surface()
-    surface_grid_x, surface_grid_y, surface_grid_z = (
-        surface_grid[0],
-        surface_grid[1],
-        surface_grid[2],
-    )
-
-    distance_grid, separation_unit_vector_grid = tunnel.generate_distances_grid(
-        ground_grid, surface_grid
-    )
-
-    end_geometry_time = time.time()
-    print(
-        f"Geometry calculation time: {end_geometry_time - start_simulation_time } seconds"
-    )
+            distance_grid, separation_unit_vector_grid = tunnel.generate_distances_grid(
+                ground_grid, surface_grid
+            )
+    except Exception:
+        print(FAILED)
+    else:
+        print(DONE)
+        print(f"Geometry calculation: {geometry_timer()} seconds")
 
     d = 2 * radius1
     # sun transits#
@@ -602,7 +641,6 @@ def main(args: list[Any]) -> None:
     print(
         f"PAR Global calculation time: { par_global_calculation_time - par_diffuse_calculation_time  } seconds"
     )
-
 
     print("Photon PAR:")
     direct_data = viz.every_grid_plot(
