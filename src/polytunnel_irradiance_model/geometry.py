@@ -16,10 +16,10 @@ class Polytunnel:
         z_shift=0.0,
         theta_margin=0,
         cell_thickness=0,
-        cell_gap=0,
+        cell_spacing=0,
         radius2=None,
         res_meshgrid=1.0,
-        initial_cell_gap=0.0,
+        initial_cell_spacing=0.0,
     ):
         self.res_meshgrid = res_meshgrid
         self.radius1 = radius1
@@ -35,8 +35,8 @@ class Polytunnel:
         self.cell_thickness = (
             cell_thickness  # Thickness of the solar cell (in terms of segments)
         )
-        self.cell_gap = cell_gap
-        self.initial_cell_gap = initial_cell_gap
+        self.cell_spacing = cell_spacing
+        self.initial_cell_spacing = initial_cell_spacing
 
         if radius2:
             # If radius2 in arguments, this will be the secondary radius, to obtain an elliptical shape
@@ -172,7 +172,9 @@ class Polytunnel:
         cell_thickness = (
             self.cell_thickness
         )  # Thickness of the solar cell (in terms of segments)
-        cell_gap = self.cell_gap  # Gap between solar cells (in terms of segments)
+        cell_spacing = (
+            self.cell_spacing
+        )  # Gap between solar cells (in terms of segments)
 
         # Initialize an array to store solar cell positions
         solar_cells = np.zeros_like(X, dtype=int)  # Use int type for 0 and 1
@@ -192,10 +194,10 @@ class Polytunnel:
                 self.cell_thickness / (self.res_meshgrid)
             )  # 35 cm -> grids
             stripe_spacing_grids = int(
-                self.cell_gap / (self.res_meshgrid)
+                self.cell_spacing / (self.res_meshgrid)
             )  # 100 cm -> grids
             initial_spacing_grids = int(
-                self.initial_cell_gap / (self.res_meshgrid)
+                self.initial_cell_spacing / (self.res_meshgrid)
             )  # 50 cm -> grids
 
             current_x = initial_spacing_grids
@@ -204,7 +206,7 @@ class Polytunnel:
                 current_x += stripe_width_grids + stripe_spacing_grids
 
             # Mark the positions of solar cells based on the parameters
-            # for i in range(0, int(self.n_angular), int(cell_thickness + cell_gap)):  # Iterate over columns (Y-direction)
+            # for i in range(0, int(self.n_angular), int(cell_thickness + cell_spacing)):  # Iterate over columns (Y-direction)
             #     solar_cells[int(theta_start):int(theta_end), i:i + int(cell_thickness)] = 1
             # plt.figure()
             # plt.imshow(solar_cells)

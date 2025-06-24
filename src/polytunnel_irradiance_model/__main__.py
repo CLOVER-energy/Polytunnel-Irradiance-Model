@@ -19,20 +19,19 @@ import os
 import sys
 import time
 
-# import tmm
-
 # import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import visualisation as viz
+import yaml
 
+from functions import *
 from geometry import Polytunnel
 from sun import Sun
 from irradiance import TunnelIrradiance
 from tracing import Tracing
 from typing import Any
 
-from functions import *
 
 import warnings
 
@@ -126,6 +125,34 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
         "0 - A circular cross section\n"
         "1 - An eliptical cross section.",
     )
+    polytunnel_arguments.add_argument(
+        "--cell-spacing",
+        type=float,
+        default=1,
+        help="The spacing, in meters, between modules on the polytunnel surface.",
+    )
+    polytunnel_arguments.add_argument(
+        "--tilt",
+        type=float,
+        default=0.0,
+        help="The angle by which the central axis of the polytunnel is tilted, in "
+        "degrees.",
+    )
+    polytunnel_arguments.add_argument(
+        "--azimuthal_orientation",
+        type=float,
+        default=0.0,
+        help="The orientation, relative to North--South, of the central polytunnel "
+        "axis.",
+    )
+    polytunnel_arguments.add_argument(
+        "--transmissivity",
+        "-tau",
+        type=float,
+        default=1,
+        help="The transmissivity of the polytunnel material; i.e., the plastic in the "
+        "region where no PV modules are present.",
+    )
 
     # Eliptical polytunnel arguments
     eliptical_arguments = parser.add_argument_group(
@@ -148,68 +175,31 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
         default=8,
         help="The length of the shorter axis in the elipse. Default value of 8 m.",
     )
-    parser.add_argument(
-        "--tilt",
-        type=float,
-        default=0.0,
-        help="The angle by which the central axis of the polytunnel is tilted, in "
-        "degrees.",
+
+    # Solar cell arguments.
+    solar_cell_arguments = parser.add_argument_group(
+        "solar-cell arguments",
+        description="Arguments for specifying the configuration of the PV cells/modules.",
     )
-    parser.add_argument(
-        "--azimuthal_orientation",
-        type=float,
-        default=0.0,
-        help="The orientation, relative to North--South, of the central polytunnel "
-        "axis.",
-    )
-    parser.add_argument(
-        "--transmissivity",
-        "-tau",
-        type=float,
-        default=1,
-        help="The transmissivity of the polytunnel material; i.e., the plastic in the "
-        "region where no PV modules are present.",
-    )
-    parser.add_argument(
-        "--material-file",
+    solar_cell_arguments.add_argument(
+        "--sloar-cell-file",
+        "--materials-file",
         type=str,
-        default="materials.yaml",
+        default="solar_cell.yaml",
         help="The path to the materials inputs file.",
     )
-    parser.add_argument(
-        "--multistack",
-        type=int,
-        default=1,
-        help="multistack       (default: 1                              )",
-    )
-    parser.add_argument(
-        "--cell_thickness",
-        type=float,
-        default=1.0,
-        help="cell_thickness   (default: 1                              )",
-    )
-    parser.add_argument(
-        "--cell_gap",
-        type=float,
-        default=1.0,
-        help="cell_gap         (default: 1                              )",
-    )
-    parser.add_argument(
-        "--initial_cell_gap",
-        type=float,
-        default=0.0,
-        help="initial_cell_gap (default: 1.0 (1 meter)                  )",
-    )
+    # parser.add_argument(
+    #     "--initial_cell_spacing",
+    #     type=float,
+    #     default=0.0,
+    #     help="initial_cell_spacing (default: 1.0 (1 meter)                  )",
+    # )
+
     parser.add_argument(
         "--res-meshgrid",
         type=float,
         default=1.0,
         help="The resolution of the mesh grid; default of 1 m.",
-    )
-
-    # Define argument for the CSV file
-    parser.add_argument(
-        "--csv", type=str, help="Path to CSV file containing parameters."
     )
 
     return parser.parse_args(args)
@@ -228,11 +218,17 @@ def main(args: list[Any]) -> None:
     parsed_args = parse_args(args)
 
     # Open the material information.
+    with open(parse_args.material_file, "r", encoding="UTF-8") as material_file:
+        material_information = yaml.safe_load(material_file)
+
+    import pdb
+
+    pdb.set_trace()
 
     date_simulation = params["start_time_str"][:10].replace("-", "")
     simulation_data = f"{date_simulation}_stack_{params['multistack']}_r1_{params['radius1']}_r2_{params['radius2']}"
     simulation_data += f"_donor_{material_list[2]}_acceptor_{material_list[3]}_cell_thickness_{params['cell_thickness']}"
-    simulation_data += f"_cell_gap_{params['cell_gap']}_resolution_{params['res_meshgrid']}_ptunnelLength_{params['length']}"
+    simulation_data += f"_cell_spacing_{params['cell_spacing']}_resolution_{params['res_meshgrid']}_ptunnelLength_{params['length']}"
 
     if not os.path.exists("Matched_Dates"):
         os.makedirs("Matched_Dates")
@@ -251,7 +247,7 @@ def main(args: list[Any]) -> None:
     # Obtain date (Format): YYYYMMDD
     # Default date_simulation == '20240730', 30th July 2024
     date_simulation = start_time_str[:10].replace("-", "")
-    parameters_sim = f"{date_simulation}_stack_{multistack}_r1_{radius1}_r2_{radius2}_donor_{material_list[2]}_acceptor_{material_list[3]}_cell_thickness_{cell_thickness}_cell_gap_{cell_gap}_resolution_{res_meshgrid}_ptunnelLength_{length}"
+    parameters_sim = f"{date_simulation}_stack_{multistack}_r1_{radius1}_r2_{radius2}_donor_{material_list[2]}_acceptor_{material_list[3]}_cell_thickness_{cell_thickness}_cell_spacing_{cell_spacing}_resolution_{res_meshgrid}_ptunnelLength_{length}"
 
     memory_information = {}
 
@@ -268,10 +264,10 @@ def main(args: list[Any]) -> None:
         azimuthal_orientation=azimuthal_orientation,
         theta_margin=0,
         cell_thickness=cell_thickness,
-        cell_gap=cell_gap,
+        cell_spacing=cell_spacing,
         radius2=radius2,
         res_meshgrid=res_meshgrid,
-        initial_cell_gap=initial_cell_gap,
+        initial_cell_spacing=initial_cell_spacing,
     )
     tunnel_l = Polytunnel(
         radius1=radius1,
