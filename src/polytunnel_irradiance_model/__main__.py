@@ -284,38 +284,10 @@ def main(args: list[Any]) -> None:
         ground_grid[2],
     )
 
-    memory_information = dictionary_update(
-        memory_information, "ground_grid_x_bytes", ground_grid_x
-    )
-    memory_information = dictionary_update(
-        memory_information, "ground_grid_y_bytes", ground_grid_y
-    )
-    memory_information = dictionary_update(
-        memory_information, "ground_grid_z_bytes", ground_grid_z
-    )
-    memory_information = dictionary_update(
-        memory_information, "ground_grid_all_bytes", ground_grid
-    )
 
     normals_unit_surface, areas_surface = tunnel.surface_element_unit_vectors()
     normals_unit_ground, areas_ground = tunnel.ground_element_unit_vectors()
     tilts_unit = tunnel.surface_tilt(normals_unit_surface)
-
-    memory_information = dictionary_update(
-        memory_information, "normals_unit_surface_bytes", normals_unit_surface
-    )
-    memory_information = dictionary_update(
-        memory_information, "areas_surface_bytes", areas_surface
-    )
-    memory_information = dictionary_update(
-        memory_information, "normals_unit_ground_bytes", normals_unit_ground
-    )
-    memory_information = dictionary_update(
-        memory_information, "areas_ground_bytes", areas_ground
-    )
-    memory_information = dictionary_update(
-        memory_information, "tilts_unit_bytes", tilts_unit
-    )
 
     surface_grid, solar_cells = tunnel.generate_surface()
     surface_grid_x, surface_grid_y, surface_grid_z = (
@@ -326,30 +298,6 @@ def main(args: list[Any]) -> None:
 
     distance_grid, separation_unit_vector_grid = tunnel.generate_distances_grid(
         ground_grid, surface_grid
-    )
-
-    memory_information = dictionary_update(
-        memory_information, "surface_grid_x_bytes", surface_grid_x
-    )
-    memory_information = dictionary_update(
-        memory_information, "surface_grid_y_bytes", surface_grid_y
-    )
-    memory_information = dictionary_update(
-        memory_information, "surface_grid_z_bytes", surface_grid_z
-    )
-    memory_information = dictionary_update(
-        memory_information, "surface_grid_all_bytes", surface_grid
-    )
-    memory_information = dictionary_update(
-        memory_information, "solar_cells_bytes", solar_cells
-    )
-    memory_information = dictionary_update(
-        memory_information, "distance_grid_bytes", distance_grid
-    )
-    memory_information = dictionary_update(
-        memory_information,
-        "separation_unit_vector_grid_bytes",
-        separation_unit_vector_grid,
     )
 
     end_geometry_time = time.time()
@@ -369,33 +317,10 @@ def main(args: list[Any]) -> None:
     altitude_array, azimuth_array = sun.generate_sun_positions()
     time_array = sun.get_times()
 
-    memory_information = dictionary_update(
-        memory_information, "time_array_bytes", time_array
-    )
-    memory_information = dictionary_update(
-        memory_information, "altitude_array_bytes", altitude_array
-    )
-    memory_information = dictionary_update(
-        memory_information, "azimuth_array_bytes", azimuth_array
-    )
-
     sun_positions = list(zip(altitude_array, azimuth_array))
     sun_vecs = sun.generate_sun_vecs(sun_positions)
     sun_surface_grid, sun_incident = sun.sunvec_tilts_grid(
         sun_vecs, normals_unit_surface
-    )
-
-    memory_information = dictionary_update(
-        memory_information, "sun_surface_grid_bytes", sun_surface_grid
-    )
-    memory_information = dictionary_update(
-        memory_information, "sun_incident_bytes", sun_incident
-    )
-    memory_information = dictionary_update(
-        memory_information, "sun_vecs_bytes", sun_vecs
-    )
-    memory_information = dictionary_update(
-        memory_information, "sun_positions_bytes", sun_positions
     )
 
     # Used for Diffuse Component
@@ -414,19 +339,6 @@ def main(args: list[Any]) -> None:
         tracer.find_tangent_gradient()
     )
 
-    memory_information = dictionary_update(
-        memory_information, "gradient_grid_bytes", gradient_grid
-    )
-    memory_information = dictionary_update(
-        memory_information, "angle_grid_bytes", angle_grid
-    )
-    memory_information = dictionary_update(
-        memory_information, "surface_gradient_grid_bytes", surface_gradient_grid
-    )
-    memory_information = dictionary_update(
-        memory_information, "surface_angle_grid_bytes", surface_angle_grid
-    )
-
     shading_calculation_time = time.time()
     print(
         f"Shading calculation time: { shading_calculation_time - sun_positions_calculation_time } seconds"
@@ -442,16 +354,6 @@ def main(args: list[Any]) -> None:
     # optical intensities in W/m^2/nm
     # spectra_frames units in W/m^2
     optical_wavelengths, optical_intensities, spectra_frames = sun.get_spectra(400, 700)
-
-    memory_information = dictionary_update(
-        memory_information, "optical_wavelengths_bytes", optical_wavelengths
-    )
-    memory_information = dictionary_update(
-        memory_information, "optical_intensities_bytes", optical_intensities
-    )
-    memory_information = dictionary_update(
-        memory_information, "spectra_frames_bytes", spectra_frames
-    )
 
     wavelengths_intensities_spectra_frames_calculation_time = time.time()
     print(
@@ -496,13 +398,6 @@ def main(args: list[Any]) -> None:
         sun_incident, optical_wavelengths, complex_array, material_thickness
     )
 
-    memory_information = dictionary_update(
-        memory_information, "complex_array_bytes", complex_array
-    )
-    memory_information = dictionary_update(
-        memory_information, "t_grid_frames_bytes", t_grid_frames
-    )
-
     # Solar Spectra#
     print("Performing Solar Spectra calculation")
     # Obtain the irradiance rays affected by transmittance and shading
@@ -513,13 +408,6 @@ def main(args: list[Any]) -> None:
     )
     solar_cell_spectra_shaded = irradiance.shaded_irradiance_spectra(
         solar_cell_spectra, shaded_exposure_map
-    )
-
-    memory_information = dictionary_update(
-        memory_information, "solar_cell_spectra_bytes", solar_cell_spectra
-    )
-    memory_information = dictionary_update(
-        memory_information, "solar_cell_spectra_shaded_bytes", solar_cell_spectra_shaded
     )
 
     solar_spectra_calculation_time = time.time()
@@ -549,19 +437,6 @@ def main(args: list[Any]) -> None:
     # transmitted_int, absorbed_int have units of W/m^2
     transmitted_int = irradiance.int_spectra(optical_wavelengths, transmitted_frames)
     absorbed_int = irradiance.int_spectra(optical_wavelengths, absorbed_frames)
-
-    memory_information = dictionary_update(
-        memory_information, "transmitted_frames_bytes", transmitted_frames
-    )
-    memory_information = dictionary_update(
-        memory_information, "absorbed_frames_bytes", absorbed_frames
-    )
-    memory_information = dictionary_update(
-        memory_information, "transmitted_int_bytes", transmitted_int
-    )
-    memory_information = dictionary_update(
-        memory_information, "absorbed_int_bytes", absorbed_int
-    )
 
     # Irradiance at interior of polytunel on every grid of polytunnel
     # Absorbed irradiance at interior of polytunnel on every grid of polytunnel
@@ -601,15 +476,6 @@ def main(args: list[Any]) -> None:
         optical_wavelengths, direct_ground_irradiance_frames
     )
 
-    memory_information = dictionary_update(
-        memory_information,
-        "direct_ground_irradiance_frames_bytes",
-        direct_ground_irradiance_frames,
-    )
-    memory_information = dictionary_update(
-        memory_information, "direct_ground_int_bytes", direct_ground_int
-    )
-
     direct_irradiance_calculation_time = time.time()
     print(
         f"Direct ground irradiance calculation time: { direct_irradiance_calculation_time - transmitted_spectra_calculation_time  } seconds"
@@ -632,15 +498,6 @@ def main(args: list[Any]) -> None:
         optical_wavelengths, diffuse_ground_irradiance_frames
     )
 
-    memory_information = dictionary_update(
-        memory_information,
-        "diffuse_ground_irradiance_frames_bytes",
-        diffuse_ground_irradiance_frames,
-    )
-    memory_information = dictionary_update(
-        memory_information, "diffuse_ground_int_bytes", diffuse_ground_int
-    )
-
     diffuse_irradiance_calculation_time = time.time()
     print(
         f"Diffuse ground irradiance calculation time: { diffuse_irradiance_calculation_time - transmitted_spectra_calculation_time  } seconds"
@@ -655,15 +512,6 @@ def main(args: list[Any]) -> None:
     # global component of irradiance integrated over wavelengthswith units of W/m^2
     global_ground_int = irradiance.int_spectra(
         optical_wavelengths, global_ground_irradiance_frames
-    )
-
-    memory_information = dictionary_update(
-        memory_information,
-        "global_ground_irradiance_frames_bytes",
-        global_ground_irradiance_frames,
-    )
-    memory_information = dictionary_update(
-        memory_information, "global_ground_int_bytes", global_ground_int
     )
 
     global_ground_irradiance_calculation_time = time.time()
@@ -681,18 +529,6 @@ def main(args: list[Any]) -> None:
     )
     direct_photon_par = irradiance.int_spectra(
         optical_wavelengths, direct_photon_par_spectra
-    )
-
-    memory_information = dictionary_update(
-        memory_information,
-        "direct_photon_spectra_frames_bytes",
-        direct_photon_spectra_frames,
-    )
-    memory_information = dictionary_update(
-        memory_information, "direct_photon_par_spectra_bytes", direct_photon_par_spectra
-    )
-    memory_information = dictionary_update(
-        memory_information, "direct_photon_par_bytes", direct_photon_par
     )
     par_direct_calculation_time = time.time()
 
@@ -745,20 +581,6 @@ def main(args: list[Any]) -> None:
         optical_wavelengths, diffuse_photon_par_spectra
     )
 
-    memory_information = dictionary_update(
-        memory_information,
-        "diffuse_photon_spectra_frames_bytes",
-        diffuse_photon_spectra_frames,
-    )
-    memory_information = dictionary_update(
-        memory_information,
-        "diffuse_photon_par_spectra_bytes",
-        diffuse_photon_par_spectra,
-    )
-    memory_information = dictionary_update(
-        memory_information, "diffuse_photon_par_bytes", diffuse_photon_par
-    )
-
     par_diffuse_calculation_time = time.time()
     print(
         f"PAR Diffuse calculation time: { par_diffuse_calculation_time -  par_direct_calculation_time } seconds"
@@ -776,30 +598,11 @@ def main(args: list[Any]) -> None:
         optical_wavelengths, global_photon_par_spectra
     )
 
-    memory_information = dictionary_update(
-        memory_information,
-        "global_photon_spectra_frames_bytes",
-        global_photon_spectra_frames,
-    )
-    memory_information = dictionary_update(
-        memory_information, "global_photon_par_spectra_bytes", global_photon_par_spectra
-    )
-    memory_information = dictionary_update(
-        memory_information, "global_photon_par_bytes", global_photon_par
-    )
-
     par_global_calculation_time = time.time()
     print(
         f"PAR Global calculation time: { par_global_calculation_time - par_diffuse_calculation_time  } seconds"
     )
 
-    info_memory_df = pd.DataFrame(
-        {"Variable": memory_information.keys(), "Bytes": memory_information.values()}
-    )
-    path_memory = (
-        f"figures/Date_{date_simulation}/memory_information_bytes_{parameters_sim}.csv"
-    )
-    info_memory_df.to_csv(path_memory, index=False)
 
     print("Photon PAR:")
     direct_data = viz.every_grid_plot(
