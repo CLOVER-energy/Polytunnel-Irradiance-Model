@@ -4,14 +4,48 @@ import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from math import acos, asin, cos, degrees, isnan, radians, pi, sin
-from typing import TypeVar
+from typing import Any, TypeVar
 
 import numpy as np
 
+from src.polytunnel_irradiance_model.__utils__ import MESHGRID_RESOLUTION, NAME
+
+
+# CURVE:
+#   Keyword for parsing curve information.
+CURVE: str = "curve"
+
+# CURVE_TYPE:
+#   Keyword for parsing curve type information.
+CURVE_TYPE: str = "curve_type"
 
 # Floating point precision:
 #   The floating-point precision of the numbers to use when doing rotations.
 FLOATING_POINT_PRECISION: int = 8
+
+# LENGTH:
+#   Keyword used for parsing the polytunnel length.
+LENGTH: str = "length"
+
+# MATERIALS:
+#   Keyword used for parsing the materials information.
+MATERIALS: str = "materials"
+
+# MODULE_TYPE:
+#   Keyword used for parsing module-type information.
+MODULE_TYPE: str = "module_type"
+
+# PV_MODULE:
+#   Keyword for determining which of the PV modules is employed in the polytunnel.
+PV_MODULE: str = "pv_module"
+
+# WIDTH:
+#   Keyword used for parsing the polytunnel width.
+WIDTH: str = "width"
+
+
+class UndergroundCellError(Exception):
+    """Raised when a PV cell is underground."""
 
 
 class CurveType(enum.Enum):
@@ -340,7 +374,15 @@ class ModuleType(enum.Enum):
     """
 
     CRYSTALINE: str = "c_Si"
+    CIGS: str = "cigs"
     THIN_FILM: str = "thin_film"
+
+
+# Type variable for Polytunnel and children.
+_PVCM = TypeVar(
+    "_PVCM",
+    bound="PVCellMaterial",
+)
 
 
 @dataclass
@@ -348,15 +390,33 @@ class PVCellMaterial:
     """
     Represents a layer within the PV module.
 
+    .. attribute:: name:
+        The name of the layer.
+
     .. attribute:: thickness:
         The thickness of the layer.
 
     """
 
+    name: str
     thickness: float
 
+    @classmethod
+    def from_entry(cls, entry: dict[str, float]) -> _PVCM:
+        """
+        Instantiate and return a :class:`PVCellMaterial` instance based on the entry.
 
-@dataclass
+        :param: entry:
+            The entry within the mapping.
+
+        :returns: The instantiated instance.
+
+        """
+
+        return cls(name=list(entry.keys())[0], thickness=list(entry.values())[0])
+
+
+@dataclass(kw_only=True)
 class PVModule:
     """
     Contains information about the PV module.
@@ -367,8 +427,15 @@ class PVModule:
     .. attribute:: materials:
         The materials included, along with their thicknesses.
 
+    .. attribute:: module_type:
+        The type of the module.
+
     .. attribute:: multistack:
         The number of stacks to include
+
+
+    .. attribute:: name:
+        The name of the :class:`PVModule` instance.
 
     .. attribute:: orientation:
         The angle between the axis of the polytunnel and of the module.
@@ -382,8 +449,16 @@ class PVModule:
     materials: list[PVCellMaterial]
     module_type: ModuleType
     multistack: int | None
+    name: str
     orientation: float
     width: float
+
+
+# Type variable for Polytunnel and children.
+_P = TypeVar(
+    "_P",
+    bound="Polytunnel",
+)
 
 
 class Polytunnel:
@@ -395,6 +470,9 @@ class Polytunnel:
 
     .. attribute:: length:
         The length of the polytunnel.
+
+    .. attribute:: name:
+        The name of the polytunnel instance.
 
     .. attribute:: meshgrid_resolution:
         The resolution of meshgrid, in meters.
@@ -412,6 +490,7 @@ class Polytunnel:
         curve: Curve,
         length: float,
         meshgrid_resolution: float,
+        name: str,
         pv_module: PVModule,
         width: float,
     ):
@@ -429,11 +508,64 @@ class Polytunnel:
         self.curve = curve
         self.length = length
         self.meshgrid_resolution = meshgrid_resolution
+        self.name = name
         self.pv_module = pv_module
         self.width = width
 
         self.length_wise_mesh_resolution = int(self.length / self.meshgrid_resolution)
         # FIXME: self.n_angular = int(self.width / self.meshgrid_resolution)
+
+    @classmethod
+    def from_data(
+        cls, input_data: dict[str, Any], module_input_data: dict[str, Any]
+    ) -> _P:
+        """
+        Instantiate a :class:`Polytunnel` instance based on the input data provided.
+
+        :param: input_data:
+            The input data.
+
+        :returns: An instantiated :class:`Polytunnel` instance.
+
+        """
+
+        # Parse the curve information.
+        try:
+            curve = TYPE_TO_CURVE_MAPPING[CurveType(input_data[CURVE].pop(CURVE_TYPE))](
+                **input_data[CURVE]
+            )
+        except KeyError:
+            raise KeyError("Missing curve information.") from None
+
+        # Parse the module information.
+        try:
+            module_input_data[module_name][MODULE_TYPE] = ModuleType(
+                module_input_data[(module_name := input_data[PV_MODULE])][MODULE_TYPE]
+            )
+        except KeyError:
+            raise KeyError("Missing module-type information.") from None
+
+        try:
+            module_input_data[module_name][MATERIALS] = [
+                PVCellMaterial.from_entry(material_information)
+                for material_information in module_input_data[module_name][MATERIALS]
+            ]
+        except KeyError:
+            raise KeyError("Missing PV material information.") from None
+
+        try:
+            pv_module = PVModule(**module_input_data[input_data[PV_MODULE]])
+        except KeyError:
+            raise KeyError("Missing PV-module information.") from None
+
+        return cls(
+            curve,
+            input_data[LENGTH],
+            MESHGRID_RESOLUTION,
+            input_data[NAME],
+            pv_module,
+            input_data[WIDTH],
+        )
 
     # class ElipticalPolytunnel(PolytunnelShape.ELIPTICAL):
     #     """

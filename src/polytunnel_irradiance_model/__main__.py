@@ -28,6 +28,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from src.polytunnel_irradiance_model.__utils__ import *
 from src.polytunnel_irradiance_model.functions import *
 from src.polytunnel_irradiance_model.geometry import Polytunnel
 from src.polytunnel_irradiance_model.sun import Sun
@@ -52,6 +53,10 @@ DONE: str = "[  DONE  ]"
 # FAILED:
 #   Snippet to print when code fails to execute.
 FAILED: str = "[ FAILED ]"
+
+# MODULES:
+#   Keyword for parsing PV-module information.
+MODULES: str = "modules"
 
 
 def code_print(string_to_print: str) -> None:
@@ -210,9 +215,14 @@ def main(args: list[Any]) -> None:
     # Parse the command-line arguments.
     parsed_args = parse_args(args)
 
+    global MESHGRID_RESOLUTION
+    MESHGRID_RESOLUTION = parsed_args.meshgrid_resolution
+
     # Open the material information.
     with open(parsed_args.solar_cells_file, "r", encoding="UTF-8") as solar_cells_file:
         material_information = yaml.safe_load(solar_cells_file)
+
+    pv_module_inputs = {entry[NAME]: entry for entry in material_information[MODULES]}
 
     # Open the polytunnels information.
     with open(
@@ -223,7 +233,7 @@ def main(args: list[Any]) -> None:
     # Assert that a polytunnel was specified.
     try:
         polytunnel_data = {
-            polytunnel_data["name"]: polytunnel_data
+            polytunnel_data[NAME]: polytunnel_data
             for polytunnel_data in polytunnel_information["polytunnels"]
         }[parsed_args.polytunnel]
     except KeyError:
@@ -252,7 +262,7 @@ def main(args: list[Any]) -> None:
     code_print("Geometry calculation")
     try:
         with time_execution() as geometry_timer:
-            # tunnel geometry#
+            polytunnel = Polytunnel.from_data(polytunnel_data, pv_module_inputs)
             tunnel = ElipticalPolytunnel(
                 length=length,
                 tilt=tilt,
