@@ -64,8 +64,8 @@ class Curve(ABC):
 
     """
 
-    curvature_axis_azimuth: float = 180
-    curvature_axis_tilt: float = 0
+    axis_azimuth: float = 180
+    axis_tilt: float = 0
     name: str = ""
     _azimuth_rotation_matrix: list[list[float]] | None = None
     _tilt_rotation_matrix: list[list[float]] | None = None
@@ -112,7 +112,7 @@ class Curve(ABC):
 
         """
 
-        return -self.curvature_axis_azimuth
+        return -self.axis_azimuth
 
     @property
     def azimuth_rotation_matrix(self) -> list[list[float]]:
@@ -151,7 +151,7 @@ class Curve(ABC):
 
         """
 
-        return -self.curvature_axis_tilt
+        return -self.axis_tilt
 
     @property
     def tilt_rotation_matrix(self) -> list[list[float]]:
@@ -276,7 +276,7 @@ class CircularCurve(Curve, curve_type=CurveType.CIRCULAR):
 
         # Don't both calculating if the displacement is zero
         if displacement == 0:
-            return (180, self.curvature_axis_tilt)
+            return (180, self.axis_tilt)
 
         # Compute the components of a unit normal vector with this zenith angle.
         un_rotated_normal: list[float] = [sin(zenith_angle), 0, cos(zenith_angle)]
@@ -319,7 +319,7 @@ class ElipticalCurve(Curve, curve_type=CurveType.ELIPTICAL):
 
         # Don't both calculating if the displacement is zero
         if displacement == 0:
-            return (180, self.curvature_axis_tilt)
+            return (180, self.axis_tilt)
 
         # Compute the components of a unit normal vector with this zenith angle.
         un_rotated_normal: list[float] = [sin(zenith_angle), 0, cos(zenith_angle)]
@@ -435,54 +435,53 @@ class Polytunnel:
         self.length_wise_mesh_resolution = int(self.length / self.meshgrid_resolution)
         # FIXME: self.n_angular = int(self.width / self.meshgrid_resolution)
 
+    # class ElipticalPolytunnel(PolytunnelShape.ELIPTICAL):
+    #     """
+    #     Represents an eliptical polytunnel.
 
-class ElipticalPolytunnel(PolytunnelShape.ELIPTICAL):
-    """
-    Represents an eliptical polytunnel.
+    #     .. attribute:: semi_major_axis:
+    #         The semi-major axis of the polytunnel.
 
-    .. attribute:: semi_major_axis:
-        The semi-major axis of the polytunnel.
+    #     .. attribute:: semi_minor_axis:
+    #         The semi-minor axis of the polytunnel.
 
-    .. attribute:: semi_minor_axis:
-        The semi-minor axis of the polytunnel.
+    #     """
 
-    """
+    #     def __init__(
+    #         self,
+    #         azimuthal_orientation: float,
+    #         length: float,
+    #         pv_module: PVModule,
+    #         semi_major_axis: float,
+    #         semi_minor_axis: float,
+    #         tilt: float,
+    #         width: float,
+    #         *,
+    #         meshgrid_resolution=1.0,
+    #     ):
+    #         """
+    #         Instantiate an eliptical polytunnel instance.
 
-    def __init__(
-        self,
-        azimuthal_orientation: float,
-        length: float,
-        pv_module: PVModule,
-        semi_major_axis: float,
-        semi_minor_axis: float,
-        tilt: float,
-        width: float,
-        *,
-        meshgrid_resolution=1.0,
-    ):
-        """
-        Instantiate an eliptical polytunnel instance.
+    #         :param: semi_major_axis
+    #             The semi-major axis of the polytunnel.
 
-        :param: semi_major_axis
-            The semi-major axis of the polytunnel.
+    #         :param: semi_minor_axis
+    #             The semi-minor axis of the polytunnel.
 
-        :param: semi_minor_axis
-            The semi-minor axis of the polytunnel.
+    #         """
 
-        """
+    #         # Enforce that the elipse is not a circle.
+    #         if semi_minor_axis == semi_major_axis:
+    #             raise Exception(
+    #                 "Instantiation of an eliptical polytunnel with circular arguments."
+    #             )
 
-        # Enforce that the elipse is not a circle.
-        if semi_minor_axis == semi_major_axis:
-            raise Exception(
-                "Instantiation of an eliptical polytunnel with circular arguments."
-            )
+    #         self.semi_major_axis = semi_major_axis
+    #         self.semi_minor_axis = semi_minor_axis
 
-        self.semi_major_axis = semi_major_axis
-        self.semi_minor_axis = semi_minor_axis
-
-        super().__init__(
-            azimuthal_orientation, length, meshgrid_resolution, pv_module, tilt, width
-        )
+    #         super().__init__(
+    #             azimuthal_orientation, length, meshgrid_resolution, pv_module, tilt, width
+    #         )
 
     # def apply_rotations(self, X, Y, Z):
     #     """

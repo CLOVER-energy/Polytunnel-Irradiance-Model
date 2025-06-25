@@ -133,71 +133,17 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
         description="Arguments used to specify the technical details of the polytunnel.",
     )
     polytunnel_arguments.add_argument(
-        "--length",
-        "-l",
-        type=float,
-        default=5,
-        help="The length, in metres, of the polytunnel segment to model.",
+        "--polytunnel-input-file",
+        "-pif",
+        type=str,
+        default="polytunnels.yaml",
+        help="The name of the polytunnels input file to use.",
     )
     polytunnel_arguments.add_argument(
-        "--polytunnel-type",
+        "--polytunnel",
         "-pt",
-        type=int,
-        choices={0, 1},
-        default=0,
-        help="The type of polytunnel being modelled:\n"
-        "0 - A circular cross section\n"
-        "1 - An eliptical cross section.",
-    )
-    polytunnel_arguments.add_argument(
-        "--cell-spacing",
-        type=float,
-        default=1,
-        help="The spacing, in meters, between modules on the polytunnel surface.",
-    )
-    polytunnel_arguments.add_argument(
-        "--tilt",
-        type=float,
-        default=0.0,
-        help="The angle by which the central axis of the polytunnel is tilted, in "
-        "degrees.",
-    )
-    polytunnel_arguments.add_argument(
-        "--azimuthal_orientation",
-        type=float,
-        default=0.0,
-        help="The orientation, relative to North--South, of the central polytunnel "
-        "axis.",
-    )
-    polytunnel_arguments.add_argument(
-        "--transmissivity",
-        "-tau",
-        type=float,
-        default=1,
-        help="The transmissivity of the polytunnel material; i.e., the plastic in the "
-        "region where no PV modules are present.",
-    )
-
-    # Eliptical polytunnel arguments
-    eliptical_arguments = parser.add_argument_group(
-        "eliptical arguments",
-        description="Arguments to use only when specifying an elipitical geometry.",
-    )
-    eliptical_arguments.add_argument(
-        "--semi-major-axis",
-        "--radius-a",
-        "-smaj-ax",
-        type=float,
-        default=8,
-        help="The length of the longer axis in the elipse. Default value of 8 m.",
-    )
-    eliptical_arguments.add_argument(
-        "--semi-minor-axis",
-        "--radius-b",
-        "-smin-ax",
-        type=float,
-        default=8,
-        help="The length of the shorter axis in the elipse. Default value of 8 m.",
+        type=str,
+        help="The name of the polytunnel to use.",
     )
 
     # Solar cell arguments.
@@ -206,11 +152,11 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
         description="Arguments for specifying the configuration of the PV cells/modules.",
     )
     solar_cell_arguments.add_argument(
-        "--solar-cell-file",
+        "--solar-cells-file",
         "--materials-file",
         type=str,
-        default="solar_cell.yaml",
-        help="The path to the materials inputs file.",
+        default="solar_cells.yaml",
+        help="The path to the solar-cells materials inputs file.",
     )
     # parser.add_argument(
     #     "--initial_cell_spacing",
@@ -265,8 +211,27 @@ def main(args: list[Any]) -> None:
     parsed_args = parse_args(args)
 
     # Open the material information.
-    with open(parsed_args.solar_cell_file, "r", encoding="UTF-8") as solar_cell_file:
-        material_information = yaml.safe_load(solar_cell_file)
+    with open(parsed_args.solar_cells_file, "r", encoding="UTF-8") as solar_cells_file:
+        material_information = yaml.safe_load(solar_cells_file)
+
+    # Open the polytunnels information.
+    with open(
+        parsed_args.polytunnel_input_file, "r", encoding="UTF-8"
+    ) as polytunnel_file:
+        polytunnel_information = yaml.safe_load(polytunnel_file)
+
+    # Assert that a polytunnel was specified.
+    try:
+        polytunnel_data = {
+            polytunnel_data["name"]: polytunnel_data
+            for polytunnel_data in polytunnel_information["polytunnels"]
+        }[parsed_args.polytunnel]
+    except KeyError:
+        raise KeyError(
+            "Missing polytunnel information. Check all information in the file is "
+            "correct and that the name specified on the command line matches a "
+            "polytunnel defined in the inputs file."
+        )
 
     # Compute the simulation date and time.
     simulation_datetime = datetime.datetime.strptime(
