@@ -1,98 +1,538 @@
+import enum
+import warnings
+
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from math import acos, asin, cos, degrees, isnan, radians, pi, sin
+from typing import TypeVar
+
 import numpy as np
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 
 
-class Polytunnel:
+# Floating point precision:
+#   The floating-point precision of the numbers to use when doing rotations.
+FLOATING_POINT_PRECISION: int = 8
 
-    def __init__(
-        self,
-        radius1=1,
-        length=10,
-        tilt=0,
-        azimuthal_orientation=0,
-        x_shift=0.0,
-        y_shift=0.0,
-        z_shift=0.0,
-        theta_margin=0,
-        cell_thickness=0,
-        cell_spacing=0,
-        radius2=None,
-        res_meshgrid=1.0,
-        initial_cell_spacing=0.0,
-    ):
-        self.res_meshgrid = res_meshgrid
-        self.radius1 = radius1
-        self.length = length
-        self.n = int(self.length / self.res_meshgrid)
-        self.n_angular = int(self.length / self.res_meshgrid)
-        self.tilt = tilt
-        self.azimuthal_orientation = azimuthal_orientation
-        self.x_shift = x_shift
-        self.y_shift = y_shift
-        self.z_shift = z_shift
-        self.theta_margin = theta_margin
-        self.cell_thickness = (
-            cell_thickness  # Thickness of the solar cell (in terms of segments)
-        )
-        self.cell_spacing = cell_spacing
-        self.initial_cell_spacing = initial_cell_spacing
 
-        if radius2:
-            # If radius2 in arguments, this will be the secondary radius, to obtain an elliptical shape
-            self.radius2 = radius2
-        else:
-            # Otherwise it will continue being a circular shape
-            self.radius2 = radius1
+class CurveType(enum.Enum):
+    """
+    Denotes the type of curve. Useful in constructing curves.
 
-    # MODIFICATION
-    def apply_rotations(self, X, Y, Z):
+    - CIRCULAR:
+        Denotes a circular geometry.
+
+    - ELIPTICAL:
+        Denotes an eliptical geometry.
+
+    """
+
+    CIRCULAR: str = "circular"
+    ELIPTICAL: str = "eliptical"
+
+
+# Type variable for Curve and children.
+_C = TypeVar(
+    "_C",
+    bound="Curve",
+)
+
+# TYPE_TO_CURVE_MAPPING:
+#   Mapping between the curve type and curve instances.
+TYPE_TO_CURVE_MAPPING: dict[CurveType, _C] = {}
+
+
+@dataclass(kw_only=True)
+class Curve(ABC):
+    """
+    Represents a curve around which the PV module curves.
+
+    A curved surface, _e.g._, a polytunnel, has a given axis around which it curves (in
+    the case of a polytunnel, this is its length) an equation for its curve (which may
+    be a simple circle or a more complex shape like a parabola or hyperbola) and a
+    length scale. These last two are wrapped up in a single function which takes a
+    disaplcement along the curve and returns the angles at that point.
+
+    .. attribute:: curvature_azimuth:
+        The azimuth angle for the curvature axis in degrees.
+
+    .. attribute:: curvature_tilt:
+        The tilt angle for the curvature axis in degrees.
+
+    .. attribute:: get_angles_from_surface_disaplacement:
+        A callable function which can return the azimuth and tilt at any point on the
+        surface based on the distance from the central axis.
+
+    """
+
+    curvature_axis_azimuth: float = 180
+    curvature_axis_tilt: float = 0
+    name: str = ""
+    _azimuth_rotation_matrix: list[list[float]] | None = None
+    _tilt_rotation_matrix: list[list[float]] | None = None
+
+    def __init_subclass__(cls, curve_type: CurveType) -> None:
         """
-        Appy two rotations:
-        - First: Around Z by azimuthal_orientation (in radians).
-        - Second: Around X by tilt  (in radians).
+        Hook used to store the type of the curve.
+
+        :param: **curve_type:**
+            The type of the curve.
+
         """
-        # Rotation around Z
-        R_z = np.array(
-            [
+
+        cls.curve_type = curve_type  # type: ignore [attr-defined]
+        TYPE_TO_CURVE_MAPPING[curve_type] = cls
+
+        super().__init_subclass__()
+
+    @abstractmethod
+    def get_angles_from_surface_displacement(
+        self, displacement: float
+    ) -> tuple[float, float]:
+        """
+        Abstract method that must be implemented in subclasses.
+        Calculate the azimuth and zenith angles at a point along the curve.
+
+        :param: **displacement:**
+            The distance from the central axis.
+
+        :returns:
+            - A tuple, (azimuth, tilt), with angles in degrees.
+
+        """
+
+        raise NotImplementedError("This method must be implemented in subclasses")
+
+    @property
+    def zenith_rotation_angle(self) -> float:
+        """
+        The rotation about the zenith is not the azimuth this is calculated here.
+
+        A user-specified azimuth angle gives and angle from North (y=0) which is the
+        opposite to a rotation carried out.
+
+        """
+
+        return -self.curvature_axis_azimuth
+
+    @property
+    def azimuth_rotation_matrix(self) -> list[list[float]]:
+        """
+        The rotation matrix for an azimuth rotation.
+
+        Returns:
+            - A `list` of `list`s representing the matrix.
+
+        """
+
+        if self._azimuth_rotation_matrix is None:
+            self._azimuth_rotation_matrix = [
                 [
-                    np.cos(self.azimuthal_orientation),
-                    -np.sin(self.azimuthal_orientation),
+                    cos(radians(self.zenith_rotation_angle)),
+                    -sin(radians(self.zenith_rotation_angle)),
                     0,
                 ],
                 [
-                    np.sin(self.azimuthal_orientation),
-                    np.cos(self.azimuthal_orientation),
+                    sin(radians(self.zenith_rotation_angle)),
+                    cos(radians(self.zenith_rotation_angle)),
                     0,
                 ],
                 [0, 0, 1],
             ]
-        )
 
-        # Rotation around X
-        R_x = np.array(
-            [
+        return self._azimuth_rotation_matrix
+
+    @property
+    def tilt_rotation_angle(self) -> float:
+        """
+        The rotation angle for the zenith rotation needs to be adjusted also.
+
+        Rotations about the x axis result in a tilting in a southerly rather than a
+        northerly direction. This is adjusted for here.
+
+        """
+
+        return -self.curvature_axis_tilt
+
+    @property
+    def tilt_rotation_matrix(self) -> list[list[float]]:
+        """
+        The rotation matrix for an azimuth rotation.
+
+        Returns:
+            - A `list` of `list`s representing the matrix.
+
+        """
+
+        if self._tilt_rotation_matrix is None:
+            self._tilt_rotation_matrix = [
                 [1, 0, 0],
-                [0, np.cos(self.tilt), -np.sin(self.tilt)],
-                [0, np.sin(self.tilt), np.cos(self.tilt)],
+                [
+                    0,
+                    cos(radians(self.tilt_rotation_angle)),
+                    -sin(radians(self.tilt_rotation_angle)),
+                ],
+                [
+                    0,
+                    sin(radians(self.tilt_rotation_angle)),
+                    cos(radians(self.tilt_rotation_angle)),
+                ],
             ]
+
+        return self._tilt_rotation_matrix
+
+    def _get_rotated_angles_from_surface_normal(
+        self, un_rotated_normal: list[float]
+    ) -> tuple[float, float]:
+        """
+        Rotate the normal vector based on the orientation of the curve/Polytunnel.
+
+        :param: **un_rotated_normal:**
+            The surface normal vector in the un-rotated frame.
+
+        :returns:
+            - A `tuple` containing information about the new rotated normal vector:
+                - The azimuth angle, in degrees,
+                - THe tilt angle, in degrees.
+
+        """
+
+        # Rotate this normal vector based on the tilt and azimuth of the polytunnel.
+        rotated_normal = np.matmul(
+            self.azimuth_rotation_matrix,
+            np.matmul(self.tilt_rotation_matrix, un_rotated_normal),
         )
 
-        # Flat coordinates to make an easier rotation
-        coords = np.vstack([X.ravel(), Y.ravel(), Z.ravel()])
+        # Compute the new azimuth and tilt angles based on these rotations.
+        # The tilt angle is simply the z component of the vector.
+        tilt_angle = round(acos(rotated_normal[2]), FLOATING_POINT_PRECISION)
 
-        # Apply rotations sequentially
-        rotated_coords = R_z @ (R_x @ coords)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("error")
+            try:
+                x_y_plane_component = sin(tilt_angle)
+            except (RuntimeError, RuntimeWarning, ZeroDivisionError):
+                azimuth_angle = pi
+            else:
+                if round(rotated_normal[1], 6) == 0:
+                    azimuth_angle = (
+                        pi
+                        if rotated_normal[0] == 0
+                        else pi / 2 if (rotated_normal[0] > 0) else -pi / 2
+                    )
+                else:
+                    arccos_angle = acos(
+                        round(
+                            rotated_normal[1] / x_y_plane_component,
+                            FLOATING_POINT_PRECISION,
+                        )
+                    )
+                    azimuth_angle = (
+                        2 * pi - arccos_angle if rotated_normal[0] < 0 else arccos_angle
+                    )
 
-        # Reshape coordinates to keep same as input X,Y,Z arrays
-        X_rot, Y_rot, Z_rot = rotated_coords.reshape(3, *X.shape)
-        return X_rot, Y_rot, Z_rot
+        # Check that the tilt is not out-of-bounds
+        if tilt_angle > pi / 2:
+            raise UndergroundCellError(
+                f"A cell in the module has a tilt angle of {tilt_angle} radians, which "
+                "is underground."
+            )
+
+        # Check that the azimuth angle is not `nan` and set it to South if so.
+        if isnan(azimuth_angle):
+            azimuth_angle = pi
+
+        # Return these angles in degrees
+        return degrees(azimuth_angle) % 360, degrees(tilt_angle)
+
+
+@dataclass(kw_only=True)
+class CircularCurve(Curve, curve_type=CurveType.CIRCULAR):
+    """
+    Represents a circular geometry. In this instance, a radius of curvature is required.
+
+    .. attribute:: radius_of_curvature:
+        Represents the radius of curvature.
+
+    """
+
+    radius_of_curvature: float
+
+    def get_angles_from_surface_displacement(
+        self, displacement: float
+    ) -> tuple[float, float]:
+        """
+        Calculate the azimuth and zenith angles at a point along the curve.
+
+        :param: **displacement:**
+            The distance from the central axis.
+
+        :returns:
+            - A tuple, (azimuth, tilt), with angles in degrees.
+
+        """
+
+        # Compute the zenith angle in radians based on the distance from the axis.
+        zenith_angle: float = displacement / self.radius_of_curvature
+
+        # Don't both calculating if the displacement is zero
+        if displacement == 0:
+            return (180, self.curvature_axis_tilt)
+
+        # Compute the components of a unit normal vector with this zenith angle.
+        un_rotated_normal: list[float] = [sin(zenith_angle), 0, cos(zenith_angle)]
+
+        return self._get_rotated_angles_from_surface_normal(un_rotated_normal)
+
+
+@dataclass(kw_only=True)
+class ElipticalCurve(Curve, curve_type=CurveType.ELIPTICAL):
+    """
+    Represents a eliptical geometry. In this instance, semi-major and -minor axes.
+
+    .. attribute:: semi_major_axis:
+        The semi-major axis of the elipse.
+
+    .. attribute:: semi_minor_axis:
+        The semi-minor axis of the elipse.
+
+    """
+
+    semi_major_axis: float
+    semi_minor_axis: float
+
+    def get_angles_from_surface_displacement(
+        self, displacement: float
+    ) -> tuple[float, float]:
+        """
+        Calculate the azimuth and zenith angles at a point along the curve.
+
+        :param: **displacement:**
+            The distance from the central axis.
+
+        :returns:
+            - A tuple, (azimuth, tilt), with angles in degrees.
+
+        """
+
+        # Compute the zenith angle in radians based on the distance from the axis.
+        zenith_angle: float = displacement / self.radius_of_curvature
+
+        # Don't both calculating if the displacement is zero
+        if displacement == 0:
+            return (180, self.curvature_axis_tilt)
+
+        # Compute the components of a unit normal vector with this zenith angle.
+        un_rotated_normal: list[float] = [sin(zenith_angle), 0, cos(zenith_angle)]
+
+        return self._get_rotated_angles_from_surface_normal(un_rotated_normal)
+
+
+class ModuleType(enum.Enum):
+    """
+    Denotes the type of the module.
+
+    - CRYSTALINE:
+        Used to distinguish crystaline Silicon modules.
+
+    - THIN_FILM:
+        Used to distinguish thin-film modules.
+
+    """
+
+    CRYSTALINE: str = "c_Si"
+    THIN_FILM: str = "thin_film"
+
+
+@dataclass
+class PVCellMaterial:
+    """
+    Represents a layer within the PV module.
+
+    .. attribute:: thickness:
+        The thickness of the layer.
+
+    """
+
+    thickness: float
+
+
+@dataclass
+class PVModule:
+    """
+    Contains information about the PV module.
+
+    .. attribute:: length:
+        The length of the module, in meters.
+
+    .. attribute:: materials:
+        The materials included, along with their thicknesses.
+
+    .. attribute:: multistack:
+        The number of stacks to include
+
+    .. attribute:: orientation:
+        The angle between the axis of the polytunnel and of the module.
+
+    .. attribute:: width:
+        The width of the cell, measured in metres.
+
+    """
+
+    length: float
+    materials: list[PVCellMaterial]
+    module_type: ModuleType
+    multistack: int | None
+    orientation: float
+    width: float
+
+
+class Polytunnel:
+    """
+    Represents a Polytunnel instance.
+
+    .. attribute:: curve:
+        The curve which defines the shape of the polytunnel.
+
+    .. attribute:: length:
+        The length of the polytunnel.
+
+    .. attribute:: meshgrid_resolution:
+        The resolution of meshgrid, in meters.
+
+    .. attribute:: pv_module:
+        The pv module on the polytunnel.
+
+    .. attribute:: width:
+        The width of the polytunnel at the point being considered, in meters.
+
+    """
+
+    def __init__(
+        self,
+        curve: Curve,
+        length: float,
+        meshgrid_resolution: float,
+        pv_module: PVModule,
+        width: float,
+    ):
+        """
+        Instantiate a Polytunnel instance.
+
+        :param: length:
+            The length of the polytunnel.
+
+        :param: meshgrid_resolution
+            The resolution of the meshgrid for the polytunnel.
+
+        """
+
+        self.curve = curve
+        self.length = length
+        self.meshgrid_resolution = meshgrid_resolution
+        self.pv_module = pv_module
+        self.width = width
+
+        self.length_wise_mesh_resolution = int(self.length / self.meshgrid_resolution)
+        # FIXME: self.n_angular = int(self.width / self.meshgrid_resolution)
+
+
+class ElipticalPolytunnel(PolytunnelShape.ELIPTICAL):
+    """
+    Represents an eliptical polytunnel.
+
+    .. attribute:: semi_major_axis:
+        The semi-major axis of the polytunnel.
+
+    .. attribute:: semi_minor_axis:
+        The semi-minor axis of the polytunnel.
+
+    """
+
+    def __init__(
+        self,
+        azimuthal_orientation: float,
+        length: float,
+        pv_module: PVModule,
+        semi_major_axis: float,
+        semi_minor_axis: float,
+        tilt: float,
+        width: float,
+        *,
+        meshgrid_resolution=1.0,
+    ):
+        """
+        Instantiate an eliptical polytunnel instance.
+
+        :param: semi_major_axis
+            The semi-major axis of the polytunnel.
+
+        :param: semi_minor_axis
+            The semi-minor axis of the polytunnel.
+
+        """
+
+        # Enforce that the elipse is not a circle.
+        if semi_minor_axis == semi_major_axis:
+            raise Exception(
+                "Instantiation of an eliptical polytunnel with circular arguments."
+            )
+
+        self.semi_major_axis = semi_major_axis
+        self.semi_minor_axis = semi_minor_axis
+
+        super().__init__(
+            azimuthal_orientation, length, meshgrid_resolution, pv_module, tilt, width
+        )
+
+    # def apply_rotations(self, X, Y, Z):
+    #     """
+    #     Appy two rotations:
+    #     - First: Around Z by azimuthal_orientation (in radians).
+    #     - Second: Around X by tilt  (in radians).
+    #     """
+    #     # Rotation around Z
+    #     R_z = np.array(
+    #         [
+    #             [
+    #                 np.cos(self.azimuthal_orientation),
+    #                 -np.sin(self.azimuthal_orientation),
+    #                 0,
+    #             ],
+    #             [
+    #                 np.sin(self.azimuthal_orientation),
+    #                 np.cos(self.azimuthal_orientation),
+    #                 0,
+    #             ],
+    #             [0, 0, 1],
+    #         ]
+    #     )
+
+    #     # Rotation around X
+    #     R_x = np.array(
+    #         [
+    #             [1, 0, 0],
+    #             [0, np.cos(self.tilt), -np.sin(self.tilt)],
+    #             [0, np.sin(self.tilt), np.cos(self.tilt)],
+    #         ]
+    #     )
+
+    #     # Flat coordinates to make an easier rotation
+    #     coords = np.vstack([X.ravel(), Y.ravel(), Z.ravel()])
+
+    #     # Apply rotations sequentially
+    #     rotated_coords = R_z @ (R_x @ coords)
+
+    #     # Reshape coordinates to keep same as input X,Y,Z arrays
+    #     X_rot, Y_rot, Z_rot = rotated_coords.reshape(3, *X.shape)
+    #     return X_rot, Y_rot, Z_rot
 
     def generate_ground_grid(self):
         # y_ground = np.linspace(-self.length, self.length, self.n)
-        y_ground = np.linspace(0, self.length, self.n)
+        y_ground = np.linspace(0, self.length, self.length_wise_mesh_resolution)
         x_ground = np.linspace(
-            -self.radius1 + 0.0001, self.radius1 - 0.0001, self.n_angular
+            -self.semi_major_axis + 0.0001,
+            self.semi_major_axis - 0.0001,
+            self.n_angular,
         )
 
         X, Y = np.meshgrid(x_ground, y_ground)
@@ -126,23 +566,23 @@ class Polytunnel:
         """
         The parametric definition of this cylinder surface (S) is:
            S = [
-               radius1 * cos(theta),
+               semi_major_axis * cos(theta),
                length,
-               radius2 * sin(theta)
+               semi_minor_axis * sin(theta)
            ],
         """
 
         # Create the grid in cylindrical coordinates
         # y = np.linspace(-self.length, self.length, self.n)
-        y = np.linspace(0, self.length, self.n)
+        y = np.linspace(0, self.length, self.length_wise_mesh_resolution)
         theta = np.linspace(0, np.pi, self.n_angular)  # Semi-circular cross-section
 
         # Create a meshgrid for Y and Theta
         Y, Theta = np.meshgrid(y, theta)
 
         # Convert cylindrical coordinates to Cartesian coordinates
-        X = self.radius1 * np.cos(Theta)  # Horizontal width
-        Z = self.radius2 * np.sin(Theta)  # Height above the ground
+        X = self.semi_major_axis * np.cos(Theta)  # Horizontal width
+        Z = self.semi_minor_axis * np.sin(Theta)  # Height above the ground
 
         # MODIFICATION
         # # Rotation in the XY plane
@@ -191,17 +631,17 @@ class Polytunnel:
 
             # Convertir las medidas a número de grids
             stripe_width_grids = int(
-                self.cell_thickness / (self.res_meshgrid)
+                self.cell_thickness / (self.meshgrid_resolution)
             )  # 35 cm -> grids
             stripe_spacing_grids = int(
-                self.cell_spacing / (self.res_meshgrid)
+                self.cell_spacing / (self.meshgrid_resolution)
             )  # 100 cm -> grids
             initial_spacing_grids = int(
-                self.initial_cell_spacing / (self.res_meshgrid)
+                self.initial_cell_spacing / (self.meshgrid_resolution)
             )  # 50 cm -> grids
 
             current_x = initial_spacing_grids
-            while current_x < self.n:
+            while current_x < self.length_wise_mesh_resolution:
                 solar_cells[:, current_x : current_x + stripe_width_grids] = 1
                 current_x += stripe_width_grids + stripe_spacing_grids
 

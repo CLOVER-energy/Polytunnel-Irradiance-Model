@@ -3,11 +3,11 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
 
-class Polytunnel:
+class ElipticalPolytunnel:
 
     def __init__(
         self,
-        radius1=1,
+        semi_major_axis=1,
         length=10,
         n_points=1000,
         n_points_angular=1000,
@@ -19,9 +19,9 @@ class Polytunnel:
         theta_margin=0,
         cell_thickness=0,
         cell_spacing=0,
-        radius2=None,
+        semi_minor_axis=None,
     ):
-        self.radius1 = radius1
+        self.semi_major_axis = semi_major_axis
         self.length = length
         self.n = int(n_points)
         self.n_angular = int(n_points_angular)
@@ -36,12 +36,12 @@ class Polytunnel:
         )
         self.cell_spacing = cell_spacing
 
-        if radius2:
-            # If radius2 in arguments, this will be the secondary radius, to obtain an elliptical shape
-            self.radius2 = radius2
+        if semi_minor_axis:
+            # If semi_minor_axis in arguments, this will be the secondary radius, to obtain an elliptical shape
+            self.semi_minor_axis = semi_minor_axis
         else:
             # Otherwise it will continue being a circular shape
-            self.radius2 = radius1
+            self.semi_minor_axis = semi_major_axis
 
     # MODIFICATION
     def apply_rotations(self, X, Y, Z):
@@ -89,7 +89,9 @@ class Polytunnel:
     def generate_ground_grid(self):
         y_ground = np.linspace(-self.length, self.length, self.n)
         x_ground = np.linspace(
-            -self.radius1 + 0.0001, self.radius1 - 0.0001, self.n_angular
+            -self.semi_major_axis + 0.0001,
+            self.semi_major_axis - 0.0001,
+            self.n_angular,
         )
 
         X, Y = np.meshgrid(x_ground, y_ground)
@@ -123,9 +125,9 @@ class Polytunnel:
         """
         The parametric definition of this cylinder surface (S) is:
            S = [
-               radius1 * cos(theta),
+               semi_major_axis * cos(theta),
                length,
-               radius2 * sin(theta)
+               semi_minor_axis * sin(theta)
            ],
         """
 
@@ -137,8 +139,8 @@ class Polytunnel:
         Y, Theta = np.meshgrid(y, theta)
 
         # Convert cylindrical coordinates to Cartesian coordinates
-        X = self.radius1 * np.cos(Theta)  # Horizontal width
-        Z = self.radius2 * np.sin(Theta)  # Height above the ground
+        X = self.semi_major_axis * np.cos(Theta)  # Horizontal width
+        Z = self.semi_minor_axis * np.sin(Theta)  # Height above the ground
 
         # MODIFICATION
         # # Rotation in the XY plane

@@ -9,15 +9,15 @@ import torch
 
 
 class TunnelIrradiance:
-    def __init__(self, polytunnel, radius1, radius2, length):
+    def __init__(self, polytunnel, semi_major_axis, semi_minor_axis, length):
         """
         Initializes the RayTracer class for calculating solar irradiance on the polytunnel ground.
 
-        :param polytunnel: Instance of the Polytunnel class.
+        :param ElipticalPolytunnel: Instance of the Polytunnel class.
         """
         self.polytunnel = polytunnel
-        self.radius1 = radius1
-        self.radius2 = radius2
+        self.semi_major_axis = semi_major_axis
+        self.semi_minor_axis = semi_minor_axis
         self.length = length
 
     def irradiance_rays(self, normals_unit, sun_positions, sun_vecs, irradiance_frames):
@@ -210,14 +210,18 @@ class TunnelIrradiance:
                     # b = 2 * (x_g * sun_vec[0] + z_g * sun_vec[2])
                     # c = x_g**2 + z_g**2 - self.radius**2
                     # Compute t for intersection with the cylindrical surface (elliptical shape)
-                    a = (sun_vec[0] / self.radius1) ** 2 + (
-                        sun_vec[2] / self.radius2
+                    a = (sun_vec[0] / self.semi_major_axis) ** 2 + (
+                        sun_vec[2] / self.semi_minor_axis
                     ) ** 2
                     b = 2 * (
-                        x_g * sun_vec[0] / (self.radius1) ** 2
-                        + z_g * sun_vec[2] / (self.radius2) ** 2
+                        x_g * sun_vec[0] / (self.semi_major_axis) ** 2
+                        + z_g * sun_vec[2] / (self.semi_minor_axis) ** 2
                     )
-                    c = x_g**2 / (self.radius1) ** 2 + z_g**2 / (self.radius2) ** 2 - 1
+                    c = (
+                        x_g**2 / (self.semi_major_axis) ** 2
+                        + z_g**2 / (self.semi_minor_axis) ** 2
+                        - 1
+                    )
 
                     discriminant = b**2 - 4 * a * c
 
@@ -535,14 +539,18 @@ class TunnelIrradiance:
                     # b = 2 * (x_g * sun_vec[0] + z_g * sun_vec[2])
                     # c = x_g**2 + z_g**2 - self.radius**2
                     # Compute t for intersection with the cylindrical surface (elliptical shape)
-                    a = (sun_vec[0] / self.radius1) ** 2 + (
-                        sun_vec[2] / self.radius2
+                    a = (sun_vec[0] / self.semi_major_axis) ** 2 + (
+                        sun_vec[2] / self.semi_minor_axis
                     ) ** 2
                     b = 2 * (
-                        x_g * sun_vec[0] / (self.radius1) ** 2
-                        + z_g * sun_vec[2] / (self.radius2) ** 2
+                        x_g * sun_vec[0] / (self.semi_major_axis) ** 2
+                        + z_g * sun_vec[2] / (self.semi_minor_axis) ** 2
                     )
-                    c = x_g**2 / (self.radius1) ** 2 + z_g**2 / (self.radius2) ** 2 - 1
+                    c = (
+                        x_g**2 / (self.semi_major_axis) ** 2
+                        + z_g**2 / (self.semi_minor_axis) ** 2
+                        - 1
+                    )
 
                     discriminant = b**2 - 4 * a * c
 

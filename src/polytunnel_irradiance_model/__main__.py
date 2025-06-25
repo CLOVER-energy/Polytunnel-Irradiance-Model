@@ -220,7 +220,7 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
     # )
 
     parser.add_argument(
-        "--res-meshgrid",
+        "--meshgrid-resolution",
         type=float,
         default=1.0,
         help="The resolution of the mesh grid; default of 1 m.",
@@ -288,33 +288,33 @@ def main(args: list[Any]) -> None:
     try:
         with time_execution() as geometry_timer:
             # tunnel geometry#
-            tunnel = Polytunnel(
-                radius1=radius1,
+            tunnel = ElipticalPolytunnel(
                 length=length,
                 tilt=tilt,
                 azimuthal_orientation=azimuthal_orientation,
                 theta_margin=0,
                 cell_thickness=cell_thickness,
                 cell_spacing=cell_spacing,
-                radius2=radius2,
-                res_meshgrid=res_meshgrid,
+                semi_major_axis=parsed_args.semi_major_axis,
+                semi_minor_axis=parsed_args.semi_minor_axis,
+                meshgrid_resolution=meshgrid_resolution,
                 initial_cell_spacing=initial_cell_spacing,
             )
-            tunnel_l = Polytunnel(
-                radius1=radius1,
+            tunnel_l = ElipticalPolytunnel(
+                semi_major_axis=semi_major_axis,
                 length=length,
                 tilt=tilt,
                 azimuthal_orientation=azimuthal_orientation,
                 x_shift=3.0,
-                res_meshgrid=res_meshgrid,
+                meshgrid_resolution=meshgrid_resolution,
             )
-            tunnel_r = Polytunnel(
-                radius1=radius1,
+            tunnel_r = ElipticalPolytunnel(
+                semi_major_axis=semi_major_axis,
                 length=length,
                 tilt=tilt,
                 azimuthal_orientation=azimuthal_orientation,
                 x_shift=-3.0,
-                res_meshgrid=res_meshgrid,
+                meshgrid_resolution=meshgrid_resolution,
             )
 
             ground_grid = tunnel.generate_ground_grid()
@@ -344,7 +344,7 @@ def main(args: list[Any]) -> None:
         print(DONE)
         print(f"Geometry calculation: {geometry_timer()} seconds")
 
-    d = 2 * radius1
+    d = 2 * semi_major_axis
     # sun transits#
     sun = Sun(
         start_time=start_time_str,
@@ -373,7 +373,9 @@ def main(args: list[Any]) -> None:
     )
 
     # shading#
-    tracer = Tracing(tunnel, sun_vecs, surface_grid, tilts_unit, radius1, radius2)
+    tracer = Tracing(
+        tunnel, sun_vecs, surface_grid, tilts_unit, semi_major_axis, semi_minor_axis
+    )
     gradient_grid, angle_grid, surface_gradient_grid, surface_angle_grid = (
         tracer.find_tangent_gradient()
     )
@@ -383,7 +385,7 @@ def main(args: list[Any]) -> None:
         f"Shading calculation time: { shading_calculation_time - sun_positions_calculation_time } seconds"
     )
 
-    irradiance = TunnelIrradiance(tunnel, radius1, radius2, length)
+    irradiance = TunnelIrradiance(tunnel, semi_major_axis, semi_minor_axis, length)
     shaded_exposure_map = irradiance.shading_exposure_map(
         angle_grid, surface_angle_grid, sun_vecs
     )
