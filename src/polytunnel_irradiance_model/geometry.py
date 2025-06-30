@@ -185,6 +185,19 @@ class Vector:
         except TypeError:
             raise TypeError("Cannot divide vector by non-scalar or vector.") from None
 
+    def __truediv__(self, other: float) -> _V:
+        """
+        Carry out scalar division.
+
+        :param: other:
+            The scalar value to divide by.
+
+        :returns: The :class:`Vector` instance with all values rescaled.
+
+        """
+
+        return self.__div__(other)
+
     def __iter__(self) -> Iterable[float]:
         """
         Iterate over the values of the vector.
@@ -266,7 +279,7 @@ class MeshPoint(Vector):
     #
 
     area: float
-    _corners: list[Vector]
+    _corners: list[Vector] | None = None
     _covered_area: float | None = None
     _covered_fraction: float | None = None
     _normal_vector: Vector | None = None
@@ -370,15 +383,15 @@ class Matrix:
     """
 
     _array: list[list[float]]
-    _transpose: list[list[float]] | None = None
+    _transpose: list[list[float]] | None
 
     def __post_init__(self) -> None:
         """Carry out post-instantiation checks on the matrix."""
 
-        if len(row_lengths := {len(row for row in self._array)}) != 1:
+        if len(row_lengths := {len([row for row in self._array])}) != 1:
             raise Exception("Matrix instances need to have rows of equal length.")
 
-        if row_lengths[0] != 3:
+        if list(row_lengths)[0] != 3:
             raise Exception(
                 "Matrix should have rows of length 3 for use in 3D geometry."
             )
@@ -499,6 +512,7 @@ class DiagonalMatrix(Matrix):
                 [diagonal[row_index] if row_index == row_index else 0]
                 for row_index in len(diagonal)
             ],
+            None,
             diagonal=diagonal,
         )
 
@@ -529,7 +543,7 @@ class DiagonalMatrix(Matrix):
         super().__matmul__(other)
 
 
-class CartesianAxis(enum):
+class CartesianAxis(enum.Enum):
     """
     Denotes a Cartesian axis.
 
@@ -1249,9 +1263,6 @@ class Polytunnel:
         self.pv_module_spacing = pv_module_spacing
         self.width = width
 
-        self.length_wise_mesh_resolution = int(self.length / self.meshgrid_resolution)
-        # FIXME: self.n_angular = int(self.width / self.meshgrid_resolution)
-
         # Generate and store the meshes on the instance of the polytunnel.
         self.ground_mesh: list[MeshPoint] = self.generate_ground_mesh()
         self.surface_mesh: list[MeshPoint] = self.curve.generate_mesh(
@@ -1324,6 +1335,8 @@ class Polytunnel:
             pv_module = PVModule(**module_input_data[input_data[PV_MODULE]])
         except KeyError:
             raise KeyError("Missing PV-module information.") from None
+
+        global MESHGRID_RESOLUTION
 
         return cls(
             curve,

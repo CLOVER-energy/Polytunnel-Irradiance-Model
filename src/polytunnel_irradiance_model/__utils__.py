@@ -23,7 +23,7 @@ __all__ = (
 # MESHGRID_RESOLUTION:
 #   Variable for storing the meshgrid resolution.
 global MESHGRID_RESOLUTION
-MESHGRID_RESOLUTION = 1.0
+MESHGRID_RESOLUTION: int = 1
 
 # NAME:
 #   Keyword used for parsing the name of various components.

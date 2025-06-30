@@ -262,6 +262,7 @@ def main(args: list[Any]) -> None:
             polytunnel = Polytunnel.from_data(polytunnel_data, pv_module_inputs)
     except Exception:
         print(FAILED)
+        raise
     else:
         print(DONE)
         print(f"Geometry calculation: {geometry_timer()} seconds")
