@@ -95,7 +95,7 @@ class Vector:
 
         return self.x**2 + self.y**2 + self.z**2
 
-    def __get_item__(self, key) -> float:
+    def __getitem__(self, key) -> float:
         """
         Allow for indexing of the vector.
 
@@ -117,7 +117,7 @@ class Vector:
             case _:
                 raise IndexError("Vector index out of range")
 
-    def __set_item__(self, key, value) -> None:
+    def __setitem__(self, key, value) -> None:
         """
         Allow for indexing of the vector.
 
@@ -139,7 +139,7 @@ class Vector:
             case _:
                 raise IndexError("Vector index out of range")
 
-    def __del_item__(self, *args) -> None:
+    def __delitem__(self, *args) -> None:
         """
         Should not be utilised as non-Physical.
 
