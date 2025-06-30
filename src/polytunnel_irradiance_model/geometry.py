@@ -39,6 +39,10 @@ MODULE_TYPE: str = "module_type"
 #   Keyword for determining which of the PV modules is employed in the polytunnel.
 PV_MODULE: str = "pv_module"
 
+# PV_MODULE_SPACING:
+#   Keyword for determining the spacing between PV modules.
+PV_MODULE_SPACING: str = "module_spacing"
+
 # WIDTH:
 #   Keyword used for parsing the polytunnel width.
 WIDTH: str = "width"
@@ -48,25 +52,9 @@ class UndergroundCellError(Exception):
     """Raised when a PV cell is underground."""
 
 
-@dataclass
-class Point:
-    """
-    Represents a point.
-
-    .. attribute:: x:
-        The x value.
-
-    .. attribute:: y:
-        The y value.
-
-    .. attribute:: z:
-        The z value.
-
-    """
-
-    x: float
-    y: float
-    z: float
+########################
+# Vectors and Matrices #
+########################
 
 
 # Type variable for Curve and children.
@@ -220,6 +208,18 @@ class Vector:
 
         return list(self)
 
+    @property
+    def theta(self) -> float:
+        """
+        Return the angle between the vector and the vertical.
+
+        :returns:
+            The angle between the vector and the vertical.
+
+        """
+
+        return acos(self * Vector(0, 0, 1) / np.sqrt(abs(self)))
+
     def normalise(self) -> _V:
         """
         Normalise the vector and return.
@@ -231,6 +231,125 @@ class Vector:
 
         self = self / abs(self)
         return self
+
+
+# Type variable for Meshpoint and children.
+_MP = TypeVar(
+    "_MP",
+    bound="MeshPoint",
+)
+
+
+@dataclass
+class MeshPoint(Vector):
+    """
+    Represents a meshpoint.
+
+    .. attribute:: area:
+        The area of the mesh point.
+
+    """
+
+    # Private attributes:
+    #
+    # _corners:
+    #   The `list` of corners.
+    #
+    # _covered_area:
+    #   The area of the :class:`MeshPoint` instance that is covered with PV.
+    #
+    # _covered_fraction:
+    #   The fraction of the :class:`MeshPoint` instance which is covered with PV.
+    #
+    # _normal_vector:
+    #   The vector which is normal to the :class:`MeshPoint` instance.
+    #
+
+    area: float
+    _corners: list[Vector]
+    _covered_area: float | None = None
+    _covered_fraction: float | None = None
+    _normal_vector: Vector | None = None
+
+    @classmethod
+    def from_cylindrical_coordinates(
+        cls, r: float, theta: float, axial_z: float, area: float
+    ) -> _MP:
+        """
+        Instantiate a meshpoint based on cylindrical coordinates aligned with its axis.
+
+        :param: r:
+            The radial coordinate.
+
+        :param: theta:
+            The angular coordinate.
+
+        :param: axial_z:
+            The axial coordinate.
+
+        :param: area:
+            The area of the point.
+
+        """
+
+        # Return re-mapped coordinates where y is along the axis and z vertical.
+        y = axial_z
+
+        # Compute x and z values.
+        x = r * cos(theta)
+        z = r * sin(theta)
+
+        # Instantiate and return.
+        return cls(x, y, z, area)
+
+    def __post_init__(self) -> None:
+        """Method run post instantiation of the point."""
+
+        # Compute the normal vector to the point.
+        self._normal_vector = Vector(self.x, self.y, self.z).normalise()
+
+        # Compute the corners of the point (given that the point starts as a square).
+
+    @property
+    def covered_area(self) -> float:
+        """
+        Return the covered area of the :class:`MeshPoint` instance.
+
+        :returns:
+            The area of the mesh point that is covered with PV.
+
+        """
+
+        if self._covered_area is None:
+            raise Exception("Covered area should be set before being called.")
+
+        return self._covered_area
+
+    @property
+    def covered_fraction(self) -> float:
+        """
+        Return, and compute, if necessary, the fraction of the mesh point covered.
+
+        :returns:
+            The fraction of the meshpoint covered with PV.
+
+        """
+
+        if self._covered_fraction is None:
+            self._covered_fraction = self.covered_area / self.area
+
+        return self._covered_fraction
+
+    def set_normal_vector(self, new_normal_vector: Vector) -> None:
+        """
+        Set the normal vector on the meshpoint, _e.g._, after an operation.
+
+        :param: new_normal_vector:
+            The new normal vector to use.
+
+        """
+
+        self._normal_vector = new_normal_vector
 
 
 # Type variable for Curve and children.
@@ -306,12 +425,15 @@ class Matrix:
 
         return [Vector(*row) for row in self._array]
 
-    def __matmul__(self, other: _M | Vector) -> _M | Vector:
+    def __matmul__(self, other: _M | Vector | MeshPoint) -> _M | Vector | MeshPoint:
         """
         Carry out matrix multiplication of the current matrix.
 
         :param: other:
             The :class:`Matrix` or :class:`Vector` instance to multiply with.
+
+        :raises: NotImplementedError:
+            Raised if matrix multiplication is attempted on a MeshPoint instance.
 
         :return:
             The result of the matrix multiplication.
@@ -326,12 +448,85 @@ class Matrix:
         if isinstance(other, Vector):
             return Vector(*[row * other for row in self.rows])
 
+        # If multiplying by a meshpoint, then raise an error as this should only be
+        # implemented in children.
+        if isinstance(other, MeshPoint):
+            raise NotImplementedError(
+                "Matrix multiplication must use children of Matrix."
+            )
+
         # Otherwise, carry out matrix multiplication.
         new_rows: list[Vector] = []
         for row in self.rows:
             new_rows.append([row * column for column in other.columns])
 
         return Matrix([list(row) for row in new_rows])
+
+
+# Type variable for RotationMatrix and children.
+_DM = TypeVar(
+    "_DM",
+    bound="DiagonalMatrix",
+)
+
+
+class DiagonalMatrix(Matrix):
+    """
+    Represents a diagonalised matrix.
+
+    .. attribute:: diagonal:
+        The diagonal of the matrix.
+
+    """
+
+    diagonal: Vector
+
+    @classmethod
+    def from_diag(cls, diagonal: Vector) -> _DM:
+        """
+        Instantiate a :class:`DiagonalMatrix` instance from its diagonal.
+
+        :param: diagonal:
+            The diagonal to use.
+
+        :returns:
+            An instantiated :class:`DiagonalMatrix` instance.
+
+        """
+
+        return cls(
+            [
+                [diagonal[row_index] if row_index == row_index else 0]
+                for row_index in len(diagonal)
+            ],
+            diagonal=diagonal,
+        )
+
+    def __matmul__(self, other: _M | Vector | MeshPoint) -> _M | Vector | MeshPoint:
+        """
+        Carry out matrix multiplication of the current matrix.
+
+        :param: other:
+            The :class:`Matrix` or :class:`Vector` instance to multiply with.
+
+        :return:
+            The result of the matrix multiplication.
+
+        """
+
+        if isinstance(other, MeshPoint):
+            if len({entry != 0 for entry in self.diag}) != 1:
+                raise NotImplementedError(
+                    "Cannot stretch a Meshpoint if not oriented correctly."
+                )
+
+            other.x *= self.diagonal[0]
+            other.y *= self.diagonal[1]
+            other.z *= self.diagonal[2]
+
+            return other
+
+        super().__matmul__(other)
 
 
 class CartesianAxis(enum):
@@ -441,113 +636,136 @@ class RotationMatrix(Matrix):
 
         return cls(array, None, rotation_angle, rotation_axis)
 
+    def __matmul__(self, other: _M | Vector | MeshPoint) -> _M | Vector | MeshPoint:
+        """
+        Carry out matrix multiplication of the current matrix.
 
-# Type variable for Meshpoint and children.
-_MP = TypeVar(
-    "_MP",
-    bound="MeshPoint",
+        :param: other:
+            The :class:`Matrix` or :class:`Vector` instance to multiply with.
+
+        :return:
+            The result of the matrix multiplication.
+
+        """
+
+        # If multiplying by a meshpoint, then rotate the meshpoint and its normal.
+        if isinstance(other, MeshPoint):
+            coordinate_vector = Vector(*[row * other for row in self.rows])
+            normal_vector = Vector(*[row * other._normal_vector for row in self.rows])
+
+            other.x, other.y, other.z = (
+                coordinate_vector.x,
+                coordinate_vector.y,
+                coordinate_vector.z,
+            )
+            other.set_normal_vector(normal_vector)
+
+            return other
+
+        return super().__matmul__(other)
+
+
+class ModuleType(enum.Enum):
+    """
+    Denotes the type of the module.
+
+    - CRYSTALINE:
+        Used to distinguish crystaline Silicon modules.
+
+    - THIN_FILM:
+        Used to distinguish thin-film modules.
+
+    """
+
+    CRYSTALINE: str = "c_Si"
+    CIGS: str = "cigs"
+    THIN_FILM: str = "thin_film"
+
+
+############
+# PVModule #
+############
+
+
+# Type variable for Polytunnel and children.
+_PVCM = TypeVar(
+    "_PVCM",
+    bound="PVCellMaterial",
 )
 
 
 @dataclass
-class MeshPoint(Point):
+class PVCellMaterial:
     """
-    Represents a meshpoint.
+    Represents a layer within the PV module.
 
-    .. attribute:: area:
-        The area of the mesh point.
+    .. attribute:: name:
+        The name of the layer.
+
+    .. attribute:: thickness:
+        The thickness of the layer.
 
     """
 
-    # Private attributes:
-    #
-    # _corners:
-    #   The `list` of corners.
-    #
-    # _covered_area:
-    #   The area of the :class:`MeshPoint` instance that is covered with PV.
-    #
-    # _covered_fraction:
-    #   The fraction of the :class:`MeshPoint` instance which is covered with PV.
-    #
-    # _normal_vector:
-    #   The vector which is normal to the :class:`MeshPoint` instance.
-    #
-
-    area: float
-    _corners: list[Point]
-    _covered_area: float | None = None
-    _covered_fraction: float | None = None
-    _normal_vector: Vector | None = None
+    name: str
+    thickness: float
 
     @classmethod
-    def from_cylindrical_coordinates(
-        cls, r: float, theta: float, axial_z: float, area: float
-    ) -> _MP:
+    def from_entry(cls, entry: dict[str, float]) -> _PVCM:
         """
-        Instantiate a meshpoint based on cylindrical coordinates aligned with its axis.
+        Instantiate and return a :class:`PVCellMaterial` instance based on the entry.
 
-        :param: r:
-            The radial coordinate.
+        :param: entry:
+            The entry within the mapping.
 
-        :param: theta:
-            The angular coordinate.
-
-        :param: axial_z:
-            The axial coordinate.
-
-        :param: area:
-            The area of the point.
+        :returns: The instantiated instance.
 
         """
 
-        # Return re-mapped coordinates where y is along the axis and z vertical.
-        y = axial_z
+        return cls(name=list(entry.keys())[0], thickness=list(entry.values())[0])
 
-        # Compute x and z values.
-        x = r * cos(theta)
-        z = r * sin(theta)
 
-        # Instantiate and return.
-        return cls(x, y, z, area)
+@dataclass(kw_only=True)
+class PVModule:
+    """
+    Contains information about the PV module.
 
-    def __post_init__(self) -> None:
-        """Method run post instantiation of the point."""
+    .. attribute:: length:
+        The length of the module, in meters.
 
-        # Compute the normal vector to the point.
-        self._normal_vector = Vector(self.x, self.y, self.z).normalise()
+    .. attribute:: materials:
+        The materials included, along with their thicknesses.
 
-        # Compute the corners of the point (given that the point starts as a square).
+    .. attribute:: module_type:
+        The type of the module.
 
-    @property
-    def covered_area(self) -> float:
-        """
-        Return the covered area of the :class:`MeshPoint` instance.
+    .. attribute:: multistack:
+        The number of stacks to include
 
-        :returns:
-            The area of the mesh point that is covered with PV.
 
-        """
+    .. attribute:: name:
+        The name of the :class:`PVModule` instance.
 
-        if self._covered_area is None:
-            raise Exception("Covered area should be set before being called.")
+    .. attribute:: orientation:
+        The angle between the axis of the polytunnel and of the module.
 
-        return self._covered_area
+    .. attribute:: width:
+        The width of the cell, measured in metres.
 
-    @property
-    def covered_fraction(self) -> float:
-        """
-        Return, and compute, if necessary, the fraction of the mesh point covered.
+    """
 
-        :returns:
-            The fraction of the meshpoint covered with PV.
+    length: float
+    materials: list[PVCellMaterial]
+    module_type: ModuleType
+    multistack: int | None
+    name: str
+    orientation: float
+    width: float
 
-        """
 
-        if self._covered_fraction is None:
-            self._covered_fraction = self.covered_area / self.area
-
-        return self._covered_fraction
+#########
+# Curve #
+#########
 
 
 class CurveType(enum.Enum):
@@ -664,7 +882,22 @@ class Curve(ABC):
             "Cannot call `_stretch_mesh` method on abstract curve."
         )
 
-    def generate_mesh(self, length: float, meshgrid_resolution: int) -> list[MeshPoint]:
+    def rotate_mesh(self, meshgrid: list[MeshPoint]) -> list[MeshPoint]:
+        """
+        Rotate the meshgrid points and normal vectors according based on the curve axis.
+
+        :param: meshgrid:
+            The meshgrid, as a `list` of :class:`MeshPoint` instances, to rotate.
+
+        :returns: The rotated `list` of :class:`MeshPoint` instances.
+
+        """
+
+        return [self._calculate_rotated_vector(meshpoint) for meshpoint in meshgrid]
+
+    def generate_mesh(
+        self, length: float, meshgrid_resolution: int, pv_module: PVModule
+    ) -> list[MeshPoint]:
         """
         Generate the mesh for the curve.
 
@@ -690,26 +923,7 @@ class Curve(ABC):
         meshgrid = self._mesh_overlap(meshgrid, pv_module)
 
         # Rotate all meshpoints
-        return self._rotate_mesh(meshgrid)
-
-    # FIXME
-    @abstractmethod
-    def calculate_rotated_mesh_point(
-        self, displacement: float | list[float]
-    ) -> list[tuple[float, float]]:
-        """
-        Abstract method that must be implemented in subclasses.
-        Calculate the azimuth and zenith angles at a point along the curve.
-
-        :param: **displacement:**
-            The distance from the central axis.
-
-        :returns:
-            - A tuple, (azimuth, tilt), with angles in degrees.
-
-        """
-
-        raise NotImplementedError("This method must be implemented in subclasses")
+        return self.rotate_mesh(meshgrid)
 
     @property
     def zenith_rotation_angle(self) -> float:
@@ -769,7 +983,7 @@ class Curve(ABC):
 
         return self._tilt_rotation_matrix
 
-    def _calculate_rotated_vector(self, un_rotated_normal: list[float]) -> np.ndarray:
+    def _calculate_rotated_vector(self, un_rotated_normal: MeshPoint) -> MeshPoint:
         """
         Rotate the vector based on the orientation of the curve/Polytunnel.
 
@@ -781,72 +995,71 @@ class Curve(ABC):
         """
 
         # Rotate this normal vector based on the tilt and azimuth of the polytunnel.
-        rotated_normal = np.matmul(
-            self.azimuth_rotation_matrix,
-            np.matmul(self.tilt_rotation_matrix, un_rotated_normal),
+        rotated_normal = (
+            self.azimuth_rotation_matrix @ self.tilt_rotation_matrix @ un_rotated_normal
         )
 
         return rotated_normal
 
-    def _get_rotated_angles_from_surface_normal(
-        self, un_rotated_normal: list[float]
-    ) -> tuple[float, float]:
-        """
-        Rotate the normal vector based on the orientation of the curve/Polytunnel.
+    # def _get_rotated_angles_from_surface_normal(
+    #     self, un_rotated_normal: list[float]
+    # ) -> tuple[float, float]:
+    #     """
+    #     Rotate the normal vector based on the orientation of the curve/Polytunnel.
 
-        :param: **un_rotated_normal:**
-            The surface normal vector in the un-rotated frame.
+    #     :param: **un_rotated_normal:**
+    #         The surface normal vector in the un-rotated frame.
 
-        :returns:
-            - A `tuple` containing information about the new rotated normal vector:
-                - The azimuth angle, in degrees,
-                - THe tilt angle, in degrees.
+    #     :returns:
+    #         - A `tuple` containing information about the new rotated normal vector:
+    #             - The azimuth angle, in degrees,
+    #             - THe tilt angle, in degrees.
 
-        """
+    #     """
 
-        rotated_normal = self._calculate_rotated_vector(un_rotated_normal)
+    #     rotated_normal = self._calculate_rotated_vector(un_rotated_normal)
 
-        # Compute the new azimuth and tilt angles based on these rotations.
-        # The tilt angle is simply the z component of the vector.
-        tilt_angle = round(acos(rotated_normal[2]), FLOATING_POINT_PRECISION)
+    #     # Compute the new azimuth and tilt angles based on these rotations.
+    #     # The tilt angle is simply the z component of the vector.
+    #     tilt_angle = round(acos(rotated_normal[2]), FLOATING_POINT_PRECISION)
 
-        with warnings.catch_warnings():
-            warnings.filterwarnings("error")
-            try:
-                x_y_plane_component = sin(tilt_angle)
-            except (RuntimeError, RuntimeWarning, ZeroDivisionError):
-                azimuth_angle = pi
-            else:
-                if round(rotated_normal[1], 6) == 0:
-                    azimuth_angle = (
-                        pi
-                        if rotated_normal[0] == 0
-                        else pi / 2 if (rotated_normal[0] > 0) else -pi / 2
-                    )
-                else:
-                    arccos_angle = acos(
-                        round(
-                            rotated_normal[1] / x_y_plane_component,
-                            FLOATING_POINT_PRECISION,
-                        )
-                    )
-                    azimuth_angle = (
-                        2 * pi - arccos_angle if rotated_normal[0] < 0 else arccos_angle
-                    )
+    #     with warnings.catch_warnings():
+    #         warnings.filterwarnings("error")
+    #         try:
+    #             x_y_plane_component = sin(tilt_angle)
+    #         except (RuntimeError, RuntimeWarning, ZeroDivisionError):
+    #             azimuth_angle = pi
+    #         else:
+    #             if round(rotated_normal[1], 6) == 0:
+    #                 azimuth_angle = (
+    #                     pi
+    #                     if rotated_normal[0] == 0
+    #                     else pi / 2 if (rotated_normal[0] > 0) else -pi / 2
+    #                 )
+    #             else:
+    #                 arccos_angle = acos(
+    #                     round(
+    #                         rotated_normal[1] / x_y_plane_component,
+    #                         FLOATING_POINT_PRECISION,
+    #                     )
+    #                 )
+    #                 azimuth_angle = (
+    #                     2 * pi - arccos_angle if rotated_normal[0] < 0 else arccos_angle
+    #                 )
 
-        # Check that the tilt is not out-of-bounds
-        if tilt_angle > pi / 2:
-            raise UndergroundCellError(
-                f"A cell in the module has a tilt angle of {tilt_angle} radians, which "
-                "is underground."
-            )
+    #     # Check that the tilt is not out-of-bounds
+    #     if tilt_angle > pi / 2:
+    #         raise UndergroundCellError(
+    #             f"A cell in the module has a tilt angle of {tilt_angle} radians, which "
+    #             "is underground."
+    #         )
 
-        # Check that the azimuth angle is not `nan` and set it to South if so.
-        if isnan(azimuth_angle):
-            azimuth_angle = pi
+    #     # Check that the azimuth angle is not `nan` and set it to South if so.
+    #     if isnan(azimuth_angle):
+    #         azimuth_angle = pi
 
-        # Return these angles in degrees
-        return degrees(azimuth_angle) % 360, degrees(tilt_angle)
+    #     # Return these angles in degrees
+    #     return degrees(azimuth_angle) % 360, degrees(tilt_angle)
 
 
 @dataclass(kw_only=True)
@@ -860,6 +1073,45 @@ class CircularCurve(Curve, curve_type=CurveType.CIRCULAR):
     """
 
     radius_of_curvature: float
+
+    def _stretch_mesh(self, meshgrid: list[MeshPoint]) -> list[MeshPoint]:
+        """
+        Stretch/distort the meshgrid to match the geometry of the curve.
+
+        For a circular curve, this involves moving all of the points out radially. A
+        solution to this is to consider each radial stretch as a rotation to be aligned
+        with the z-axis, a stretch in the z-direction, and then a rotation back to the
+        original position of the point.
+
+        This requires
+        - rotating by the theta angle of the point;
+        - stretching in the z direction;
+        - then rotating back.
+
+        Because each angle is different, the matrix for each point needs calculating
+        individually.
+
+        :param: meshgrid:
+            The meshgrid, as a `list` of :class:`MeshPoint` instances, to stretch.
+
+        :returns: The distorted `list` of :class:`MeshPoint` instances.
+
+        """
+
+        # Construct stretch matrices.
+        z_angles = [vector.theta for vector in meshgrid]
+        stretch_matricies = [
+            RotationMatrix.from_rotation_angle_and_axis(-theta, CartesianAxis.Y)
+            @ DiagonalMatrix([0, 0, self.radius_of_curvature])
+            @ RotationMatrix.from_rotation_angle_and_axis(theta, CartesianAxis.Y)
+            for theta in z_angles
+        ]
+
+        # Carry out the stretching.
+        return [
+            stretch_matricies[index] @ meshpoint
+            for index, meshpoint in enumerate(meshgrid)
+        ]
 
     # def get_angles_from_surface_displacement(
     #     self, displacement_list: float | list[float]
@@ -920,98 +1172,10 @@ class ElipticalCurve(Curve, curve_type=CurveType.ELIPTICAL):
     semi_major_axis: float
     semi_minor_axis: float
 
+    def __post_init__(self) -> None:
+        """Post-instantiation script."""
 
-class ModuleType(enum.Enum):
-    """
-    Denotes the type of the module.
-
-    - CRYSTALINE:
-        Used to distinguish crystaline Silicon modules.
-
-    - THIN_FILM:
-        Used to distinguish thin-film modules.
-
-    """
-
-    CRYSTALINE: str = "c_Si"
-    CIGS: str = "cigs"
-    THIN_FILM: str = "thin_film"
-
-
-# Type variable for Polytunnel and children.
-_PVCM = TypeVar(
-    "_PVCM",
-    bound="PVCellMaterial",
-)
-
-
-@dataclass
-class PVCellMaterial:
-    """
-    Represents a layer within the PV module.
-
-    .. attribute:: name:
-        The name of the layer.
-
-    .. attribute:: thickness:
-        The thickness of the layer.
-
-    """
-
-    name: str
-    thickness: float
-
-    @classmethod
-    def from_entry(cls, entry: dict[str, float]) -> _PVCM:
-        """
-        Instantiate and return a :class:`PVCellMaterial` instance based on the entry.
-
-        :param: entry:
-            The entry within the mapping.
-
-        :returns: The instantiated instance.
-
-        """
-
-        return cls(name=list(entry.keys())[0], thickness=list(entry.values())[0])
-
-
-@dataclass(kw_only=True)
-class PVModule:
-    """
-    Contains information about the PV module.
-
-    .. attribute:: length:
-        The length of the module, in meters.
-
-    .. attribute:: materials:
-        The materials included, along with their thicknesses.
-
-    .. attribute:: module_type:
-        The type of the module.
-
-    .. attribute:: multistack:
-        The number of stacks to include
-
-
-    .. attribute:: name:
-        The name of the :class:`PVModule` instance.
-
-    .. attribute:: orientation:
-        The angle between the axis of the polytunnel and of the module.
-
-    .. attribute:: width:
-        The width of the cell, measured in metres.
-
-    """
-
-    length: float
-    materials: list[PVCellMaterial]
-    module_type: ModuleType
-    multistack: int | None
-    name: str
-    orientation: float
-    width: float
+        raise NotImplementedError("Eliptical curves are not implemented.")
 
 
 # Type variable for Polytunnel and children.
@@ -1028,11 +1192,12 @@ class Polytunnel:
     .. attribute:: curve:
         The curve which defines the shape of the polytunnel.
 
+    .. attribute:: ground_mesh:
+        The mesh of :class:`MeshPoint` instances representing the ground within the
+        :class:`Polytunnel` instance.
+
     .. attribute:: length:
         The length of the polytunnel.
-
-    .. attribute:: mesh:
-        The mesh of :class:`MeshPoint` instances.
 
     .. attribute:: meshgrid_resolution:
         The resolution of meshgrid, in meters.
@@ -1042,6 +1207,13 @@ class Polytunnel:
 
     .. attribute:: pv_module:
         The pv module on the polytunnel.
+
+    .. attribute:: pv_module_spacing:
+        The spacing between the PV modules.
+
+    .. attribute:: surface_mesh:
+        The mesh of :class:`MeshPoint` instances representing the surface of the
+        :class:`Polytunnel` instance.
 
     .. attribute:: width:
         The width of the polytunnel at the point being considered, in meters.
@@ -1055,6 +1227,7 @@ class Polytunnel:
         meshgrid_resolution: int,
         name: str,
         pv_module: PVModule,
+        pv_module_spacing: float,
         width: float,
     ):
         """
@@ -1073,13 +1246,41 @@ class Polytunnel:
         self.meshgrid_resolution = meshgrid_resolution
         self.name = name
         self.pv_module = pv_module
+        self.pv_module_spacing = pv_module_spacing
         self.width = width
 
         self.length_wise_mesh_resolution = int(self.length / self.meshgrid_resolution)
         # FIXME: self.n_angular = int(self.width / self.meshgrid_resolution)
 
-        # Generate and store the mesh on the instance of the polytunnel.
-        self.mesh: list[MeshPoint] = self.curve.generate_mesh(meshgrid_resolution)
+        # Generate and store the meshes on the instance of the polytunnel.
+        self.ground_mesh: list[MeshPoint] = self.generate_ground_mesh()
+        self.surface_mesh: list[MeshPoint] = self.curve.generate_mesh(
+            self.length, meshgrid_resolution, self.pv_module, self.pv_module_spacing
+        )
+
+    def generate_ground_mesh(self) -> list[MeshPoint]:
+        """
+        Generate the set of points representing the ground within the polytunnel.
+
+        This process consists of:
+        - creating equally spaced points within the polytunnel along the ground;
+        - rotating and tilting these as necessary to match its orientation.
+
+        """
+
+        # Determine the area of a meshpoint on the ground.
+        ground_meshpoint_area: float = (
+            self.width * self.length / (self.meshgrid_resolution**2)
+        )
+
+        # Create a mesh within the Polytunnel instance.
+        meshgrid: list[MeshPoint] = []
+        for x in np.linspace(-self.width, self.width, self.meshgrid_resolution):
+            for y in np.linspace(0, self.length, self.meshgrid_resolution):
+                meshgrid.append(MeshPoint(x, y, 0, ground_meshpoint_area))
+
+        # Rotate these points as appropriate.
+        return self.curve.rotate_mesh(meshgrid)
 
     @classmethod
     def from_data(
@@ -1130,6 +1331,7 @@ class Polytunnel:
             MESHGRID_RESOLUTION,
             input_data[NAME],
             pv_module,
+            input_data[PV_MODULE_SPACING],
             input_data[WIDTH],
         )
 

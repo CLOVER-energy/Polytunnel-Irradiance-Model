@@ -260,66 +260,15 @@ def main(args: list[Any]) -> None:
     try:
         with time_execution() as geometry_timer:
             polytunnel = Polytunnel.from_data(polytunnel_data, pv_module_inputs)
-
-            import pdb
-
-            pdb.set_trace()
-
-            tunnel = ElipticalPolytunnel(
-                length=length,
-                tilt=tilt,
-                azimuthal_orientation=azimuthal_orientation,
-                theta_margin=0,
-                cell_thickness=cell_thickness,
-                cell_spacing=cell_spacing,
-                semi_major_axis=parsed_args.semi_major_axis,
-                semi_minor_axis=parsed_args.semi_minor_axis,
-                meshgrid_resolution=meshgrid_resolution,
-                initial_cell_spacing=initial_cell_spacing,
-            )
-            tunnel_l = ElipticalPolytunnel(
-                semi_major_axis=semi_major_axis,
-                length=length,
-                tilt=tilt,
-                azimuthal_orientation=azimuthal_orientation,
-                x_shift=3.0,
-                meshgrid_resolution=meshgrid_resolution,
-            )
-            tunnel_r = ElipticalPolytunnel(
-                semi_major_axis=semi_major_axis,
-                length=length,
-                tilt=tilt,
-                azimuthal_orientation=azimuthal_orientation,
-                x_shift=-3.0,
-                meshgrid_resolution=meshgrid_resolution,
-            )
-
-            ground_grid = tunnel.generate_ground_grid()
-            ground_grid_x, ground_grid_y, ground_grid_z = (
-                ground_grid[0],
-                ground_grid[1],
-                ground_grid[2],
-            )
-
-            normals_unit_surface, areas_surface = tunnel.surface_element_unit_vectors()
-            normals_unit_ground, areas_ground = tunnel.ground_element_unit_vectors()
-            tilts_unit = tunnel.surface_tilt(normals_unit_surface)
-
-            surface_grid, solar_cells = tunnel.generate_surface()
-            surface_grid_x, surface_grid_y, surface_grid_z = (
-                surface_grid[0],
-                surface_grid[1],
-                surface_grid[2],
-            )
-
-            distance_grid, separation_unit_vector_grid = tunnel.generate_distances_grid(
-                ground_grid, surface_grid
-            )
     except Exception:
         print(FAILED)
     else:
         print(DONE)
         print(f"Geometry calculation: {geometry_timer()} seconds")
+
+    import pdb
+
+    pdb.set_trace()
 
     d = 2 * semi_major_axis
     # sun transits#
