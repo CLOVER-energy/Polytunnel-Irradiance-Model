@@ -30,7 +30,7 @@ import yaml
 
 from src.polytunnel_irradiance_model.__utils__ import *
 from src.polytunnel_irradiance_model.functions import *
-from src.polytunnel_irradiance_model.geometry import Polytunnel
+from src.polytunnel_irradiance_model.polytunnel import Polytunnel
 from src.polytunnel_irradiance_model.sun import Sun
 from src.polytunnel_irradiance_model.irradiance import TunnelIrradiance
 from src.polytunnel_irradiance_model.tracing import Tracing
