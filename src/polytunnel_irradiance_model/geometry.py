@@ -150,6 +150,17 @@ class Vector:
 
         raise NotImplementedError("Cannot delete element from vector.")
 
+    def __len__(self) -> int:
+        """
+        Return the length of the vector.
+
+        :returns:
+            The length of the vector.
+
+        """
+
+        return 3
+
     def __mul__(self, other: float | _V) -> float | _V:
         """
         Carry out scalar multiplication or dot product.
@@ -161,13 +172,15 @@ class Vector:
 
         """
 
-        if isinstance(other, type(self)):
+        if isinstance(other, (Vector, MeshPoint)):
             return self.x * other.x + self.y * other.y + self.z * other.z
 
         try:
             return Vector(self.x * other, self.y * other, self.z * other)
         except TypeError:
-            raise TypeError("Cannot multiply vector by non-scalar or vector.") from None
+            raise TypeError(
+                "Cannot multiply vector by non-scalar or non-vector."
+            ) from None
 
     def __div__(self, other: float) -> _V:
         """
@@ -385,7 +398,7 @@ class Matrix:
     _array: list[list[float]]
     _transpose: list[list[float]] | None
 
-    def __post_init__(self) -> None:
+    def __post_init_(self) -> None:
         """Carry out post-instantiation checks on the matrix."""
 
         if len(row_lengths := {len([row for row in self._array])}) != 1:
@@ -489,6 +502,7 @@ _DM = TypeVar(
 )
 
 
+@dataclass
 class DiagonalMatrix(Matrix):
     """
     Represents a diagonalised matrix.
@@ -515,11 +529,14 @@ class DiagonalMatrix(Matrix):
 
         return cls(
             [
-                [diagonal[row_index] if row_index == row_index else 0]
-                for row_index in len(diagonal)
+                [
+                    diagonal[column_index] if column_index == row_index else 0
+                    for column_index in range(len(diagonal))
+                ]
+                for row_index in range(len(diagonal))
             ],
             None,
-            diagonal=diagonal,
+            diagonal,
         )
 
     def __matmul__(self, other: _M | Vector | MeshPoint) -> _M | Vector | MeshPoint:
@@ -886,6 +903,29 @@ class Curve(ABC):
             for z in np.linspace(0, length, meshgrid_resolution):
                 yield MeshPoint.from_cylindrical_coordinates(radius, theta, z, area)
 
+    def _mesh_overlap(
+        self, meshgrid: list[MeshPoint], pv_module: PVModule, pv_module_spacing: float
+    ) -> list[MeshPoint]:
+        """
+        Update the mesh points with the area and fractional area that overlaps modules.
+
+        :param: meshgrid:
+            The `list` of :class:`MeshPoint` instances.
+
+        :param: PVModule:
+            The :class:`PVModule` instance.
+
+        :param: pv_module_spacing:
+            The spacing between PV modules.
+
+        :returns:
+            The updated `list` of :class:`MeshPoint` instances where each's overlap with
+            the PV modules on the polytunnel is computed.
+
+        """
+
+        return meshgrid
+
     @abstractmethod
     def _stretch_mesh(self, meshgrid: list[MeshPoint]) -> list[MeshPoint]:
         """
@@ -916,7 +956,11 @@ class Curve(ABC):
         return [self._calculate_rotated_vector(meshpoint) for meshpoint in meshgrid]
 
     def generate_mesh(
-        self, length: float, meshgrid_resolution: int, pv_module: PVModule
+        self,
+        length: float,
+        meshgrid_resolution: int,
+        pv_module: PVModule,
+        pv_module_spacing: float,
     ) -> list[MeshPoint]:
         """
         Generate the mesh for the curve.
@@ -931,6 +975,21 @@ class Curve(ABC):
         3. Computing the overal of the PV modules with the mesh points;
         4. Rotating all mesh points and normal vectors.
 
+        :param: length:
+            The length of the Polytunnel.
+
+        :param: meshgrid_resolution:
+            The number of meshgrid points to use.
+
+        :param: pv_module:
+            The :class:`PVModule` instance.
+
+        :param: pv_module_spacing:
+            The axial spacing between PV modules.
+
+        :returns:
+            The instantiated mesh.
+
         """
 
         # Generate an equally-spaced, un-distorted mesh.
@@ -940,7 +999,7 @@ class Curve(ABC):
         meshgrid = self._stretch_mesh(meshgrid)
 
         # Compute the overlap of the mesh with the PV modules.
-        meshgrid = self._mesh_overlap(meshgrid, pv_module)
+        meshgrid = self._mesh_overlap(meshgrid, pv_module, pv_module_spacing)
 
         # Rotate all meshpoints
         return self.rotate_mesh(meshgrid)
@@ -1122,7 +1181,7 @@ class CircularCurve(Curve, curve_type=CurveType.CIRCULAR):
         z_angles = [vector.theta for vector in meshgrid]
         stretch_matricies = [
             RotationMatrix.from_rotation_angle_and_axis(-theta, CartesianAxis.Y)
-            @ DiagonalMatrix([0, 0, self.radius_of_curvature])
+            @ DiagonalMatrix.from_diag(Vector(0, 0, self.radius_of_curvature))
             @ RotationMatrix.from_rotation_angle_and_axis(theta, CartesianAxis.Y)
             for theta in z_angles
         ]
