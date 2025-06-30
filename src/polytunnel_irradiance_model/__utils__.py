@@ -15,15 +15,7 @@ distribution within a curved structure, _e.g._, a polytunnel.
 
 """
 
-__all__ = (
-    "MESHGRID_RESOLUTION",
-    "NAME",
-)
-
-# MESHGRID_RESOLUTION:
-#   Variable for storing the meshgrid resolution.
-global MESHGRID_RESOLUTION
-MESHGRID_RESOLUTION: int = 1
+__all__ = ("NAME",)
 
 # NAME:
 #   Keyword used for parsing the name of various components.

@@ -216,9 +216,6 @@ def main(args: list[Any]) -> None:
     # Parse the command-line arguments.
     parsed_args = parse_args(args)
 
-    global MESHGRID_RESOLUTION
-    MESHGRID_RESOLUTION = parsed_args.meshgrid_resolution
-
     # Open the material information.
     with open(parsed_args.solar_cells_file, "r", encoding="UTF-8") as solar_cells_file:
         material_information = yaml.safe_load(solar_cells_file)
@@ -259,7 +256,9 @@ def main(args: list[Any]) -> None:
     code_print("Geometry calculation")
     try:
         with time_execution() as geometry_timer:
-            polytunnel = Polytunnel.from_data(polytunnel_data, pv_module_inputs)
+            polytunnel = Polytunnel.from_data(
+                polytunnel_data, parsed_args.meshgrid_resolution, pv_module_inputs
+            )
     except Exception:
         print(FAILED)
         raise

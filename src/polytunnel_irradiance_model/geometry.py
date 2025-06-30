@@ -3,13 +3,21 @@ import warnings
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from math import acos, asin, cos, degrees, isnan, radians, pi, sin
+from math import acos, asin, atan, cos, degrees, isnan, radians, pi, sin
 from typing import Any, AsyncGenerator, Iterable, Iterator, TypeVar
 
 import numpy as np
 
-from src.polytunnel_irradiance_model.__utils__ import MESHGRID_RESOLUTION, NAME
+from src.polytunnel_irradiance_model.__utils__ import NAME
 
+
+# AXIS_AZIMUTH:
+#   Keyword for parsing the axis azimuth information.
+AXIS_AZIMUTH: str = "axis_azimuth"
+
+# AXIS_TILT:
+#   Keyword for parsing the axis tilt information.
+AXIS_TILT: str = "axis_tilt"
 
 # CURVE:
 #   Keyword for parsing curve information.
@@ -93,7 +101,69 @@ class Vector:
 
         """
 
-        return self.x**2 + self.y**2 + self.z**2
+        return np.sqrt(self.x**2 + self.y**2 + self.z**2)
+
+    def __add__(self, other) -> _V:
+        """
+        Add two vectors together.
+
+        :param: other:
+            The vector to add to this one.
+
+        :returns:
+            The vector addition of the two vectors.
+
+        """
+
+        return Vector(
+            self.x + other.x,
+            self.y + other.y,
+            self.z + other.z,
+        )
+
+    def __iadd__(self, other) -> None:
+        """
+        Add two vectors together.
+
+        :param: other:
+            The vector to add to this one.
+
+        """
+
+        self.x = self.x + other.x
+        self.y = self.y + other.y
+        self.z = self.z + other.z
+
+    def __sub__(self, other) -> _V:
+        """
+        Subtract two vectors.
+
+        :param: other:
+            The vector to subtract from this one.
+
+        :returns:
+            The vector subtraction of the two vectors.
+
+        """
+
+        return Vector(
+            self.x - other.x,
+            self.y - other.y,
+            self.z - other.z,
+        )
+
+    def __isub__(self, other) -> None:
+        """
+        Subtract two vectors.
+
+        :param: other:
+            The vector to subtract from this one.
+
+        """
+
+        self.x = self.x - other.x
+        self.y = self.y - other.y
+        self.z = self.z - other.z
 
     def __getitem__(self, key) -> float:
         """
@@ -211,6 +281,27 @@ class Vector:
 
         return self.__div__(other)
 
+    def __matmul__(self, other: _V) -> _V:
+        """
+        Carry out a cross product between two vectors.
+
+        :param: other:
+            The other :class:`Vector` instance to multiply with.
+
+        :returns:
+            The result of the cross product.
+
+        """
+
+        if not isinstance(other, Vector):
+            raise NotImplementedError("Can only cross product a vector with a vector.")
+
+        return Vector(
+            self.y * other.z - self.z * other.y,
+            self.z * other.x - self.x * other.z,
+            self.x * other.y - self.y * other.x,
+        )
+
     def __iter__(self) -> Iterable[float]:
         """
         Iterate over the values of the vector.
@@ -244,7 +335,7 @@ class Vector:
 
         """
 
-        return acos(self * Vector(0, 0, 1) / np.sqrt(abs(self)))
+        return atan(abs(self.x) / self.z) * (1 if self.x > 0 else -1)
 
     def normalise(self) -> _V:
         """
@@ -274,6 +365,12 @@ class MeshPoint(Vector):
     .. attribute:: area:
         The area of the mesh point.
 
+    .. attribute:: length:
+        The length of the mesh point.
+
+    .. attribute:: width:
+        The width of the mesh point.
+
     """
 
     # Private attributes:
@@ -291,15 +388,24 @@ class MeshPoint(Vector):
     #   The vector which is normal to the :class:`MeshPoint` instance.
     #
 
-    area: float
+    length: float | None = None
+    width: float | None = None
+    _area: float | None = None
     _corners: list[Vector] | None = None
     _covered_area: float | None = None
     _covered_fraction: float | None = None
     _normal_vector: Vector | None = None
+    _u_vector: Vector | None = None
+    _t_vector: Vector | None = None
 
     @classmethod
     def from_cylindrical_coordinates(
-        cls, r: float, theta: float, axial_z: float, area: float
+        cls,
+        r: float,
+        theta: float,
+        axial_z: float,
+        length: float | None = None,
+        width: float | None = None,
     ) -> _MP:
         """
         Instantiate a meshpoint based on cylindrical coordinates aligned with its axis.
@@ -322,19 +428,67 @@ class MeshPoint(Vector):
         y = axial_z
 
         # Compute x and z values.
-        x = r * cos(theta)
-        z = r * sin(theta)
+        x = r * sin(theta)
+        z = r * cos(theta)
 
         # Instantiate and return.
-        return cls(x, y, z, area)
+        return cls(x, y, z, length, width)
+
+    @property
+    def area(self) -> float:
+        """
+        Return the area of the meshpoint.
+
+        :returns:
+            The calculated area of the meshpoint.
+
+        """
+
+        if self._area is None:
+            self._area = self.length * self.width
+
+        return self._area
+
+    @property
+    def position_vector(self) -> Vector:
+        """
+        Return the position vector specifying the centre of the :class:`MeshPoint`.
+
+        :returns:
+            The centre point of the meshpoint.
+
+        """
+
+        return Vector(self.x, self.y, self.z)
 
     def __post_init__(self) -> None:
         """Method run post instantiation of the point."""
 
         # Compute the normal vector to the point.
-        self._normal_vector = Vector(self.x, self.y, self.z).normalise()
+        if self._normal_vector is None:
+            self._normal_vector = Vector(self.x, self.y, self.z).normalise()
 
         # Compute the corners of the point (given that the point starts as a square).
+        # Two vectors within the meshpoint can be found. The first will be parallel to
+        # y and have a length which is the sqrt(area).
+        _y_vector: Vector = Vector(0, self.length / 2, 0)
+
+        # The x vector will simply be the cross product of this, normalised, and
+        # rescaled based on the length in that direction.
+        _x_vector: Vector = self._normal_vector @ _y_vector
+        _x_vector = _x_vector.normalise() * self.width / 2
+
+        # Compute the four corners.
+        self._corners: list[Vector] = [
+            self.position_vector + _x_vector + _y_vector,
+            self.position_vector + _x_vector - _y_vector,
+            self.position_vector - _x_vector + _y_vector,
+            self.position_vector - _x_vector - _y_vector,
+        ]
+
+        # Save the u and t vectors.
+        self._t_vector = _x_vector
+        self._u_vector = _y_vector
 
     @property
     def covered_area(self) -> float:
@@ -631,39 +785,39 @@ class RotationMatrix(Matrix):
                     [1, 0, 0],
                     [
                         0,
-                        cos(radians(rotation_angle)),
-                        -sin(radians(rotation_angle)),
+                        cos(rotation_angle),
+                        -sin(rotation_angle),
                     ],
                     [
                         0,
-                        sin(radians(rotation_angle)),
-                        cos(radians(rotation_angle)),
+                        sin(rotation_angle),
+                        cos(rotation_angle),
                     ],
                 ]
             case CartesianAxis.Y:
                 array: list[list[float]] = [
                     [
-                        cos(radians(rotation_angle)),
+                        cos(rotation_angle),
                         0,
-                        sin(radians(rotation_angle)),
+                        sin(rotation_angle),
                     ],
                     [0, 1, 0],
                     [
-                        -sin(radians(rotation_angle)),
+                        -sin(rotation_angle),
                         0,
-                        cos(radians(rotation_angle)),
+                        cos(rotation_angle),
                     ],
                 ]
             case CartesianAxis.Z:
                 array: list[list[float]] = [
                     [
-                        cos(radians(rotation_angle)),
-                        -sin(radians(rotation_angle)),
+                        cos(rotation_angle),
+                        -sin(rotation_angle),
                         0,
                     ],
                     [
-                        sin(radians(rotation_angle)),
-                        cos(radians(rotation_angle)),
+                        sin(rotation_angle),
+                        cos(rotation_angle),
                         0,
                     ],
                     [0, 0, 1],
@@ -896,17 +1050,18 @@ class Curve(ABC):
 
         # Set a default radius for the un-distorted shape.
         radius: int = 1
-        area: int = (
-            (length / meshgrid_resolution)
-            * 2
-            * radius
-            * sin(pi / (2 * meshgrid_resolution))
-        )
+        width = 2 * radius * sin(pi / (2 * meshgrid_resolution))
 
         # Setup theta and z iterators.
-        for theta in np.linspace(-np.pi / 2, np.pi / 2, meshgrid_resolution):
+        for theta in np.linspace(
+            -(np.pi / 2 - (angular_size := pi / meshgrid_resolution)),
+            np.pi / 2 - angular_size,
+            meshgrid_resolution,
+        ):
             for z in np.linspace(0, length, meshgrid_resolution):
-                yield MeshPoint.from_cylindrical_coordinates(radius, theta, z, area)
+                yield MeshPoint.from_cylindrical_coordinates(
+                    radius, theta, z, length / meshgrid_resolution, width
+                )
 
     def _mesh_overlap(
         self, meshgrid: list[MeshPoint], pv_module: PVModule, pv_module_spacing: float
@@ -1033,7 +1188,7 @@ class Curve(ABC):
 
         if self._azimuth_rotation_matrix is None:
             self._azimuth_rotation_matrix = RotationMatrix.from_rotation_angle_and_axis(
-                radians(self.zenith_rotation_angle), CartesianAxis.Z
+                self.zenith_rotation_angle, CartesianAxis.Z
             )
 
         return self._azimuth_rotation_matrix
@@ -1062,7 +1217,7 @@ class Curve(ABC):
 
         if self._tilt_rotation_matrix is None:
             self._tilt_rotation_matrix = RotationMatrix.from_rotation_angle_and_axis(
-                radians(self.tilt_rotation_angle), CartesianAxis.X
+                self.tilt_rotation_angle, CartesianAxis.X
             )
 
         return self._tilt_rotation_matrix
@@ -1184,16 +1339,16 @@ class CircularCurve(Curve, curve_type=CurveType.CIRCULAR):
 
         # Construct stretch matrices.
         z_angles = [vector.theta for vector in meshgrid]
-        stretch_matricies = [
-            RotationMatrix.from_rotation_angle_and_axis(-theta, CartesianAxis.Y)
-            @ DiagonalMatrix.from_diag(Vector(0, 0, self.radius_of_curvature))
-            @ RotationMatrix.from_rotation_angle_and_axis(theta, CartesianAxis.Y)
+        stretch_matrices = [
+            RotationMatrix.from_rotation_angle_and_axis(theta, CartesianAxis.Y)
+            @ DiagonalMatrix.from_diag(Vector(1, 1, self.radius_of_curvature))
+            @ RotationMatrix.from_rotation_angle_and_axis(-theta, CartesianAxis.Y)
             for theta in z_angles
         ]
 
         # Carry out the stretching.
         return [
-            stretch_matricies[index] @ meshpoint
+            stretch_matrices[index] @ meshpoint
             for index, meshpoint in enumerate(meshgrid)
         ]
 
@@ -1349,23 +1504,30 @@ class Polytunnel:
 
         """
 
-        # Determine the area of a meshpoint on the ground.
-        ground_meshpoint_area: float = (
-            self.width * self.length / (self.meshgrid_resolution**2)
-        )
-
         # Create a mesh within the Polytunnel instance.
         meshgrid: list[MeshPoint] = []
         for x in np.linspace(-self.width, self.width, self.meshgrid_resolution):
             for y in np.linspace(0, self.length, self.meshgrid_resolution):
-                meshgrid.append(MeshPoint(x, y, 0, ground_meshpoint_area))
+                meshgrid.append(
+                    MeshPoint(
+                        x,
+                        y,
+                        0,
+                        self.length / self.meshgrid_resolution,
+                        self.width / self.meshgrid_resolution,
+                        _normal_vector=Vector(0, 0, 1),
+                    )
+                )
 
         # Rotate these points as appropriate.
         return self.curve.rotate_mesh(meshgrid)
 
     @classmethod
     def from_data(
-        cls, input_data: dict[str, Any], module_input_data: dict[str, Any]
+        cls,
+        input_data: dict[str, Any],
+        meshgrid_resolution: int,
+        module_input_data: dict[str, Any],
     ) -> _P:
         """
         Instantiate a :class:`Polytunnel` instance based on the input data provided.
@@ -1373,11 +1535,21 @@ class Polytunnel:
         :param: input_data:
             The input data.
 
+        :param: meshgrid_resolution:
+            The resolution of the meshgrid.
+
+        :param: module_input_data:
+            The input data about the PV module.
+
         :returns: An instantiated :class:`Polytunnel` instance.
 
         """
 
         # Parse the curve information.
+        input_data[CURVE][AXIS_AZIMUTH] = radians(input_data[CURVE][AXIS_AZIMUTH])
+        input_data[CURVE][AXIS_TILT] = radians(input_data[CURVE][AXIS_TILT])
+
+        # Instantiate the curve.
         try:
             curve = TYPE_TO_CURVE_MAPPING[CurveType(input_data[CURVE].pop(CURVE_TYPE))](
                 **input_data[CURVE]
@@ -1406,12 +1578,10 @@ class Polytunnel:
         except KeyError:
             raise KeyError("Missing PV-module information.") from None
 
-        global MESHGRID_RESOLUTION
-
         return cls(
             curve,
             input_data[LENGTH],
-            MESHGRID_RESOLUTION,
+            meshgrid_resolution,
             input_data[NAME],
             pv_module,
             input_data[PV_MODULE_SPACING],
