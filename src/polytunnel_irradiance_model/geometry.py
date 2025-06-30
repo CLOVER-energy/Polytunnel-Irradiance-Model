@@ -896,7 +896,12 @@ class Curve(ABC):
 
         # Set a default radius for the un-distorted shape.
         radius: int = 1
-        area: int = length * np.pi * radius / meshgrid_resolution**2
+        area: int = (
+            (length / meshgrid_resolution)
+            * 2
+            * radius
+            * sin(pi / (2 * meshgrid_resolution))
+        )
 
         # Setup theta and z iterators.
         for theta in np.linspace(-np.pi / 2, np.pi / 2, meshgrid_resolution):
