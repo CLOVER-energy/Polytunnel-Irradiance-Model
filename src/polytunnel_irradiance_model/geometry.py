@@ -4,7 +4,7 @@ import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from math import acos, asin, cos, degrees, isnan, radians, pi, sin
-from typing import Any, TypeVar
+from typing import Any, AsyncGenerator, Iterable, Iterator, TypeVar
 
 import numpy as np
 
@@ -46,6 +46,508 @@ WIDTH: str = "width"
 
 class UndergroundCellError(Exception):
     """Raised when a PV cell is underground."""
+
+
+@dataclass
+class Point:
+    """
+    Represents a point.
+
+    .. attribute:: x:
+        The x value.
+
+    .. attribute:: y:
+        The y value.
+
+    .. attribute:: z:
+        The z value.
+
+    """
+
+    x: float
+    y: float
+    z: float
+
+
+# Type variable for Curve and children.
+_V = TypeVar(
+    "_V",
+    bound="Vector",
+)
+
+
+@dataclass
+class Vector:
+    """
+    Represents a vector.
+
+    .. attribute:: x:
+        The x value.
+
+    .. attribute:: y:
+        The y value.
+
+    .. attribute:: z:
+        The z value.
+
+    """
+
+    x: float
+    y: float
+    z: float
+
+    def __abs__(self) -> float:
+        """
+        Return the length of the vector.
+
+        :returns:
+            The length of the vector.
+
+        """
+
+        return self.x**2 + self.y**2 + self.z**2
+
+    def __get_item__(self, key) -> float:
+        """
+        Allow for indexing of the vector.
+
+        :param: key:
+            The key to use to index the vector.
+
+        :returns:
+            The value from the vector.
+
+        """
+
+        match key:
+            case 0:
+                return self.x
+            case 1:
+                return self.y
+            case 2:
+                return self.z
+            case _:
+                raise IndexError("Vector index out of range")
+
+    def __set_item__(self, key, value) -> None:
+        """
+        Allow for indexing of the vector.
+
+        :param: key:
+            The key to use to index the vector.
+
+        :returns:
+            The value from the vector.
+
+        """
+
+        match key:
+            case 0:
+                self.x = value
+            case 1:
+                self.y = value
+            case 2:
+                self.z = value
+            case _:
+                raise IndexError("Vector index out of range")
+
+    def __del_item__(self, *args) -> None:
+        """
+        Should not be utilised as non-Physical.
+
+        :raises:
+            :class:`NotImplementedError` when called.
+
+        """
+
+        raise NotImplementedError("Cannot delete element from vector.")
+
+    def __mul__(self, other: float | _V) -> float | _V:
+        """
+        Carry out scalar multiplication or dot product.
+
+        :param: other:
+            The scalar (`float`, or `int`) instance or vector to multiply with.
+
+        :returns: Either a vector a scalar depending on what's requested.
+
+        """
+
+        if isinstance(other, _V):
+            return self.x * other.x + self.y * other.y + self.z * other.z
+
+        try:
+            return Vector(self.x * other, self.y * other, self.z * other)
+        except TypeError:
+            raise TypeError("Cannot multiply vector by non-scalar or vector.") from None
+
+    def __div__(self, other: float) -> _V:
+        """
+        Carry out scalar division.
+
+        :param: other:
+            The scalar value to divide by.
+
+        :returns: The :class:`Vector` instance with all values rescaled.
+
+        """
+
+        try:
+            return Vector(self.x / other, self.y / other, self.z / other)
+        except TypeError:
+            raise TypeError("Cannot divide vector by non-scalar or vector.") from None
+
+    def __iter__(self) -> Iterable[float]:
+        """
+        Iterate over the values of the vector.
+
+        :returns:
+            An iterable instance.
+
+        """
+
+        return iter([self.x, self.y, self.z])
+
+    @property
+    def rows(self) -> list[float]:
+        """
+        Return the elements as a list.
+
+        :returns:
+            The elements as a list.
+
+        """
+
+        return list(self)
+
+    def normalise(self) -> _V:
+        """
+        Normalise the vector and return.
+
+        :returns:
+            The normalised vector.
+
+        """
+
+        self = self / abs(self)
+        return self
+
+
+# Type variable for Curve and children.
+_M = TypeVar(
+    "_M",
+    bound="Matrix",
+)
+
+
+@dataclass
+class Matrix:
+    """
+    Represents a matrix.
+
+    .. attribute:: array:
+        The matrix points.
+
+    """
+
+    _array: list[list[float]]
+    _transpose: list[list[float]] | None = None
+
+    def __post_init__(self) -> None:
+        """Carry out post-instantiation checks on the matrix."""
+
+        if len(row_lengths := {len(row for row in self._array)}) != 1:
+            raise Exception("Matrix instances need to have rows of equal length.")
+
+        if row_lengths[0] != 3:
+            raise Exception(
+                "Matrix should have rows of length 3 for use in 3D geometry."
+            )
+
+    @property
+    def transpose(self) -> _M:
+        """
+        Return the transpose of the matrix.
+
+        :returns:
+            The transpose of the matrix.
+
+        """
+
+        self._array = [
+            [row[column_number] for row in self.rows] for column_number in range(3)
+        ]
+        return self
+
+    @property
+    def columns(self) -> list[Vector]:
+        """
+        Return the columns contained within the matrix.
+
+        :returns:
+            The columns within the matrix.
+
+        """
+
+        return [
+            Vector(*[row[column_number] for row in self.rows])
+            for column_number in range(3)
+        ]
+
+    @property
+    def rows(self) -> list[Vector]:
+        """
+        Return the rows contained within the matrix.
+
+        :returns:
+            The rows within the matrix.
+
+        """
+
+        return [Vector(*row) for row in self._array]
+
+    def __matmul__(self, other: _M | Vector) -> _M | Vector:
+        """
+        Carry out matrix multiplication of the current matrix.
+
+        :param: other:
+            The :class:`Matrix` or :class:`Vector` instance to multiply with.
+
+        :return:
+            The result of the matrix multiplication.
+
+        """
+
+        # Check that matrix multiplication can be carried out.
+        if len(self.columns) != len(other.rows):
+            raise Exception("Matrix dimensions do not match.")
+
+        # If multiplying by a vector, simply return the new vector.
+        if isinstance(other, Vector):
+            return Vector(*[row * other for row in self.rows])
+
+        # Otherwise, carry out matrix multiplication.
+        new_rows: list[Vector] = []
+        for row in self.rows:
+            new_rows.append([row * column for column in other.columns])
+
+        return Matrix([list(row) for row in new_rows])
+
+
+class CartesianAxis(enum):
+    """
+    Denotes a Cartesian axis.
+
+    - X:
+        The x-axis.
+
+    - Y:
+        The y-axis.
+
+    - Z:
+        The z-axis.
+
+    """
+
+    X: str = "x"
+    Y: str = "y"
+    Z: str = "z"
+
+
+# Type variable for RotationMatrix and children.
+_RM = TypeVar(
+    "_RM",
+    bound="RotationMatrix",
+)
+
+
+@dataclass
+class RotationMatrix(Matrix):
+    """
+    Represents a rotation matrix.
+
+    .. attribute:: rotation_angle:
+        The angle, in radians, for the rotation.
+
+    .. attribute:: rotation_axis:
+        The axis (x, y, or z) about which the rotation occurs.
+
+    """
+
+    rotation_angle: float
+    rotation_axis: CartesianAxis
+
+    @classmethod
+    def from_rotation_angle_and_axis(
+        cls, rotation_angle: float, rotation_axis: CartesianAxis
+    ) -> _RM:
+        """
+        Instnatiate a rotation matrix based on the rotation angle and axis.
+
+        :param: rotation_angle:
+            The angle for the rotation, in radians.
+
+        :param: rotation_axis:
+            The axis around which the rotation occurs.
+
+        """
+
+        # Compute the rotation matrix based on the angle and axis.
+        match rotation_axis:
+            case CartesianAxis.X:
+                array: list[list[float]] = [
+                    [1, 0, 0],
+                    [
+                        0,
+                        cos(radians(rotation_angle)),
+                        -sin(radians(rotation_angle)),
+                    ],
+                    [
+                        0,
+                        sin(radians(rotation_angle)),
+                        cos(radians(rotation_angle)),
+                    ],
+                ]
+            case CartesianAxis.Y:
+                array: list[list[float]] = [
+                    [
+                        cos(radians(rotation_angle)),
+                        0,
+                        sin(radians(rotation_angle)),
+                    ],
+                    [0, 1, 0],
+                    [
+                        -sin(radians(rotation_angle)),
+                        0,
+                        cos(radians(rotation_angle)),
+                    ],
+                ]
+            case CartesianAxis.Z:
+                array: list[list[float]] = [
+                    [
+                        cos(radians(rotation_angle)),
+                        -sin(radians(rotation_angle)),
+                        0,
+                    ],
+                    [
+                        sin(radians(rotation_angle)),
+                        cos(radians(rotation_angle)),
+                        0,
+                    ],
+                    [0, 0, 1],
+                ]
+            case _:
+                raise Exception("Internal error, check rotation matrix instantiation.")
+
+        return cls(array, None, rotation_angle, rotation_axis)
+
+
+# Type variable for Meshpoint and children.
+_MP = TypeVar(
+    "_MP",
+    bound="MeshPoint",
+)
+
+
+@dataclass
+class MeshPoint(Point):
+    """
+    Represents a meshpoint.
+
+    .. attribute:: area:
+        The area of the mesh point.
+
+    """
+
+    # Private attributes:
+    #
+    # _corners:
+    #   The `list` of corners.
+    #
+    # _covered_area:
+    #   The area of the :class:`MeshPoint` instance that is covered with PV.
+    #
+    # _covered_fraction:
+    #   The fraction of the :class:`MeshPoint` instance which is covered with PV.
+    #
+    # _normal_vector:
+    #   The vector which is normal to the :class:`MeshPoint` instance.
+    #
+
+    area: float
+    _corners: list[Point]
+    _covered_area: float | None = None
+    _covered_fraction: float | None = None
+    _normal_vector: Vector | None = None
+
+    @classmethod
+    def from_cylindrical_coordinates(
+        cls, r: float, theta: float, axial_z: float, area: float
+    ) -> _MP:
+        """
+        Instantiate a meshpoint based on cylindrical coordinates aligned with its axis.
+
+        :param: r:
+            The radial coordinate.
+
+        :param: theta:
+            The angular coordinate.
+
+        :param: axial_z:
+            The axial coordinate.
+
+        :param: area:
+            The area of the point.
+
+        """
+
+        # Return re-mapped coordinates where y is along the axis and z vertical.
+        y = axial_z
+
+        # Compute x and z values.
+        x = r * cos(theta)
+        z = r * sin(theta)
+
+        # Instantiate and return.
+        return cls(x, y, z, area)
+
+    def __post_init__(self) -> None:
+        """Method run post instantiation of the point."""
+
+        # Compute the normal vector to the point.
+        self._normal_vector = Vector(self.x, self.y, self.z).normalise()
+
+        # Compute the corners of the point (given that the point starts as a square).
+
+    @property
+    def covered_area(self) -> float:
+        """
+        Return the covered area of the :class:`MeshPoint` instance.
+
+        :returns:
+            The area of the mesh point that is covered with PV.
+
+        """
+
+        if self._covered_area is None:
+            raise Exception("Covered area should be set before being called.")
+
+        return self._covered_area
+
+    @property
+    def covered_fraction(self) -> float:
+        """
+        Return, and compute, if necessary, the fraction of the mesh point covered.
+
+        :returns:
+            The fraction of the meshpoint covered with PV.
+
+        """
+
+        if self._covered_fraction is None:
+            self._covered_fraction = self.covered_area / self.area
+
+        return self._covered_fraction
 
 
 class CurveType(enum.Enum):
@@ -118,10 +620,83 @@ class Curve(ABC):
 
         super().__init_subclass__()
 
+    def _instantiate_mesh(
+        self, length: float, meshgrid_resolution: int
+    ) -> Iterator[MeshPoint]:
+        """
+        Generate a series of points around the curve, un-distorted.
+
+        A radius of 1 m is used as default, with the resolution specifying the number of
+        points along the polytunnel and around it.
+
+        :param: length:
+            The length of the polyertunnel.
+
+        :param: meshgrid_resolution:
+            The number of points to use in each direction.
+
+        :returns: A `list` of :class:`MeshPoint` instances.
+
+        """
+
+        # Set a default radius for the un-distorted shape.
+        radius: int = 1
+        area: int = length * np.pi * radius / meshgrid_resolution**2
+
+        # Setup theta and z iterators.
+        for theta in np.linspace(-np.pi / 2, np.pi / 2, meshgrid_resolution):
+            for z in np.linspace(0, length, meshgrid_resolution):
+                yield MeshPoint.from_cylindrical_coordinates(radius, theta, z, area)
+
     @abstractmethod
-    def get_angles_from_surface_displacement(
-        self, displacement: float
-    ) -> tuple[float, float]:
+    def _stretch_mesh(self, meshgrid: list[MeshPoint]) -> list[MeshPoint]:
+        """
+        Stretch/distort the meshgrid to match the geometry of the curve.
+
+        :param: meshgrid:
+            The meshgrid, as a `list` of :class:`MeshPoint` instances, to stretch.
+
+        :returns: The distorted `list` of :class:`MeshPoint` instances.
+
+        """
+
+        raise NotImplementedError(
+            "Cannot call `_stretch_mesh` method on abstract curve."
+        )
+
+    def generate_mesh(self, length: float, meshgrid_resolution: int) -> list[MeshPoint]:
+        """
+        Generate the mesh for the curve.
+
+        Generation of the mesh will depend on the exact curve shape which is implemented
+        and so is here listed as an abstract method.
+
+        The process, in general, will consist of:
+        1. Generating an equally-spaced grid of mesh points on the surface of the curve;
+        2. Distorting these points, where appropriate, based on the geometry of the
+           curve;
+        3. Computing the overal of the PV modules with the mesh points;
+        4. Rotating all mesh points and normal vectors.
+
+        """
+
+        # Generate an equally-spaced, un-distorted mesh.
+        meshgrid = list(self._instantiate_mesh(length, meshgrid_resolution))
+
+        # Stretch the meshgrid.
+        meshgrid = self._stretch_mesh(meshgrid)
+
+        # Compute the overlap of the mesh with the PV modules.
+        meshgrid = self._mesh_overlap(meshgrid, pv_module)
+
+        # Rotate all meshpoints
+        return self._rotate_mesh(meshgrid)
+
+    # FIXME
+    @abstractmethod
+    def calculate_rotated_mesh_point(
+        self, displacement: float | list[float]
+    ) -> list[tuple[float, float]]:
         """
         Abstract method that must be implemented in subclasses.
         Calculate the azimuth and zenith angles at a point along the curve.
@@ -159,19 +734,9 @@ class Curve(ABC):
         """
 
         if self._azimuth_rotation_matrix is None:
-            self._azimuth_rotation_matrix = [
-                [
-                    cos(radians(self.zenith_rotation_angle)),
-                    -sin(radians(self.zenith_rotation_angle)),
-                    0,
-                ],
-                [
-                    sin(radians(self.zenith_rotation_angle)),
-                    cos(radians(self.zenith_rotation_angle)),
-                    0,
-                ],
-                [0, 0, 1],
-            ]
+            self._azimuth_rotation_matrix = RotationMatrix.from_rotation_angle_and_axis(
+                radians(self.zenith_rotation_angle), CartesianAxis.Z
+            )
 
         return self._azimuth_rotation_matrix
 
@@ -198,21 +763,30 @@ class Curve(ABC):
         """
 
         if self._tilt_rotation_matrix is None:
-            self._tilt_rotation_matrix = [
-                [1, 0, 0],
-                [
-                    0,
-                    cos(radians(self.tilt_rotation_angle)),
-                    -sin(radians(self.tilt_rotation_angle)),
-                ],
-                [
-                    0,
-                    sin(radians(self.tilt_rotation_angle)),
-                    cos(radians(self.tilt_rotation_angle)),
-                ],
-            ]
+            self._tilt_rotation_matrix = RotationMatrix.from_rotation_angle_and_axis(
+                radians(self.tilt_rotation_angle), CartesianAxis.X
+            )
 
         return self._tilt_rotation_matrix
+
+    def _calculate_rotated_vector(self, un_rotated_normal: list[float]) -> np.ndarray:
+        """
+        Rotate the vector based on the orientation of the curve/Polytunnel.
+
+        :param: **un_rotated_normal:**
+            The surface or position vector in the un-rotated frame.
+
+        :returns: A :class:`MeshPoint` instance.
+
+        """
+
+        # Rotate this normal vector based on the tilt and azimuth of the polytunnel.
+        rotated_normal = np.matmul(
+            self.azimuth_rotation_matrix,
+            np.matmul(self.tilt_rotation_matrix, un_rotated_normal),
+        )
+
+        return rotated_normal
 
     def _get_rotated_angles_from_surface_normal(
         self, un_rotated_normal: list[float]
@@ -230,11 +804,7 @@ class Curve(ABC):
 
         """
 
-        # Rotate this normal vector based on the tilt and azimuth of the polytunnel.
-        rotated_normal = np.matmul(
-            self.azimuth_rotation_matrix,
-            np.matmul(self.tilt_rotation_matrix, un_rotated_normal),
-        )
+        rotated_normal = self._calculate_rotated_vector(un_rotated_normal)
 
         # Compute the new azimuth and tilt angles based on these rotations.
         # The tilt angle is simply the z component of the vector.
@@ -291,31 +861,47 @@ class CircularCurve(Curve, curve_type=CurveType.CIRCULAR):
 
     radius_of_curvature: float
 
-    def get_angles_from_surface_displacement(
-        self, displacement: float
-    ) -> tuple[float, float]:
-        """
-        Calculate the azimuth and zenith angles at a point along the curve.
+    # def get_angles_from_surface_displacement(
+    #     self, displacement_list: float | list[float]
+    # ) -> list[tuple[float, float]]:
+    #     """
+    #     Calculate the azimuth and zenith angles at point(s) along the curve.
 
-        :param: **displacement:**
-            The distance from the central axis.
+    #     :param: **displacement_list:**
+    #         The distance from the central axis.
 
-        :returns:
-            - A tuple, (azimuth, tilt), with angles in degrees.
+    #     :returns:
+    #         - A tuple, (azimuth, tilt), with angles in degrees.
 
-        """
+    #     """
 
-        # Compute the zenith angle in radians based on the distance from the axis.
-        zenith_angle: float = displacement / self.radius_of_curvature
+    #     def _angle_from_displacement_value(displacement: float) -> tuple[float, float]:
+    #         """
+    #         Calculate the angles, theta and phi, for a single displacement.
 
-        # Don't both calculating if the displacement is zero
-        if displacement == 0:
-            return (180, self.axis_tilt)
+    #         :param: displacement:
+    #             The displacement along the curve.
 
-        # Compute the components of a unit normal vector with this zenith angle.
-        un_rotated_normal: list[float] = [sin(zenith_angle), 0, cos(zenith_angle)]
+    #         :returns: Theta and phi angles for a single displacement value.
 
-        return self._get_rotated_angles_from_surface_normal(un_rotated_normal)
+    #         """
+
+    #         # Compute the zenith angle in radians based on the distance from the axis.
+    #         zenith_angle: float = displacement / self.radius_of_curvature
+
+    #         # Don't both calculating if the displacement is zero
+    #         if displacement == 0:
+    #             return (180, self.axis_tilt)
+
+    #         # Compute the components of a unit normal vector with this zenith angle.
+    #         un_rotated_normal: list[float] = [sin(zenith_angle), 0, cos(zenith_angle)]
+
+    #         return self._calculate_rotated_vector(un_rotated_normal)
+
+    #     if isinstance(displacement_list, float):
+    #         return [_angle_from_displacement_value(displacement_list)]
+
+    #     return [_angle_from_displacement_value(displacement) for displacement in displacement_list]
 
 
 @dataclass(kw_only=True)
@@ -333,32 +919,6 @@ class ElipticalCurve(Curve, curve_type=CurveType.ELIPTICAL):
 
     semi_major_axis: float
     semi_minor_axis: float
-
-    def get_angles_from_surface_displacement(
-        self, displacement: float
-    ) -> tuple[float, float]:
-        """
-        Calculate the azimuth and zenith angles at a point along the curve.
-
-        :param: **displacement:**
-            The distance from the central axis.
-
-        :returns:
-            - A tuple, (azimuth, tilt), with angles in degrees.
-
-        """
-
-        # Compute the zenith angle in radians based on the distance from the axis.
-        zenith_angle: float = displacement / self.radius_of_curvature
-
-        # Don't both calculating if the displacement is zero
-        if displacement == 0:
-            return (180, self.axis_tilt)
-
-        # Compute the components of a unit normal vector with this zenith angle.
-        un_rotated_normal: list[float] = [sin(zenith_angle), 0, cos(zenith_angle)]
-
-        return self._get_rotated_angles_from_surface_normal(un_rotated_normal)
 
 
 class ModuleType(enum.Enum):
@@ -471,11 +1031,14 @@ class Polytunnel:
     .. attribute:: length:
         The length of the polytunnel.
 
-    .. attribute:: name:
-        The name of the polytunnel instance.
+    .. attribute:: mesh:
+        The mesh of :class:`MeshPoint` instances.
 
     .. attribute:: meshgrid_resolution:
         The resolution of meshgrid, in meters.
+
+    .. attribute:: name:
+        The name of the polytunnel instance.
 
     .. attribute:: pv_module:
         The pv module on the polytunnel.
@@ -489,7 +1052,7 @@ class Polytunnel:
         self,
         curve: Curve,
         length: float,
-        meshgrid_resolution: float,
+        meshgrid_resolution: int,
         name: str,
         pv_module: PVModule,
         width: float,
@@ -514,6 +1077,9 @@ class Polytunnel:
 
         self.length_wise_mesh_resolution = int(self.length / self.meshgrid_resolution)
         # FIXME: self.n_angular = int(self.width / self.meshgrid_resolution)
+
+        # Generate and store the mesh on the instance of the polytunnel.
+        self.mesh: list[MeshPoint] = self.curve.generate_mesh(meshgrid_resolution)
 
     @classmethod
     def from_data(
@@ -869,33 +1435,34 @@ class Polytunnel:
 
         return normals_unit, normals_magnitude
 
-    def surface_element_unit_vectors(self):
+    # def surface_element_unit_vectors(self):
 
-        X = self.generate_surface()[0][0]
-        Y = self.generate_surface()[0][1]
-        Z = self.generate_surface()[0][2]
+    #     X = self.generate_surface()[0][0]
+    #     Y = self.generate_surface()[0][1]
+    #     Z = self.generate_surface()[0][2]
 
-        dx = np.gradient(X, axis=0)
-        dy = np.gradient(Y, axis=0)
-        dz = np.gradient(Z, axis=0)
+    #     dx = np.gradient(X, axis=0)
+    #     dy = np.gradient(Y, axis=0)
+    #     dz = np.gradient(Z, axis=0)
 
-        # Compute normal vectors using the cross product of the gradients
-        normals = np.cross(
-            np.array(
-                [np.gradient(X, axis=1), np.gradient(Y, axis=1), np.gradient(Z, axis=1)]
-            ),
-            np.array([dx, dy, dz]),
-            axis=0,
-        )
+    #     # Compute normal vectors using the cross product of the gradients
+    #     normals = np.cross(
+    #         np.array(        normals = np.cross(
+    #         np.array(
+    #             [np.gradient(X, axis=1), np.gradient(Y, axis=1), np.gradient(Z, axis=1)]
+    #         ),
+    #         np.array([dx, dy, dz]),
+    #         axis=0,
+    #     )
 
-        # Normalize the normal vectors
-        normals_magnitude = np.linalg.norm(normals, axis=0)
-        normals_unit = normals / normals_magnitude
+    #     # Normalize the normal vectors
+    #     normals_magnitude = np.linalg.norm(normals, axis=0)
+    #     normals_unit = normals / normals_magnitude
 
-        return normals_unit, normals_magnitude
+    #     return normals_unit, normals_magnitude
 
-    def surface_tilt(self, normals):
+    # def surface_tilt(self, normals):
 
-        tilt = np.arccos(normals[:][2])
+    #     tilt = np.arccos(normals[:][2])
 
-        return tilt
+    #     return tilt

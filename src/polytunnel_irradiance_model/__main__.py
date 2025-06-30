@@ -172,9 +172,10 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
 
     parser.add_argument(
         "--meshgrid-resolution",
-        type=float,
-        default=1.0,
-        help="The resolution of the mesh grid; default of 1 m.",
+        type=int,
+        default=10,
+        help="The resolution of the mesh grid in terms of the number of points along "
+        "each dimension of the polytunnel to use; default of 10.",
     )
 
     return parser.parse_args(args)
@@ -255,14 +256,15 @@ def main(args: list[Any]) -> None:
     ):
         os.makedirs(output_figures_dir)
 
-    import pdb
-
-    pdb.set_trace()
-
     code_print("Geometry calculation")
     try:
         with time_execution() as geometry_timer:
             polytunnel = Polytunnel.from_data(polytunnel_data, pv_module_inputs)
+
+            import pdb
+
+            pdb.set_trace()
+
             tunnel = ElipticalPolytunnel(
                 length=length,
                 tilt=tilt,
