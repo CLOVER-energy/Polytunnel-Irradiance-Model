@@ -253,7 +253,8 @@ def main(args: list[Any]) -> None:
     ):
         os.makedirs(output_figures_dir)
 
-    code_print("Geometry calculation")
+    # Carry out the Polytunnel geometry instantiation calculation.
+    code_print("Polytunnel geometry calculation")
     try:
         with time_execution() as geometry_timer:
             polytunnel = Polytunnel.from_data(
@@ -264,7 +265,54 @@ def main(args: list[Any]) -> None:
         raise
     else:
         print(DONE)
-        print(f"Geometry calculation: {geometry_timer()} seconds")
+        print(f"Polytunnel geometry calculation: {geometry_timer()} seconds")
+
+    # Compute the direct and diffuse irradiance on each component of the grid
+    sun = Sun()
+    code_print("Direct surface calculation")
+    try:
+        with time_execution() as direct_surface_timer:
+            pass
+    except Exception:
+        print(FAILED)
+        raise
+    else:
+        print(DONE)
+        print(f"Direct surface calculation: {direct_surface_timer()} seconds")
+
+    code_print("Diffuse surface calculation")
+    try:
+        with time_execution() as diffuse_ground_timer:
+            pass
+    except Exception:
+        print(FAILED)
+        raise
+    else:
+        print(DONE)
+        print(f"Diffuse surface calculation: {diffuse_ground_timer()} seconds")
+
+    # Compute the on-the-ground irradiance
+    code_print("Direct on-the-ground calculation")
+    try:
+        with time_execution() as direct_ground_timer:
+            pass
+    except Exception:
+        print(FAILED)
+        raise
+    else:
+        print(DONE)
+        print(f"Direct surface calculation: {direct_ground_timer()} seconds")
+
+    code_print("Diffuse on-the-ground calculation")
+    try:
+        with time_execution() as diffuse_ground_timer:
+            pass
+    except Exception:
+        print(FAILED)
+        raise
+    else:
+        print(DONE)
+        print(f"Diffuse on-the-ground calculation: {diffuse_ground_timer()} seconds")
 
     import pdb
 

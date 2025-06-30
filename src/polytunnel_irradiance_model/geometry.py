@@ -1,10 +1,24 @@
+########################################################################################
+# geometry.py --- Geomtry module for the Polytunnel-Irradiance Module.                 #
+#                                                                                      #
+# Author(s): Taylor Pomfret, Emilio Nunez-Andrade, Benedict Winchester                 #
+# Date created: Summer 2024/25                                                         #
+#                                                                                      #
+########################################################################################
+
+"""
+Polytunnel Irradiance Model: `geometry.py`
+
+This module contains all geometry information to define the system.
+
+"""
+
 import enum
-import warnings
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from math import acos, asin, atan, cos, degrees, isnan, radians, pi, sin
-from typing import Any, AsyncGenerator, Iterable, Iterator, TypeVar
+from math import atan, cos, radians, pi, sin
+from typing import Any, Iterable, Iterator, TypeVar
 
 import numpy as np
 
