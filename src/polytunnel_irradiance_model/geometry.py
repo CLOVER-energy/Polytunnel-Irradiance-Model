@@ -161,7 +161,7 @@ class Vector:
 
         """
 
-        if isinstance(other, _V):
+        if isinstance(other, type(self)):
             return self.x * other.x + self.y * other.y + self.z * other.z
 
         try:
@@ -396,6 +396,12 @@ class Matrix:
                 "Matrix should have rows of length 3 for use in 3D geometry."
             )
 
+        # Compute and save the transpose of the Matrix elements.
+        self._transpose = [
+            [row[column_index] for row in self._array]
+            for column_index in range(len(self._array))
+        ]
+
     @property
     def transpose(self) -> _M:
         """
@@ -473,7 +479,7 @@ class Matrix:
         for row in self.rows:
             new_rows.append([row * column for column in other.columns])
 
-        return Matrix([list(row) for row in new_rows])
+        return Matrix([list(row) for row in new_rows], None)
 
 
 # Type variable for RotationMatrix and children.
