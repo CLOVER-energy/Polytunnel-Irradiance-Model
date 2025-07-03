@@ -1044,7 +1044,7 @@ class Curve(ABC):
         super().__init_subclass__()
 
     def _instantiate_mesh(
-        self, length: float, meshgrid_resolution: int
+        self, length: float, meshgrid_resolution: int, width: float
     ) -> Iterator[MeshPoint]:
         """
         Generate a series of points around the curve, un-distorted.
@@ -1058,13 +1058,21 @@ class Curve(ABC):
         :param: meshgrid_resolution:
             The number of points to use in each direction.
 
+        :param: width:
+            The width of the curve; _i.e._, the measurement across the chord which goes
+            between the two end points of the curve.
+
         :returns: A `list` of :class:`MeshPoint` instances.
 
         """
 
         # Set a default radius for the un-distorted shape.
         radius: int = 1
-        width = 2 * radius * sin(pi / (2 * meshgrid_resolution))
+
+        # Determine the maximum angular limits of the curve based on the chord width.
+
+        # Determine the width of a single meshpoint.
+        meshpoint_width = 2 * radius * sin(pi / (2 * meshgrid_resolution))
 
         # Setup theta and z iterators.
         for theta in np.linspace(
@@ -1074,7 +1082,7 @@ class Curve(ABC):
         ):
             for z in np.linspace(0, length, meshgrid_resolution):
                 yield MeshPoint.from_cylindrical_coordinates(
-                    radius, theta, z, length / meshgrid_resolution, width
+                    radius, theta, z, length / meshgrid_resolution, meshpoint_width
                 )
 
     def _mesh_overlap(
