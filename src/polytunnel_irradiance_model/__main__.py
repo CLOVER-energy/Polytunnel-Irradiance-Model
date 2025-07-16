@@ -230,7 +230,9 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
 
 
 @contextmanager
-def time_execution() -> Generator[Callable[[], float], Any, None]:
+def time_execution(
+    this_code_block_name: str,
+) -> Generator[Callable[[], float], Any, None]:
     """
     Times a period of code execution.
 
@@ -239,6 +241,7 @@ def time_execution() -> Generator[Callable[[], float], Any, None]:
 
     """
 
+    code_print(this_code_block_name)
     start_time: float = time.perf_counter()
     end_time: float | None = None
 
@@ -248,6 +251,12 @@ def time_execution() -> Generator[Callable[[], float], Any, None]:
             if end_time is not None
             else time.perf_counter() - start_time
         )
+    except Exception:
+        print(FAILED)
+        raise
+    else:
+        print(DONE)
+        print(f"{this_code_block_name}: {time.perf_counter() - start_time} seconds")
     finally:
         end_time = time.perf_counter()
 
@@ -305,98 +314,61 @@ def main(args: list[Any]) -> None:
         os.makedirs(output_figures_dir)
 
     # Carry out the Polytunnel geometry instantiation calculation.
-    code_print("Polytunnel geometry calculation")
-    try:
-        with time_execution() as geometry_timer:
-            polytunnel = Polytunnel.from_data(
-                polytunnel_data, parsed_args.meshgrid_resolution, pv_module_inputs
-            )
-    except Exception:
-        print(FAILED)
-        raise
-    else:
-        print(DONE)
-        print(f"Polytunnel geometry calculation: {geometry_timer()} seconds")
+    with time_execution("Polytunnel geometry calculation") as geometry_timer:
+        polytunnel = Polytunnel.from_data(
+            polytunnel_data, parsed_args.meshgrid_resolution, pv_module_inputs
+        )
 
     # Compute the position of the sun at each time within the simulation.
     location = Location(
         parsed_args.altitude, parsed_args.latitude, parsed_args.longitude
     )
-    code_print(this_code_block_name := "Solar position calculation")
-    try:
-        with time_execution() as solar_position_timer:
-            solar_positions = [
-                calculate_solar_position(
-                    location.latitude,
-                    location.longitude,
-                    list(
-                        _yield_time(
-                            simulation_datetime,
-                            simulation_end_datetime,
-                            datetime.timedelta(
-                                minutes=parsed_args.modelling_temporal_resolution
-                            ),
-                        )
-                    ),
-                    altitude=location.altitude,
-                )
-            ]
-    except Exception:
-        print(FAILED)
-        raise
-    else:
-        print(DONE)
-        print(f"{this_code_block_name}: {solar_position_timer()} seconds")
 
-    import pdb
-
-    pdb.set_trace()
+    with time_execution("Solar position calculation") as this_timer:
+        solar_positions = [
+            calculate_solar_position(
+                location.latitude,
+                location.longitude,
+                list(
+                    _yield_time(
+                        simulation_datetime,
+                        simulation_end_datetime,
+                        datetime.timedelta(
+                            minutes=parsed_args.modelling_temporal_resolution
+                        ),
+                    )
+                ),
+                altitude=location.altitude,
+            )
+        ]
 
     # Compute the direct and diffuse irradiance on each component of the grid
-    code_print("Direct surface calculation")
-    try:
-        with time_execution() as direct_surface_timer:
-            pass
-    except Exception:
-        print(FAILED)
-        raise
-    else:
-        print(DONE)
-        print(f"Direct surface calculation: {direct_surface_timer()} seconds")
+    with time_execution("Direct surface calculation") as direct_surface_timer:
+        pass
 
-    code_print("Diffuse surface calculation")
-    try:
-        with time_execution() as diffuse_ground_timer:
-            pass
-    except Exception:
-        print(FAILED)
-        raise
-    else:
-        print(DONE)
-        print(f"Diffuse surface calculation: {diffuse_ground_timer()} seconds")
+    with time_execution("Diffuse surface calculation") as diffuse_ground_timer:
+        pass
 
     # Compute the on-the-ground irradiance
-    code_print("Direct on-the-ground calculation")
-    try:
-        with time_execution() as direct_ground_timer:
-            pass
-    except Exception:
-        print(FAILED)
-        raise
-    else:
-        print(DONE)
-        print(f"Direct surface calculation: {direct_ground_timer()} seconds")
+    with time_execution("Direct on-the-ground calculation") as direct_ground_timer:
+        pass
 
-    code_print("Diffuse on-the-ground calculation")
-    try:
-        with time_execution() as diffuse_ground_timer:
-            pass
-    except Exception:
-        print(FAILED)
-        raise
-    else:
-        print(DONE)
-        print(f"Diffuse on-the-ground calculation: {diffuse_ground_timer()} seconds")
+    with time_execution("Diffuse on-the-ground calculation") as diffuse_ground_timer:
+        pass
+
+    # * Compute the clearsky irradiance at the location, using the solar spectrum for a
+    # clearsky day.
+    #
+    # * Determine the intercept lines with neighbouring polytunnels.
+    #
+    # * Determine whether any of the modules are shaded by neighbouring polytunnels,
+    # either in terms of the direct or diffuse contributions of light that they receive.
+    #
+    # * Calculate the amount of polytunnel surface sunlight which will reach the ground,
+    # both as diffuse and direct components.
+    #
+    # * Scale this map by the map of irradiance on the surface, OR, do this step first.
+    #
 
     import pdb
 
