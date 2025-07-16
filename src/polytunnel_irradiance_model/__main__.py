@@ -21,6 +21,7 @@ import sys
 import time
 
 from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import Any, Callable, Generator
 
 # import matplotlib.pyplot as plt
@@ -31,7 +32,7 @@ import yaml
 from src.polytunnel_irradiance_model.__utils__ import *
 from src.polytunnel_irradiance_model.functions import *
 from src.polytunnel_irradiance_model.polytunnel import Polytunnel
-from src.polytunnel_irradiance_model.sun import Sun
+from src.polytunnel_irradiance_model.sun import calculate_solar_position
 from src.polytunnel_irradiance_model.irradiance import TunnelIrradiance
 from src.polytunnel_irradiance_model.tracing import Tracing
 import src.polytunnel_irradiance_model.visualisation as viz
@@ -59,6 +60,27 @@ FAILED: str = "[ FAILED ]"
 MODULES: str = "modules"
 
 
+@dataclass
+class Location:
+    """
+    Represents the location being modelled.
+
+    .. attribute:: altitude:
+        The altitude of the location.
+
+    .. attribute:: latitude:
+        The latitude of the location.
+
+    .. attribute:: longitude:
+        The longitude of the location.
+
+    """
+
+    altitude: float
+    latitude: float
+    longitude: float
+
+
 def code_print(string_to_print: str) -> None:
     """
     Print a line with dots.
@@ -73,6 +95,25 @@ def code_print(string_to_print: str) -> None:
 
 def compute_surface_grid():
     """Returns the surface grid"""
+
+
+def _yield_time(
+    start_time: datetime.datetime,
+    end_time: datetime.datetime,
+    timestep: datetime.timedelta,
+) -> Generator[datetime.datetime, Any, None]:
+    """
+    Yield times within the simulation.
+
+    :yields:
+        Times within the range specified.
+
+    """
+
+    this_time = start_time
+    while end_time > this_time:
+        this_time += timestep
+        yield this_time
 
 
 def parse_args(args: list[Any]) -> argparse.Namespace:
@@ -122,6 +163,13 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
         type=float,
         default=0.2757,
         help="The longitude of the location for which weather data should be used.",
+    )
+    simulation_arguments.add_argument(
+        "--altitude",
+        "-alt",
+        type=float,
+        default=0,
+        help="The altitude of the location for which weather data should be used.",
     )
     simulation_arguments.add_argument(
         "--modelling-temporal-resolution",
@@ -245,6 +293,9 @@ def main(args: list[Any]) -> None:
     simulation_datetime = datetime.datetime.strptime(
         parsed_args.start_time, "%Y-%m-%dT%H:%M:%SZ"
     )
+    simulation_end_datetime = datetime.datetime.strptime(
+        parsed_args.end_time, "%Y-%m-%dT%H:%M:%SZ"
+    )
 
     if not os.path.isdir(
         output_figures_dir := os.path.join(
@@ -267,8 +318,41 @@ def main(args: list[Any]) -> None:
         print(DONE)
         print(f"Polytunnel geometry calculation: {geometry_timer()} seconds")
 
+    # Compute the position of the sun at each time within the simulation.
+    location = Location(
+        parsed_args.altitude, parsed_args.latitude, parsed_args.longitude
+    )
+    code_print(this_code_block_name := "Solar position calculation")
+    try:
+        with time_execution() as solar_position_timer:
+            solar_positions = [
+                calculate_solar_position(
+                    location.latitude,
+                    location.longitude,
+                    list(
+                        _yield_time(
+                            simulation_datetime,
+                            simulation_end_datetime,
+                            datetime.timedelta(
+                                minutes=parsed_args.modelling_temporal_resolution
+                            ),
+                        )
+                    ),
+                    altitude=location.altitude,
+                )
+            ]
+    except Exception:
+        print(FAILED)
+        raise
+    else:
+        print(DONE)
+        print(f"{this_code_block_name}: {solar_position_timer()} seconds")
+
+    import pdb
+
+    pdb.set_trace()
+
     # Compute the direct and diffuse irradiance on each component of the grid
-    sun = Sun()
     code_print("Direct surface calculation")
     try:
         with time_execution() as direct_surface_timer:

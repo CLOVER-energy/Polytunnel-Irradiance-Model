@@ -13,15 +13,96 @@ This module contains information used for solar position and irradiance calculat
 
 """
 
+import datetime
+
+from dataclasses import dataclass
+
 import pandas as pd
 import numpy as np
 import pvlib
+
 from pvlib import spectrum, solarposition, irradiance, atmosphere, location
-
-
-import matplotlib.pyplot as plt
-from datetime import datetime, timedelta
 from scipy.integrate import trapezoid
+
+
+__all__ = ("SolarPosition",)
+
+# APPARENT_ELEVATION:
+#   Keyword for parsing information returned from pvlib about the apparent elevation of
+# the sun.
+APPARENT_ELEVATION: str = "apparent_elevation"
+
+# APPARENT_ELEVATION:
+#   Keyword for parsing information returned from pvlib about the azimuthal position of
+# the sun.
+AZIMUTH: str = "azimuth"
+
+
+@dataclass
+class SolarPosition:
+    """
+    Contains information about the position of the sun at a given time.
+
+    .. attribute:: azimuthal_angle:
+        The azimuthal position of the sun.
+
+    .. attribute:: elevation:
+        The elevation of the sun above the horizon.
+
+    """
+
+    azimuthal_angle: float
+    elevation: float
+
+
+def calculate_solar_position(
+    latitude: float,
+    longitude: float,
+    time: datetime.datetime | list[datetime.datetime] | pd.DatetimeIndex,
+    *,
+    altitude: float = 0,
+) -> list[SolarPosition]:
+    """
+    Calculate the solar position based on the time.
+
+    :param: latitude:
+        The latitude of the location.
+
+    :param: longitude:
+        The longitude of the location.
+
+    :param: time:
+        The time.
+
+    :param: altitude:
+        The altitude above the ground.
+
+    :returns:
+        The position of the sun, as a :class:`SolarPosition` instance.
+
+    """
+
+    # Sanitise the time
+    if not isinstance(time, pd.DatetimeIndex):
+        if isinstance(time, list):
+            time = pd.DatetimeIndex(time)
+        else:
+            time = pd.DatetimeIndex(
+                [
+                    time,
+                ]
+            )
+
+    # Compute the solar positions
+    solar_position = pvlib.solarposition.get_solarposition(
+        time, latitude, longitude, altitude
+    )
+
+    # Return the results of the calculation
+    return [
+        SolarPosition(entry[AZIMUTH], entry[APPARENT_ELEVATION])
+        for _, entry in solar_position.iterrows()
+    ]
 
 
 class Sun:
