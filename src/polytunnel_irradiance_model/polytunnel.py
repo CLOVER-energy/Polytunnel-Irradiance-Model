@@ -17,7 +17,7 @@ import enum
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from math import atan, cos, radians, pi, sin
+from math import asin, atan, cos, radians, pi, sin
 from typing import Any, Iterable, Iterator, TypeVar
 
 import numpy as np
@@ -1026,7 +1026,9 @@ class Curve(ABC):
     axis_azimuth: float = 180
     axis_tilt: float = 0
     name: str = ""
+    width: float | None = None
     _azimuth_rotation_matrix: list[list[float]] | None = None
+    _maximum_arc_length: float | None = None
     _tilt_rotation_matrix: list[list[float]] | None = None
 
     def __init_subclass__(cls, curve_type: CurveType) -> None:
@@ -1044,7 +1046,7 @@ class Curve(ABC):
         super().__init_subclass__()
 
     def _instantiate_mesh(
-        self, length: float, meshgrid_resolution: int, width: float
+        self, length: float, meshgrid_resolution: int
     ) -> Iterator[MeshPoint]:
         """
         Generate a series of points around the curve, un-distorted.
@@ -1058,10 +1060,6 @@ class Curve(ABC):
         :param: meshgrid_resolution:
             The number of points to use in each direction.
 
-        :param: width:
-            The width of the curve; _i.e._, the measurement across the chord which goes
-            between the two end points of the curve.
-
         :returns: A `list` of :class:`MeshPoint` instances.
 
         """
@@ -1069,15 +1067,15 @@ class Curve(ABC):
         # Set a default radius for the un-distorted shape.
         radius: int = 1
 
-        # Determine the maximum angular limits of the curve based on the chord width.
-
-        # Determine the width of a single meshpoint.
-        meshpoint_width = 2 * radius * sin(pi / (2 * meshgrid_resolution))
+        # Determine the radial distance transcribed by a single meshpoint.
+        # This value will be the angule transcribed, in radians, multiplied by the
+        # radius of curvature of the curve.
+        meshpoint_width = radius * self.maximum_arc_length / (meshgrid_resolution / 2)
 
         # Setup theta and z iterators.
         for theta in np.linspace(
-            -(np.pi / 2 - (angular_size := pi / meshgrid_resolution)),
-            np.pi / 2 - angular_size,
+            -(self.maximum_arc_length - (angular_size := pi / meshgrid_resolution)),
+            self.maximum_arc_length - angular_size,
             meshgrid_resolution,
         ):
             for z in np.linspace(0, length, meshgrid_resolution):
@@ -1136,6 +1134,19 @@ class Curve(ABC):
         """
 
         return [self._calculate_rotated_vector(meshpoint) for meshpoint in meshgrid]
+
+    @property
+    @abstractmethod
+    def maximum_arc_length(self) -> float:
+        """
+        The maximum arc length of the curve, measured in radians.
+
+        :returns:
+            The maximum arc length of the curve, measured in radians.
+
+        """
+
+        raise NotImplementedError("Method should be implemented in child classes.")
 
     def generate_mesh(
         self,
@@ -1335,6 +1346,34 @@ class CircularCurve(Curve, curve_type=CurveType.CIRCULAR):
 
     radius_of_curvature: float
 
+    @property
+    def maximum_arc_length(self) -> float:
+        """
+        The maximum arc length of the curve, measured in radians.
+
+        :returns:
+            The maximum arc length of the curve, measured in radians.
+
+        """
+
+        if self._maximum_arc_length is None:
+            # Determine the maximum angular limits of the curve based on the chord width.
+            try:
+                theta_max = asin(
+                    (width_to_diameter := self.width / (2 * self.radius_of_curvature))
+                )
+            except ValueError:
+                if width_to_diameter > 1:
+                    raise ValueError(
+                        "Width of the polytunnel must not be greater than its diameter."
+                    ) from None
+                else:
+                    raise
+
+            self._maximum_arc_length = theta_max
+
+        return self._maximum_arc_length
+
     def _stretch_mesh(self, meshgrid: list[MeshPoint]) -> list[MeshPoint]:
         """
         Stretch/distort the meshgrid to match the geometry of the curve.
@@ -1476,9 +1515,6 @@ class Polytunnel:
         The mesh of :class:`MeshPoint` instances representing the surface of the
         :class:`Polytunnel` instance.
 
-    .. attribute:: width:
-        The width of the polytunnel at the point being considered, in meters.
-
     """
 
     def __init__(
@@ -1489,7 +1525,6 @@ class Polytunnel:
         name: str,
         pv_module: PVModule,
         pv_module_spacing: float,
-        width: float,
     ):
         """
         Instantiate a Polytunnel instance.
@@ -1508,13 +1543,26 @@ class Polytunnel:
         self.name = name
         self.pv_module = pv_module
         self.pv_module_spacing = pv_module_spacing
-        self.width = width
 
         # Generate and store the meshes on the instance of the polytunnel.
         self.ground_mesh: list[MeshPoint] = self.generate_ground_mesh()
         self.surface_mesh: list[MeshPoint] = self.curve.generate_mesh(
             self.length, meshgrid_resolution, self.pv_module, self.pv_module_spacing
         )
+
+    @property
+    def width(self) -> float:
+        """
+        The width of the polytunnel.
+
+        This value is the same as the width of the curve.
+
+        :returns:
+            The width of the polytunnel.
+
+        """
+
+        return self.curve.width
 
     def generate_ground_mesh(self) -> list[MeshPoint]:
         """
@@ -1607,7 +1655,6 @@ class Polytunnel:
             input_data[NAME],
             pv_module,
             input_data[PV_MODULE_SPACING],
-            input_data[WIDTH],
         )
 
     # class ElipticalPolytunnel(PolytunnelShape.ELIPTICAL):
