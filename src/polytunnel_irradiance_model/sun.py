@@ -16,6 +16,8 @@ This module contains information used for solar position and irradiance calculat
 import datetime
 
 from dataclasses import dataclass
+from math import cos, pi, radians, sin
+from typing import TypeVar
 
 import pandas as pd
 import numpy as np
@@ -23,6 +25,8 @@ import pvlib
 
 from pvlib import spectrum, solarposition, irradiance, atmosphere, location
 from scipy.integrate import trapezoid
+
+from src.polytunnel_irradiance_model.polytunnel import Vector
 
 
 __all__ = ("SolarPosition",)
@@ -44,15 +48,68 @@ class SolarPosition:
     Contains information about the position of the sun at a given time.
 
     .. attribute:: azimuthal_angle:
-        The azimuthal position of the sun.
+        The azimuthal position of the sun, in degrees.
 
     .. attribute:: elevation:
-        The elevation of the sun above the horizon.
+        The elevation of the sun above the horizon, in degrees.
 
     """
 
     azimuthal_angle: float
     elevation: float
+
+
+# Type variable for Meshpoint and children.
+_SPV = TypeVar(
+    "_SPV",
+    bound="SolarPositionVector",
+)
+
+
+@dataclass
+class SolarPositionVector(Vector):
+    """
+    Contains information about the position of the sun at a given time.
+
+    .. attribute:: azimuthal_angle:
+        The azimuthal position of the sun, in degrees.
+
+    .. attribute:: elevation:
+        The elevation of the sun above the horizon, in degrees.
+
+    """
+
+    azimuthal_angle: float
+    elevation: float
+
+    @classmethod
+    def from_solar_position(cls, solar_position: SolarPosition) -> _SPV:
+        """
+        Instantiate a vector, with additional information, from the solar position.
+
+        :param: solar_position:
+            The solar position, as a :class:`SolarPosition` instance.
+
+        :returns:
+            An instantiated :class:`SolarPositionVector` instance.
+
+        """
+
+        z_coord: float = cos(
+            (theta_radians := pi / 2 - radians(solar_position.elevation))
+        )
+        x_coord: float = sin(theta_radians) * cos(
+            phi_radians := radians(solar_position.azimuthal_angle)
+        )
+        y_coord: float = sin(theta_radians) * sin(phi_radians)
+
+        return cls(
+            x_coord,
+            y_coord,
+            z_coord,
+            solar_position.azimuthal_angle,
+            solar_position.elevation,
+        )
 
 
 def calculate_solar_position(
@@ -61,7 +118,7 @@ def calculate_solar_position(
     time: datetime.datetime | list[datetime.datetime] | pd.DatetimeIndex,
     *,
     altitude: float = 0,
-) -> list[SolarPosition]:
+) -> list[SolarPositionVector]:
     """
     Calculate the solar position based on the time.
 
@@ -100,7 +157,9 @@ def calculate_solar_position(
 
     # Return the results of the calculation
     return [
-        SolarPosition(entry[AZIMUTH], entry[APPARENT_ELEVATION])
+        SolarPositionVector.from_solar_position(
+            SolarPosition(entry[AZIMUTH], entry[APPARENT_ELEVATION])
+        )
         for _, entry in solar_position.iterrows()
     ]
 
