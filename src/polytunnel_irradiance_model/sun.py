@@ -1,3 +1,18 @@
+########################################################################################
+# sun.py --- Polytunnel sun module for the Polytunnel-Irradiance Module.               #
+#                                                                                      #
+# Author(s): Taylor Pomfret, Emilio Nunez-Andrade, Benedict Winchester                 #
+# Date created: Summer 2024/25                                                         #
+#                                                                                      #
+########################################################################################
+
+"""
+Polytunnel Irradiance Model: `sun.py`
+
+This module contains information used for solar position and irradiance calculations.
+
+"""
+
 import pandas as pd
 import numpy as np
 import pvlib
