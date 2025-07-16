@@ -1,5 +1,5 @@
 ########################################################################################
-# geometry.py --- Geomtry module for the Polytunnel-Irradiance Module.                 #
+# polytunnel.py --- Polytunnel geomtry module for the Polytunnel-Irradiance Module.    #
 #                                                                                      #
 # Author(s): Taylor Pomfret, Emilio Nunez-Andrade, Benedict Winchester                 #
 # Date created: Summer 2024/25                                                         #
@@ -7,9 +7,9 @@
 ########################################################################################
 
 """
-Polytunnel Irradiance Model: `geometry.py`
+Polytunnel Irradiance Model: `polytunnel.py`
 
-This module contains all geometry information to define the system.
+This module contains all polytunnel information to define the system.
 
 """
 
@@ -1070,12 +1070,12 @@ class Curve(ABC):
         # Determine the radial distance transcribed by a single meshpoint.
         # This value will be the angule transcribed, in radians, multiplied by the
         # radius of curvature of the curve.
-        meshpoint_width = radius * self.maximum_arc_length / (meshgrid_resolution / 2)
+        meshpoint_width = radius * self.maximum_theta_value / (meshgrid_resolution / 2)
 
         # Setup theta and z iterators.
         for theta in np.linspace(
-            -(self.maximum_arc_length - (angular_size := pi / meshgrid_resolution)),
-            self.maximum_arc_length - angular_size,
+            -(self.maximum_theta_value - (angular_size := pi / meshgrid_resolution)),
+            self.maximum_theta_value - angular_size,
             meshgrid_resolution,
         ):
             for z in np.linspace(0, length, meshgrid_resolution):
@@ -1122,6 +1122,22 @@ class Curve(ABC):
             "Cannot call `_stretch_mesh` method on abstract curve."
         )
 
+    @abstractmethod
+    def _realign_mesh(self, meshgrid: list[MeshPoint]) -> list[MeshPoint]:
+        """
+        Reset the meshgrid so that the polytunnel reaches the ground.
+
+        :param: meshgrid:
+            The meshgrid, as a `list` of :class:`MeshPoint` instances, to stretch.
+
+        :returns: The reliagned  `list` of :class:`MeshPoint` instances.
+
+        """
+
+        raise NotImplementedError(
+            "Cannot call `_realign_mesh` method on abstract curve."
+        )
+
     def rotate_mesh(self, meshgrid: list[MeshPoint]) -> list[MeshPoint]:
         """
         Rotate the meshgrid points and normal vectors according based on the curve axis.
@@ -1137,7 +1153,7 @@ class Curve(ABC):
 
     @property
     @abstractmethod
-    def maximum_arc_length(self) -> float:
+    def maximum_theta_value(self) -> float:
         """
         The maximum arc length of the curve, measured in radians.
 
@@ -1190,6 +1206,9 @@ class Curve(ABC):
 
         # Stretch the meshgrid.
         meshgrid = self._stretch_mesh(meshgrid)
+
+        # Re-align the mesh so that the points are on the ground, as appopriate.
+        meshgrid = self._realign_mesh(meshgrid)
 
         # Compute the overlap of the mesh with the PV modules.
         meshgrid = self._mesh_overlap(meshgrid, pv_module, pv_module_spacing)
@@ -1347,7 +1366,7 @@ class CircularCurve(Curve, curve_type=CurveType.CIRCULAR):
     radius_of_curvature: float
 
     @property
-    def maximum_arc_length(self) -> float:
+    def maximum_theta_value(self) -> float:
         """
         The maximum arc length of the curve, measured in radians.
 
@@ -1411,6 +1430,23 @@ class CircularCurve(Curve, curve_type=CurveType.CIRCULAR):
         return [
             stretch_matrices[index] @ meshpoint
             for index, meshpoint in enumerate(meshgrid)
+        ]
+
+    def _realign_mesh(self, meshgrid: list[MeshPoint]) -> list[MeshPoint]:
+        """
+        Reset the meshgrid so that the polytunnel reaches the ground.
+
+        :param: meshgrid:
+            The meshgrid, as a `list` of :class:`MeshPoint` instances, to stretch.
+
+        :returns: The reliagned  `list` of :class:`MeshPoint` instances.
+
+        """
+
+        return [
+            meshpoint
+            - Vector(0, 0, self.radius_of_curvature * cos(self.maximum_theta_value))
+            for meshpoint in meshgrid
         ]
 
     # def get_angles_from_surface_displacement(
@@ -1576,7 +1612,7 @@ class Polytunnel:
 
         # Create a mesh within the Polytunnel instance.
         meshgrid: list[MeshPoint] = []
-        for x in np.linspace(-self.width, self.width, self.meshgrid_resolution):
+        for x in np.linspace(-self.width / 2, self.width / 2, self.meshgrid_resolution):
             for y in np.linspace(0, self.length, self.meshgrid_resolution):
                 meshgrid.append(
                     MeshPoint(
