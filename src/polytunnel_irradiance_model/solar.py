@@ -1,5 +1,5 @@
 ########################################################################################
-# sun.py --- Polytunnel sun module for the Polytunnel-Irradiance Module.               #
+# solar.py --- Polytunnel solar module for the Polytunnel-Irradiance Module.           #
 #                                                                                      #
 # Author(s): Taylor Pomfret, Emilio Nunez-Andrade, Benedict Winchester                 #
 # Date created: Summer 2024/25                                                         #
@@ -7,7 +7,7 @@
 ########################################################################################
 
 """
-Polytunnel Irradiance Model: `sun.py`
+Polytunnel Irradiance Model: `solar.py`
 
 This module contains information used for solar position and irradiance calculations.
 
@@ -17,7 +17,7 @@ import datetime
 
 from dataclasses import dataclass
 from math import cos, pi, radians, sin
-from typing import TypeVar
+from typing import Any, Generator, TypeVar
 
 import pandas as pd
 import numpy as np
@@ -26,6 +26,7 @@ import pvlib
 from pvlib import spectrum, solarposition, irradiance, atmosphere, location
 from scipy.integrate import trapezoid
 
+from src.polytunnel_irradiance_model.__utils__ import Location
 from src.polytunnel_irradiance_model.polytunnel import Vector
 
 
@@ -113,8 +114,7 @@ class SolarPositionVector(Vector):
 
 
 def calculate_solar_position(
-    latitude: float,
-    longitude: float,
+    location: Location,
     time: datetime.datetime | list[datetime.datetime] | pd.DatetimeIndex,
     *,
     altitude: float = 0,
@@ -122,11 +122,8 @@ def calculate_solar_position(
     """
     Calculate the solar position based on the time.
 
-    :param: latitude:
-        The latitude of the location.
-
-    :param: longitude:
-        The longitude of the location.
+    :param: location:
+        The location.
 
     :param: time:
         The time.
@@ -152,7 +149,7 @@ def calculate_solar_position(
 
     # Compute the solar positions
     solar_position = pvlib.solarposition.get_solarposition(
-        time, latitude, longitude, altitude
+        time, location.latitude, location.longitude, altitude
     )
 
     # Return the results of the calculation
@@ -162,6 +159,32 @@ def calculate_solar_position(
         )
         for _, entry in solar_position.iterrows()
     ]
+
+
+def calculate_clearsky_data_new(
+    location: Location,
+    time_iterator: Generator[datetime.datetime, Any, None],
+) -> pd.DataFrame:
+    """
+    Retrieves clear-sky irradiance data (GHI and DNI) for a given date range.
+
+    The function utilises the in-built functionality of :class:`pvlib.location.Location`
+    instances to compute the clearsky irradiance at a location for a series of times.
+
+    :param: location:
+        The :class:`Location` instance being modelled.
+
+    :param: time_iterator:
+        A :class:`Generator` instance which is capable of iterating through the times
+        and yielding times when needed.
+
+    :returns:
+        A :class:`pd.DataFrame` instance containing information about the irradiance
+        information at each time step.
+
+    """
+
+    return location.location.get_clearsky(pd.to_datetime(list(time_iterator)))
 
 
 class Sun:
