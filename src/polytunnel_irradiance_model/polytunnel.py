@@ -17,7 +17,7 @@ import enum
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from math import asin, atan, cos, radians, pi, sin
+from math import acos, asin, atan, cos, radians, pi, sin
 from typing import Any, Iterable, Iterator, TypeVar
 
 import numpy as np
@@ -340,6 +340,18 @@ class Vector:
         return list(self)
 
     @property
+    def radial_coordinate(self) -> float:
+        """
+        Return the radial coordinate; _i.e._, the distance from the origin.
+
+        :returns:
+            The distance of the vector from the origin.
+
+        """
+
+        return abs(self) ** 2
+
+    @property
     def theta(self) -> float:
         """
         Return the angle between the vector and the vertical.
@@ -349,7 +361,29 @@ class Vector:
 
         """
 
-        return atan(abs(self.x) / self.z) * (1 if self.x > 0 else -1)
+        return acos(self.z / abs(self))
+        # return atan(abs(self.x) / self.z) * (1 if self.x > 0 else -1)
+
+    @property
+    def phi(self) -> float | None:
+        """
+        Return the angle between the vector and the x axis.
+
+        :returns:
+            The angle between the vector and the x axis.
+
+        """
+
+        if self.x > 0:
+            return atan(self.y / self.x)
+
+        if self.x < 0:
+            return atan(self.y / self.x) + (pi if self.y >= 0 else -pi)
+
+        if self.x == 0 and self.y == 0:
+            return None
+
+        return pi / 2 if self.y > 0 else -pi / 2
 
     def normalise(self) -> _V:
         """
