@@ -106,6 +106,36 @@ class Vector:
     y: float
     z: float
 
+    @classmethod
+    def from_cylindrical_coordinates(
+        cls,
+        r: float,
+        theta: float,
+        axial_z: float,
+    ) -> _V:
+        """
+        Instantiate a :class:`Vector` based on cylindrical coordinates.
+
+        :param: r:
+            The radial coordinate.
+
+        :param: theta:
+            The angular coordinate.
+
+        :param: axial_z:
+            The axial coordinate.
+
+        """
+
+        # Return re-mapped coordinates where y is along the axis and z vertical.
+        y = axial_z
+
+        # Compute x and z values.
+        x = r * sin(theta)
+        z = r * cos(theta)
+
+        return cls(x, y, z)
+
     def __abs__(self) -> float:
         """
         Return the length of the vector.
@@ -1061,9 +1091,11 @@ class Curve(ABC):
     axis_tilt: float = 0
     name: str = ""
     width: float | None = None
+    _axial_vector: Vector | None = None
     _azimuth_rotation_matrix: list[list[float]] | None = None
     _maximum_arc_length: float | None = None
     _tilt_rotation_matrix: list[list[float]] | None = None
+    _vertical_vector: Vector | None = None
 
     def __init_subclass__(cls, curve_type: CurveType) -> None:
         """
@@ -1078,6 +1110,48 @@ class Curve(ABC):
         TYPE_TO_CURVE_MAPPING[curve_type] = cls
 
         super().__init_subclass__()
+
+    @property
+    def axial_vector(self) -> Vector:
+        """
+        Return the axial vector.
+
+        :returns:
+            The axial vector.
+
+        """
+
+        if self._axial_vector is None:
+            raise Exception("Axial vector called before calculated.")
+
+        return self._axial_vector
+
+    @property
+    def vertical_vector(self) -> Vector:
+        """
+        Return the vertical vector.
+
+        :returns:
+            The vertical vector.
+
+        """
+
+        if self._vertical_vector is None:
+            raise Exception("Axial vector called before calculated.")
+
+        return self._vertical_vector
+
+    def __post_init__(self) -> None:
+        """
+        Post-instantiation method to compute axial and vertical vectors.
+
+        These vectors point along the axis of the curve and vertically, respectively,
+        and are calculated based on these vectors followed by rotation matrices.
+
+        """
+
+        self._axial_vector = self._calculate_rotated_vector(Vector(0, 1, 0))
+        self._vertical_vector = self._calculate_rotated_vector(Vector(0, 0, 1))
 
     def _instantiate_mesh(
         self, length: float, meshgrid_resolution: int
@@ -1328,66 +1402,6 @@ class Curve(ABC):
 
         return rotated_normal
 
-    # def _get_rotated_angles_from_surface_normal(
-    #     self, un_rotated_normal: list[float]
-    # ) -> tuple[float, float]:
-    #     """
-    #     Rotate the normal vector based on the orientation of the curve/Polytunnel.
-
-    #     :param: **un_rotated_normal:**
-    #         The surface normal vector in the un-rotated frame.
-
-    #     :returns:
-    #         - A `tuple` containing information about the new rotated normal vector:
-    #             - The azimuth angle, in degrees,
-    #             - THe tilt angle, in degrees.
-
-    #     """
-
-    #     rotated_normal = self._calculate_rotated_vector(un_rotated_normal)
-
-    #     # Compute the new azimuth and tilt angles based on these rotations.
-    #     # The tilt angle is simply the z component of the vector.
-    #     tilt_angle = round(acos(rotated_normal[2]), FLOATING_POINT_PRECISION)
-
-    #     with warnings.catch_warnings():
-    #         warnings.filterwarnings("error")
-    #         try:
-    #             x_y_plane_component = sin(tilt_angle)
-    #         except (RuntimeError, RuntimeWarning, ZeroDivisionError):
-    #             azimuth_angle = pi
-    #         else:
-    #             if round(rotated_normal[1], 6) == 0:
-    #                 azimuth_angle = (
-    #                     pi
-    #                     if rotated_normal[0] == 0
-    #                     else pi / 2 if (rotated_normal[0] > 0) else -pi / 2
-    #                 )
-    #             else:
-    #                 arccos_angle = acos(
-    #                     round(
-    #                         rotated_normal[1] / x_y_plane_component,
-    #                         FLOATING_POINT_PRECISION,
-    #                     )
-    #                 )
-    #                 azimuth_angle = (
-    #                     2 * pi - arccos_angle if rotated_normal[0] < 0 else arccos_angle
-    #                 )
-
-    #     # Check that the tilt is not out-of-bounds
-    #     if tilt_angle > pi / 2:
-    #         raise UndergroundCellError(
-    #             f"A cell in the module has a tilt angle of {tilt_angle} radians, which "
-    #             "is underground."
-    #         )
-
-    #     # Check that the azimuth angle is not `nan` and set it to South if so.
-    #     if isnan(azimuth_angle):
-    #         azimuth_angle = pi
-
-    #     # Return these angles in degrees
-    #     return degrees(azimuth_angle) % 360, degrees(tilt_angle)
-
 
 @dataclass(kw_only=True)
 class CircularCurve(Curve, curve_type=CurveType.CIRCULAR):
@@ -1485,48 +1499,6 @@ class CircularCurve(Curve, curve_type=CurveType.CIRCULAR):
             for meshpoint in meshgrid
         ]
 
-    # def get_angles_from_surface_displacement(
-    #     self, displacement_list: float | list[float]
-    # ) -> list[tuple[float, float]]:
-    #     """
-    #     Calculate the azimuth and zenith angles at point(s) along the curve.
-
-    #     :param: **displacement_list:**
-    #         The distance from the central axis.
-
-    #     :returns:
-    #         - A tuple, (azimuth, tilt), with angles in degrees.
-
-    #     """
-
-    #     def _angle_from_displacement_value(displacement: float) -> tuple[float, float]:
-    #         """
-    #         Calculate the angles, theta and phi, for a single displacement.
-
-    #         :param: displacement:
-    #             The displacement along the curve.
-
-    #         :returns: Theta and phi angles for a single displacement value.
-
-    #         """
-
-    #         # Compute the zenith angle in radians based on the distance from the axis.
-    #         zenith_angle: float = displacement / self.radius_of_curvature
-
-    #         # Don't both calculating if the displacement is zero
-    #         if displacement == 0:
-    #             return (180, self.axis_tilt)
-
-    #         # Compute the components of a unit normal vector with this zenith angle.
-    #         un_rotated_normal: list[float] = [sin(zenith_angle), 0, cos(zenith_angle)]
-
-    #         return self._calculate_rotated_vector(un_rotated_normal)
-
-    #     if isinstance(displacement_list, float):
-    #         return [_angle_from_displacement_value(displacement_list)]
-
-    #     return [_angle_from_displacement_value(displacement) for displacement in displacement_list]
-
 
 @dataclass(kw_only=True)
 class ElipticalCurve(Curve, curve_type=CurveType.ELIPTICAL):
@@ -1621,6 +1593,30 @@ class Polytunnel:
         self.surface_mesh: list[MeshPoint] = self.curve.generate_mesh(
             self.length, meshgrid_resolution, self.pv_module, self.pv_module_spacing
         )
+
+    @property
+    def axial_vector(self) -> Vector:
+        """
+        Return the axial vector.
+
+        :returns:
+            The axial vector.
+
+        """
+
+        return self.curve.axial_vector
+
+    @property
+    def vertical_vector(self) -> Vector:
+        """
+        Return the vertical vector.
+
+        :returns:
+            The vertical vector.
+
+        """
+
+        return self.curve.vertical_vector
 
     @property
     def width(self) -> float:
