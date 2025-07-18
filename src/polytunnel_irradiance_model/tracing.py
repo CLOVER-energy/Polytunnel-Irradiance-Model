@@ -1,3 +1,18 @@
+########################################################################################
+# tracing.py --- Polytunnel tracing module for the Polytunnel-Irradiance Module.      #
+#                                                                                      #
+# Author(s): Taylor Pomfret, Emilio Nunez-Andrade, Benedict Winchester                 #
+# Date created: Summer 2024/25                                                         #
+#                                                                                      #
+########################################################################################
+
+"""
+Polytunnel Tracking Model: `tracing.py`
+
+This module contains all tracing calculations used to calculate ray tracing.
+
+"""
+
 import numpy as np
 import pandas as pd
 import os
