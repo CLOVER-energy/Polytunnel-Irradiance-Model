@@ -324,6 +324,8 @@ def main(args: list[Any]) -> None:
             )
         ]
 
+    # Compute the clearsky irradiance at the location, using the solar spectrum for a
+    # clearsky day.
     with time_execution("Clearsky irradiance calculation"):
         clearsky_irradiance = calculate_clearsky_data_new(
             location,
@@ -334,9 +336,6 @@ def main(args: list[Any]) -> None:
             ),
         )
 
-    # * Compute the clearsky irradiance at the location, using the solar spectrum for a
-    # clearsky day.
-    #
     # * Determine the intercept lines with neighbouring polytunnels.
     #
     # * Determine whether any of the modules are shaded by neighbouring polytunnels,

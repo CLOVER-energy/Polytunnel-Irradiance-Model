@@ -473,6 +473,7 @@ class MeshPoint(Vector):
     _covered_area: float | None = None
     _covered_fraction: float | None = None
     _normal_vector: Vector | None = None
+    _polytunnel_frame_position: Vector | None = None
     _u_vector: Vector | None = None
     _t_vector: Vector | None = None
 
@@ -567,6 +568,10 @@ class MeshPoint(Vector):
         # Save the u and t vectors.
         self._t_vector = _x_vector
         self._u_vector = _y_vector
+
+        # Save a vector representing the position of the meshpoint but within the frame
+        # of the polytunnel.
+        self._polytunnel_frame_position = Vector(self.x, self.y, self.z)
 
     @property
     def covered_area(self) -> float:
