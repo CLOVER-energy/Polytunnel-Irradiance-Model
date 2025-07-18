@@ -1094,6 +1094,7 @@ class Curve(ABC):
     _axial_vector: Vector | None = None
     _azimuth_rotation_matrix: list[list[float]] | None = None
     _maximum_arc_length: float | None = None
+    _midpoint_height: float = 0
     _tilt_rotation_matrix: list[list[float]] | None = None
     _vertical_vector: Vector | None = None
 
@@ -1140,6 +1141,18 @@ class Curve(ABC):
             raise Exception("Axial vector called before calculated.")
 
         return self._vertical_vector
+
+    @property
+    def midpoint_height(self) -> float:
+        """
+        Return the height of the midpoint above or below the zero offset value.
+
+        :returns:
+            The height of the midpoint of the curve.
+
+        """
+
+        return self._midpoint_height
 
     def __post_init__(self) -> None:
         """
@@ -1493,10 +1506,10 @@ class CircularCurve(Curve, curve_type=CurveType.CIRCULAR):
 
         """
 
+        self._midpoint_height = self.radius_of_curvature * cos(self.maximum_theta_value)
+
         return [
-            meshpoint
-            - Vector(0, 0, self.radius_of_curvature * cos(self.maximum_theta_value))
-            for meshpoint in meshgrid
+            meshpoint - Vector(0, 0, self._midpoint_height) for meshpoint in meshgrid
         ]
 
 
