@@ -16,8 +16,8 @@ This module contains all polytunnel information to define the system.
 import enum
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from math import acos, asin, atan, cos, radians, pi, sin
+from dataclasses import asdict, dataclass
+from math import acos, asin, atan, cos, radians, pi, sin, sqrt
 from multiprocessing import Pool
 from typing import Any, Iterable, Iterator, TypeVar
 
@@ -536,11 +536,44 @@ class MeshPoint(Vector):
     _corners: list[Vector] | None = None
     _covered_area: float | None = None
     _covered_fraction: float | None = None
-    _intercept_plane: Plane | None
+    _intercept_plane: Plane | None = None
     _normal_vector: Vector | None = None
     _polytunnel_frame_position: Vector | None = None
     _u_vector: Vector | None = None
     _t_vector: Vector | None = None
+
+    def __post_init__(self) -> None:
+        """Method run post instantiation of the point."""
+
+        # Compute the normal vector to the point.
+        if self._normal_vector is None:
+            self._normal_vector = Vector(self.x, self.y, self.z).normalise()
+
+        # Compute the corners of the point (given that the point starts as a square).
+        # Two vectors within the meshpoint can be found. The first will be parallel to
+        # y and have a length which is the sqrt(area).
+        _y_vector: Vector = Vector(0, self.length / 2, 0)
+
+        # The x vector will simply be the cross product of this, normalised, and
+        # rescaled based on the length in that direction.
+        _x_vector: Vector = self._normal_vector @ _y_vector
+        _x_vector = _x_vector.normalise() * self.width / 2
+
+        # Compute the four corners.
+        self._corners: list[Vector] = [
+            self.position_vector + _x_vector + _y_vector,
+            self.position_vector + _x_vector - _y_vector,
+            self.position_vector - _x_vector + _y_vector,
+            self.position_vector - _x_vector - _y_vector,
+        ]
+
+        # Save the u and t vectors.
+        self._t_vector = _x_vector
+        self._u_vector = _y_vector
+
+        # Save a vector representing the position of the meshpoint but within the frame
+        # of the polytunnel.
+        self._polytunnel_frame_position = Vector(self.x, self.y, self.z)
 
     @classmethod
     def from_cylindrical_coordinates(
@@ -578,6 +611,70 @@ class MeshPoint(Vector):
         # Instantiate and return.
         return cls(x, y, z, length, width)
 
+    def __add__(self, other) -> _V:
+        """
+        Add two vectors together.
+
+        :param: other:
+            The vector to add to this one.
+
+        :returns:
+            The vector addition of the two vectors.
+
+        """
+
+        meshpoint_dict: dict[str, Any] = asdict(self)
+        meshpoint_dict["x"] = (self.x + other.x,)
+        meshpoint_dict["y"] = (self.y + other.y,)
+        meshpoint_dict["z"] = (self.z + other.z,)
+
+        return MeshPoint(**meshpoint_dict)
+
+    def __iadd__(self, other) -> None:
+        """
+        Add two vectors together.
+
+        :param: other:
+            The vector to add to this one.
+
+        """
+
+        self.x = self.x + other.x
+        self.y = self.y + other.y
+        self.z = self.z + other.z
+
+    def __sub__(self, other) -> _V:
+        """
+        Subtract two vectors.
+
+        :param: other:
+            The vector to subtract from this one.
+
+        :returns:
+            The vector subtraction of the two vectors.
+
+        """
+
+        meshpoint_dict: dict[str, Any] = asdict(self)
+        meshpoint_dict["x"] = (self.x - other.x,)
+        meshpoint_dict["y"] = (self.y - other.y,)
+        meshpoint_dict["z"] = (self.z - other.z,)
+
+        return MeshPoint(**meshpoint_dict)
+
+    def __isub__(self, other) -> None:
+        """
+        Subtract two vectors.
+
+        :param: other:
+            The vector to subtract from this one.
+
+        """
+
+        self.x = self.x - other.x
+        self.y = self.y - other.y
+        self.z = self.z - other.z
+
     @property
     def area(self) -> float:
         """
@@ -594,6 +691,18 @@ class MeshPoint(Vector):
         return self._area
 
     @property
+    def polytunnel_frame_position(self) -> Vector:
+        """
+        Return the position in an unrotated frame.
+
+        :returns:
+            The unrotated coordinate.
+
+        """
+
+        return self._polytunnel_frame_position
+
+    @property
     def position_vector(self) -> Vector:
         """
         Return the position vector specifying the centre of the :class:`MeshPoint`.
@@ -604,39 +713,6 @@ class MeshPoint(Vector):
         """
 
         return Vector(self.x, self.y, self.z)
-
-    def __post_init__(self) -> None:
-        """Method run post instantiation of the point."""
-
-        # Compute the normal vector to the point.
-        if self._normal_vector is None:
-            self._normal_vector = Vector(self.x, self.y, self.z).normalise()
-
-        # Compute the corners of the point (given that the point starts as a square).
-        # Two vectors within the meshpoint can be found. The first will be parallel to
-        # y and have a length which is the sqrt(area).
-        _y_vector: Vector = Vector(0, self.length / 2, 0)
-
-        # The x vector will simply be the cross product of this, normalised, and
-        # rescaled based on the length in that direction.
-        _x_vector: Vector = self._normal_vector @ _y_vector
-        _x_vector = _x_vector.normalise() * self.width / 2
-
-        # Compute the four corners.
-        self._corners: list[Vector] = [
-            self.position_vector + _x_vector + _y_vector,
-            self.position_vector + _x_vector - _y_vector,
-            self.position_vector - _x_vector + _y_vector,
-            self.position_vector - _x_vector - _y_vector,
-        ]
-
-        # Save the u and t vectors.
-        self._t_vector = _x_vector
-        self._u_vector = _y_vector
-
-        # Save a vector representing the position of the meshpoint but within the frame
-        # of the polytunnel.
-        self._polytunnel_frame_position = Vector(self.x, self.y, self.z)
 
     @property
     def covered_area(self) -> float:
@@ -801,16 +877,19 @@ class Matrix:
         if len(self.columns) != len(other.rows):
             raise Exception("Matrix dimensions do not match.")
 
-        # If multiplying by a vector, simply return the new vector.
-        if isinstance(other, Vector):
-            return Vector(*[row * other for row in self.rows])
-
         # If multiplying by a meshpoint, then raise an error as this should only be
         # implemented in children.
         if isinstance(other, MeshPoint):
-            raise NotImplementedError(
-                "Matrix multiplication must use children of Matrix."
-            )
+            multiplied_vector = Vector(*[row * other for row in self.rows])
+            other.x = multiplied_vector.x
+            other.y = multiplied_vector.y
+            other.z = multiplied_vector.z
+
+            return other
+
+        # If multiplying by a vector, simply return the new vector.
+        if isinstance(other, Vector):
+            return Vector(*[row * other for row in self.rows])
 
         # Otherwise, carry out matrix multiplication.
         new_rows: list[Vector] = []
@@ -1256,8 +1335,8 @@ class Curve(ABC):
 
         """
 
-        self._axial_vector = self._calculate_rotated_vector(Vector(0, 1, 0))
-        self._vertical_vector = self._calculate_rotated_vector(Vector(0, 0, 1))
+        self._axial_vector = self.calculate_rotated_vector(Vector(0, 1, 0))
+        self._vertical_vector = self.calculate_rotated_vector(Vector(0, 0, 1))
 
     def _instantiate_mesh(
         self, length: float, meshgrid_resolution: int
@@ -1365,7 +1444,7 @@ class Curve(ABC):
 
         """
 
-        return [self._calculate_rotated_vector(meshpoint) for meshpoint in meshgrid]
+        return [self.calculate_rotated_vector(meshpoint) for meshpoint in meshgrid]
 
     @property
     @abstractmethod
@@ -1490,7 +1569,7 @@ class Curve(ABC):
 
         return self._tilt_rotation_matrix
 
-    def _calculate_rotated_vector(self, un_rotated_normal: MeshPoint) -> MeshPoint:
+    def calculate_rotated_vector(self, un_rotated_normal: MeshPoint) -> MeshPoint:
         """
         Rotate the vector based on the orientation of the curve/Polytunnel.
 
@@ -1601,9 +1680,10 @@ class CircularCurve(Curve, curve_type=CurveType.CIRCULAR):
 
         self._midpoint_height = self.radius_of_curvature * cos(self.maximum_theta_value)
 
-        return [
-            meshpoint - Vector(0, 0, self._midpoint_height) for meshpoint in meshgrid
-        ]
+        for meshpoint in meshgrid:
+            meshpoint -= Vector(0, 0, self._midpoint_height)
+
+        return meshgrid
 
 
 @dataclass(kw_only=True)
@@ -1843,6 +1923,9 @@ def calculate_and_update_intercept_planes(polytunnel: Polytunnel) -> Polytunnel:
     - and add the axial vector, based on the local u and t coordinates, to generate a
       plane of intercept values.
 
+    NOTE: The intercept calculation utilises the centre of each meshpoint, and applies a
+    binary shading calculation across the whole meshpoint.
+
     :param: polytunnel:
         The polytunnel for which to calculate the intercept planes.
 
@@ -1851,46 +1934,100 @@ def calculate_and_update_intercept_planes(polytunnel: Polytunnel) -> Polytunnel:
 
     """
 
-    def _calculate_meshpoint_intercept_plane(meshpoint: MeshPoint) -> MeshPoint:
+    def _calculate_meshpoint_intercept_plane(index: int) -> MeshPoint:
         """
         Calculate the intercept plane for a meshpoint.
 
-        :param: meshpoint:
-            The meshpoint to calculate the intercept plane for.
+        :param: index:
+            The index to use when calculating the intercept plane.
 
         :returns:
             The updated meshpoint.
 
         """
 
+        if not isinstance(polytunnel.curve, CircularCurve):
+            raise NotImplementedError
+
+        radius: float = polytunnel.curve.radius_of_curvature
+        meshpoint = polytunnel.surface_mesh[index]
+
+        # Consider equations from the polytunnel of intercept.
+        if meshpoint.polytunnel_frame_position.theta > 0:
+            unrotated_vector: Vector = meshpoint.polytunnel_frame_position - Vector(
+                2 * radius, 0, 0
+            )
+        else:
+            unrotated_vector: Vector = meshpoint.polytunnel_frame_position + Vector(
+                2 * radius, 0, 0
+            )
+
         # Determine the meshpoint's intercept point on the corresponding polytunnel.
+        intercept_point: Vector = Vector(
+            (radius / abs(unrotated_vector)) ** 2 * unrotated_vector.x
+            + (radius / abs(unrotated_vector) ** 2)
+            * sqrt(abs(unrotated_vector) ** 2 - radius**2)
+            * unrotated_vector.y,
+            unrotated_vector.y,
+            (radius / abs(unrotated_vector)) ** 2 * unrotated_vector.y
+            - (radius / abs(unrotated_vector) ** 2)
+            * sqrt(abs(unrotated_vector) ** 2 - radius**2)
+            * unrotated_vector.x,
+        )
 
         # Determine the vector to this intercept point.
+        unrotated_vector_to_intercept = (
+            unnormalised_vector_to_intercept := (intercept_point - unrotated_vector)
+        ) / abs(unnormalised_vector_to_intercept)
 
         # Rotate this vector to the rotated frame of the polytunnel.
+        rotated_vector_to_intercept = polytunnel.curve.calculate_rotated_vector(
+            unrotated_vector_to_intercept
+        )
 
-        # Add in, or subtract, the axial vector to reach the end of the polytunnel.
+        # Add in, or subtract, the axial vector to reach the end of the polytunnel, and,
+        # thus, define the intercept plane.
+        normalised_axial_vector = polytunnel.axial_vector / abs(polytunnel.axial_vector)
 
-        # Define and save the intercept plane on the meshpoint.
+        polytunnel.surface_mesh[index].set_intercept_plane(
+            Plane(
+                [
+                    rotated_vector_to_intercept
+                    + normalised_axial_vector
+                    * (polytunnel.length - unrotated_vector_to_intercept.y),
+                    rotated_vector_to_intercept
+                    - normalised_axial_vector * (unrotated_vector_to_intercept.y),
+                ]
+            )
+        )
+
+    # >>>>>>
+    # Test code, delete
+    _calculate_meshpoint_intercept_plane(0)
+    import pdb
+
+    pdb.set_trace()
+    # <<<<<<
 
     def _update_pbar(*args) -> None:
         """Update the progress bar."""
         pbar.update()
 
     # Setup the progress bar with asynchronous update method.
-    pbar = tqdm(total=len(polytunnel.surface_mesh))
+    pbar = tqdm()
 
     # Setup the worker pool and run.
-    worker_pool = Pool(8)
-    for meshpoint in polytunnel.surface_mesh:
-        worker_pool.apply_async(
-            _calculate_meshpoint_intercept_plane,
-            args=(meshpoint,),
-            callback=_update_pbar,
-        )
+    for index, _ in tqdm(
+        enumerate(polytunnel.surface_mesh),
+        desc="intercept-plane calculation",
+        leave=True,
+        total=len(polytunnel.surface_mesh),
+    ):
+        _calculate_meshpoint_intercept_plane(index)
 
-    worker_pool.close()
-    worker_pool.join()
+    import pdb
+
+    pdb.set_trace()
 
     # class ElipticalPolytunnel(PolytunnelShape.ELIPTICAL):
     #     """

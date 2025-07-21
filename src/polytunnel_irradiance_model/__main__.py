@@ -32,7 +32,10 @@ import yaml
 
 from src.polytunnel_irradiance_model.__utils__ import *
 from src.polytunnel_irradiance_model.functions import *
-from src.polytunnel_irradiance_model.polytunnel import Polytunnel
+from src.polytunnel_irradiance_model.polytunnel import (
+    Polytunnel,
+    calculate_and_update_intercept_planes,
+)
 from src.polytunnel_irradiance_model.solar import (
     calculate_solar_position,
     calculate_clearsky_data_new,
@@ -336,8 +339,9 @@ def main(args: list[Any]) -> None:
             ),
         )
 
-    # * Determine the intercept lines with neighbouring polytunnels.
-    #
+    # Determine the intercept lines with neighbouring polytunnels.
+    calculate_and_update_intercept_planes(polytunnel)
+
     # * Determine whether any of the modules are shaded by neighbouring polytunnels,
     # either in terms of the direct or diffuse contributions of light that they receive.
     #
