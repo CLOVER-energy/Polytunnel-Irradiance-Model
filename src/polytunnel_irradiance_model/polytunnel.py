@@ -18,9 +18,12 @@ import enum
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from math import acos, asin, atan, cos, radians, pi, sin
+from multiprocessing import Pool
 from typing import Any, Iterable, Iterator, TypeVar
 
 import numpy as np
+
+from tqdm import tqdm
 
 from src.polytunnel_irradiance_model.__utils__ import NAME
 
@@ -428,6 +431,67 @@ class Vector:
         return self
 
 
+class Plane:
+    """
+    Represents a plane.
+
+    .. attribute:: vectors:
+        The vectors which define the geometry of the plane.
+
+    """
+
+    # Private attributes:
+    #   .. attribute:: _first_vector:
+    #       The first vector which defines the plane.
+    #
+    #   .. attribute:: _second_vector:
+    #       The second vector which defines the plane.
+    #
+
+    def __init__(self, vectors: list[Vector]) -> None:
+        """
+        Instantiate a :class:`Plane` instance.
+
+        :param: vectors:
+            The vector instances to use to specify the plane.
+
+        """
+
+        if len(vectors) != 2:
+            raise Exception("Planes should be defined by two vectors within the plane.")
+
+        self._first_vector = vectors.pop()
+        self._second_vector = vectors.pop()
+
+    @property
+    def normal(self) -> Vector:
+        """
+        Return a vector normal to the plane.
+
+        :returns:
+            The vector normal to the plane.
+
+        """
+
+        # Calculate the cross product
+        crossed_vector = self._first_vector @ self._second_vector
+
+        # Normalise and return
+        return crossed_vector / abs(crossed_vector)
+
+    @property
+    def vectors(self) -> list[Vector]:
+        """
+        Return the vectors specifying the plane.
+
+        :returns:
+            The :class:`Vector` instances that specify the plane.
+
+        """
+
+        return [self._first_vector, self._second_vector]
+
+
 # Type variable for Meshpoint and children.
 _MP = TypeVar(
     "_MP",
@@ -472,6 +536,7 @@ class MeshPoint(Vector):
     _corners: list[Vector] | None = None
     _covered_area: float | None = None
     _covered_fraction: float | None = None
+    _intercept_plane: Plane | None
     _normal_vector: Vector | None = None
     _polytunnel_frame_position: Vector | None = None
     _u_vector: Vector | None = None
@@ -613,6 +678,29 @@ class MeshPoint(Vector):
         """
 
         self._normal_vector = new_normal_vector
+
+    @property
+    def intercept_plane(self) -> Plane:
+        """
+        Return the intercept plane.
+
+        :returns:
+            The intercept plane for the meshpoint.
+
+        """
+
+        return self._intercept_plane
+
+    def set_intercept_plane(self, plane: Plane) -> None:
+        """
+        Set the intercept plane for the meshpoint.
+
+        :param: plane:
+            The plane to set.
+
+        """
+
+        self._intercept_plane = plane
 
 
 # Type variable for Curve and children.
@@ -1742,6 +1830,67 @@ class Polytunnel:
             pv_module,
             input_data[PV_MODULE_SPACING],
         )
+
+
+def calculate_and_update_intercept_planes(polytunnel: Polytunnel) -> Polytunnel:
+    """
+    Calculate, for each surface meshpoint, intercept planes.
+
+    For each meshpoint, parallelised, determine:
+    - the equations of intercept,
+      - which yield un-rotated intercept vectors,
+    - then rotate these vectors to the new frame,
+    - and add the axial vector, based on the local u and t coordinates, to generate a
+      plane of intercept values.
+
+    :param: polytunnel:
+        The polytunnel for which to calculate the intercept planes.
+
+    :returns:
+        The updated :class:`Polytunnel` instance.
+
+    """
+
+    def _calculate_meshpoint_intercept_plane(meshpoint: MeshPoint) -> MeshPoint:
+        """
+        Calculate the intercept plane for a meshpoint.
+
+        :param: meshpoint:
+            The meshpoint to calculate the intercept plane for.
+
+        :returns:
+            The updated meshpoint.
+
+        """
+
+        # Determine the meshpoint's intercept point on the corresponding polytunnel.
+
+        # Determine the vector to this intercept point.
+
+        # Rotate this vector to the rotated frame of the polytunnel.
+
+        # Add in, or subtract, the axial vector to reach the end of the polytunnel.
+
+        # Define and save the intercept plane on the meshpoint.
+
+    def _update_pbar(*args) -> None:
+        """Update the progress bar."""
+        pbar.update()
+
+    # Setup the progress bar with asynchronous update method.
+    pbar = tqdm(total=len(polytunnel.surface_mesh))
+
+    # Setup the worker pool and run.
+    worker_pool = Pool(8)
+    for meshpoint in polytunnel.surface_mesh:
+        worker_pool.apply_async(
+            _calculate_meshpoint_intercept_plane,
+            args=(meshpoint,),
+            callback=_update_pbar,
+        )
+
+    worker_pool.close()
+    worker_pool.join()
 
     # class ElipticalPolytunnel(PolytunnelShape.ELIPTICAL):
     #     """
