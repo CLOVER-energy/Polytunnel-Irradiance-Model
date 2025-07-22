@@ -283,7 +283,7 @@ class Vector:
         Carry out scalar multiplication or dot product.
 
         :param: other:
-            The scalar (`float`, or `int`) instance or vector to multiply with.
+            The scalar (`float`, orf `int`) instance or vector to multiply with.
 
         :returns: Either a vector a scalar depending on what's requested.
 
@@ -382,10 +382,44 @@ class Vector:
 
         """
 
-        return abs(self) ** 2
+        return abs(self)
 
     @property
-    def theta(self) -> float:
+    def cylindrical_radius(self) -> float:
+        """
+        Calculate and return the distance of the point from the curve's axis.
+
+        :returns:
+            The radial distance from the y axis.
+
+        """
+
+        return np.sqrt(self.x**2 + self.z**2)
+
+    @property
+    def theta_cylindrical(self) -> float:
+        """
+        Determine the angle, theta, about the axis of the curve, _i.e._, about y.
+
+        :returns:
+            The axial theta (or phi) value for cylindrical coordinates.
+
+        """
+
+        # If the vector is vertical, return 0.
+        if self.x == 0:
+            return 0
+
+        if self.z >= 0:
+            return asin(self.x / self.cylindrical_radius)
+
+        if self.x > 0:
+            return pi - asin(self.x / self.cylindrical_radius)
+
+        return -(pi + asin(self.x / self.cylindrical_radius))
+
+    @property
+    def theta_spherical(self) -> float:
         """
         Return the angle between the vector and the vertical.
 
@@ -548,6 +582,8 @@ class MeshPoint(Vector):
         # Compute the normal vector to the point.
         if self._normal_vector is None:
             self._normal_vector = Vector(self.x, self.y, self.z).normalise()
+        if isinstance(self._normal_vector, dict):
+            self._normal_vector = Vector(**self._normal_vector)
 
         # Compute the corners of the point (given that the point starts as a square).
         # Two vectors within the meshpoint can be found. The first will be parallel to
@@ -573,7 +609,10 @@ class MeshPoint(Vector):
 
         # Save a vector representing the position of the meshpoint but within the frame
         # of the polytunnel.
-        self._polytunnel_frame_position = Vector(self.x, self.y, self.z)
+        if self._polytunnel_frame_position is None:
+            self._polytunnel_frame_position = Vector(self.x, self.y, self.z)
+        if isinstance(self._polytunnel_frame_position, dict):
+            self._polytunnel_frame_position = Vector(**self._polytunnel_frame_position)
 
     @classmethod
     def from_cylindrical_coordinates(
@@ -701,6 +740,18 @@ class MeshPoint(Vector):
         """
 
         return self._polytunnel_frame_position
+
+    @polytunnel_frame_position.setter
+    def polytunnel_frame_position(self, vector_to_set: Vector) -> None:
+        """
+        Set the vector once a rotation or operation has occurred.
+
+        :param: vector_to_set:
+            The vector to set.
+
+        """
+
+        self._polytunnel_frame_position = vector_to_set
 
     @property
     def position_vector(self) -> Vector:
@@ -881,11 +932,12 @@ class Matrix:
         # implemented in children.
         if isinstance(other, MeshPoint):
             multiplied_vector = Vector(*[row * other for row in self.rows])
-            other.x = multiplied_vector.x
-            other.y = multiplied_vector.y
-            other.z = multiplied_vector.z
+            meshpoint_dict = asdict(other)
+            meshpoint_dict["x"] = multiplied_vector.x
+            meshpoint_dict["y"] = multiplied_vector.y
+            meshpoint_dict["z"] = multiplied_vector.z
 
-            return other
+            return MeshPoint(**meshpoint_dict)
 
         # If multiplying by a vector, simply return the new vector.
         if isinstance(other, Vector):
@@ -956,18 +1008,23 @@ class DiagonalMatrix(Matrix):
         """
 
         if isinstance(other, MeshPoint):
-            if len({entry != 0 for entry in self.diag}) != 1:
+            if len({entry != 0 for entry in self.diagonal}) != 1:
                 raise NotImplementedError(
                     "Cannot stretch a Meshpoint if not oriented correctly."
                 )
 
-            other.x *= self.diagonal[0]
-            other.y *= self.diagonal[1]
-            other.z *= self.diagonal[2]
+            other_x = other.x * self.diagonal[0]
+            other_y = other.y * self.diagonal[1]
+            other_z = other.z * self.diagonal[2]
 
-            return other
+            meshpoint_dict = asdict(other)
+            meshpoint_dict["x"] = other_x
+            meshpoint_dict["y"] = other_y
+            meshpoint_dict["z"] = other_z
 
-        super().__matmul__(other)
+            return MeshPoint(**meshpoint_dict)
+
+        return super().__matmul__(other)
 
 
 class CartesianAxis(enum.Enum):
@@ -1094,14 +1151,15 @@ class RotationMatrix(Matrix):
             coordinate_vector = Vector(*[row * other for row in self.rows])
             normal_vector = Vector(*[row * other._normal_vector for row in self.rows])
 
-            other.x, other.y, other.z = (
-                coordinate_vector.x,
-                coordinate_vector.y,
-                coordinate_vector.z,
-            )
-            other.set_normal_vector(normal_vector)
+            meshpoint_dict = asdict(other)
+            meshpoint_dict["x"] = coordinate_vector.x
+            meshpoint_dict["y"] = coordinate_vector.y
+            meshpoint_dict["z"] = coordinate_vector.z
 
-            return other
+            meshpoint = MeshPoint(**meshpoint_dict)
+            meshpoint.set_normal_vector(normal_vector)
+
+            return meshpoint
 
         return super().__matmul__(other)
 
@@ -1313,6 +1371,21 @@ class Curve(ABC):
             raise Exception("Axial vector called before calculated.")
 
         return self._vertical_vector
+
+    @property
+    def horizontal_vector(self) -> Vector:
+        """
+        Return a vector which is perpendicular to both the axial and vertical vectors.
+
+        :returns:
+            A vector which lies in the plane of the end of ht epolytunnel and is
+            parallel to the ground beneath the polytunnel.
+
+        """
+
+        _horizontal_vector: Vector = self.vertical_vector @ self.axial_vector
+
+        return _horizontal_vector / abs(_horizontal_vector)
 
     @property
     def midpoint_height(self) -> float:
@@ -1569,7 +1642,9 @@ class Curve(ABC):
 
         return self._tilt_rotation_matrix
 
-    def calculate_rotated_vector(self, un_rotated_normal: MeshPoint) -> MeshPoint:
+    def calculate_rotated_vector(
+        self, un_rotated_normal: MeshPoint | Vector
+    ) -> MeshPoint | Vector:
         """
         Rotate the vector based on the orientation of the curve/Polytunnel.
 
@@ -1581,8 +1656,8 @@ class Curve(ABC):
         """
 
         # Rotate this normal vector based on the tilt and azimuth of the polytunnel.
-        rotated_normal = (
-            self.azimuth_rotation_matrix @ self.tilt_rotation_matrix @ un_rotated_normal
+        rotated_normal = self.azimuth_rotation_matrix @ (
+            self.tilt_rotation_matrix @ un_rotated_normal
         )
 
         return rotated_normal
@@ -1599,6 +1674,7 @@ class CircularCurve(Curve, curve_type=CurveType.CIRCULAR):
     """
 
     radius_of_curvature: float
+    _midpoint_height: float | None = None
 
     @property
     def maximum_theta_value(self) -> float:
@@ -1628,6 +1704,20 @@ class CircularCurve(Curve, curve_type=CurveType.CIRCULAR):
 
         return self._maximum_arc_length
 
+    @property
+    def midpoint_height(self) -> float:
+        """
+        Return the midpoint height of the circle.
+
+        """
+
+        if self._midpoint_height is None:
+            self._midpoint_height = self.radius_of_curvature * cos(
+                self.maximum_theta_value
+            )
+
+        return self._midpoint_height
+
     def _stretch_mesh(self, meshgrid: list[MeshPoint]) -> list[MeshPoint]:
         """
         Stretch/distort the meshgrid to match the geometry of the curve.
@@ -1653,7 +1743,7 @@ class CircularCurve(Curve, curve_type=CurveType.CIRCULAR):
         """
 
         # Construct stretch matrices.
-        z_angles = [vector.theta for vector in meshgrid]
+        z_angles = [vector.theta_cylindrical for vector in meshgrid]
         stretch_matrices = [
             RotationMatrix.from_rotation_angle_and_axis(theta, CartesianAxis.Y)
             @ DiagonalMatrix.from_diag(Vector(1, 1, self.radius_of_curvature))
@@ -1662,10 +1752,72 @@ class CircularCurve(Curve, curve_type=CurveType.CIRCULAR):
         ]
 
         # Carry out the stretching.
-        return [
+        meshgrid = [
             stretch_matrices[index] @ meshpoint
             for index, meshpoint in enumerate(meshgrid)
         ]
+
+        for index, meshpoint in enumerate(meshgrid):
+            meshpoint.polytunnel_frame_position = (
+                stretch_matrices[index] @ meshpoint.polytunnel_frame_position
+            )
+
+        return meshgrid
+
+        #################
+        # Plotting code #
+        #################
+        #
+        # import matplotlib.pyplot as plt
+        #
+        # plt.figure(figsize=(10, 10))
+        # ax = plt.axes(projection="3d")
+        # ax.grid()
+        #
+        # for mp in meshgrid:
+        #     ax.scatter(mp.x, mp.y, mp.z, c="blue", marker="o", s=20)
+        #
+        # journey = [
+        #     meshgrid[index := 1],
+        #     (
+        #         rot_1 := RotationMatrix.from_rotation_angle_and_axis(
+        #             -z_angles[index],
+        #             CartesianAxis.Y,
+        #         )
+        #     )
+        #     @ meshgrid[index],
+        #     (diag := DiagonalMatrix.from_diag(Vector(1, 1, self.radius_of_curvature)))
+        #     @ (rot_1 @ meshgrid[index]),
+        #     RotationMatrix.from_rotation_angle_and_axis(
+        #         z_angles[index],
+        #         CartesianAxis.Y,
+        #     )
+        #     @ (diag @ (rot_1 @ meshgrid[index])),
+        # ]
+        #
+        # plt.plot(
+        #     [vector.x for vector in journey],
+        #     [vector.y for vector in journey],
+        #     [vector.z for vector in journey],
+        # )
+        #
+        # for sub_index in range(len(meshgrid)):
+        #     ax.scatter(
+        #         (
+        #             stretched_point := stretch_matrices[sub_index] @ meshgrid[sub_index]
+        #         ).x,
+        #         stretched_point.y,
+        #         stretched_point.z,
+        #         c="orange",
+        #         marker="o",
+        #         s=20,
+        #     )
+        #
+        # ax.set_xlabel("X")
+        # ax.set_ylabel("Y")
+        # ax.set_zlabel("Z")
+        #
+        # plt.show()
 
     def _realign_mesh(self, meshgrid: list[MeshPoint]) -> list[MeshPoint]:
         """
@@ -1678,10 +1830,8 @@ class CircularCurve(Curve, curve_type=CurveType.CIRCULAR):
 
         """
 
-        self._midpoint_height = self.radius_of_curvature * cos(self.maximum_theta_value)
-
         for meshpoint in meshgrid:
-            meshpoint -= Vector(0, 0, self._midpoint_height)
+            meshpoint -= Vector(0, 0, self.midpoint_height)
 
         return meshgrid
 
@@ -1946,6 +2096,8 @@ def calculate_and_update_intercept_planes(polytunnel: Polytunnel) -> Polytunnel:
 
         """
 
+        import matplotlib.pyplot as plt
+
         if not isinstance(polytunnel.curve, CircularCurve):
             raise NotImplementedError
 
@@ -1953,32 +2105,86 @@ def calculate_and_update_intercept_planes(polytunnel: Polytunnel) -> Polytunnel:
         meshpoint = polytunnel.surface_mesh[index]
 
         # Consider equations from the polytunnel of intercept.
-        if meshpoint.polytunnel_frame_position.theta > 0:
-            unrotated_vector: Vector = meshpoint.polytunnel_frame_position - Vector(
-                2 * radius, 0, 0
+        if (
+            polytunnel_meshpoint := meshpoint.polytunnel_frame_position
+        ).theta_cylindrical > 0:
+            unrotated_vector: Vector = polytunnel_meshpoint - Vector(
+                polytunnel.width, 0, 0
             )
         else:
-            unrotated_vector: Vector = meshpoint.polytunnel_frame_position + Vector(
-                2 * radius, 0, 0
+            unrotated_vector: Vector = polytunnel_meshpoint + Vector(
+                polytunnel.width, 0, 0
             )
 
         # Determine the meshpoint's intercept point on the corresponding polytunnel.
         intercept_point: Vector = Vector(
             (radius / abs(unrotated_vector)) ** 2 * unrotated_vector.x
-            + (radius / abs(unrotated_vector) ** 2)
-            * sqrt(abs(unrotated_vector) ** 2 - radius**2)
-            * unrotated_vector.y,
-            unrotated_vector.y,
-            (radius / abs(unrotated_vector)) ** 2 * unrotated_vector.y
             - (radius / abs(unrotated_vector) ** 2)
+            * sqrt(abs(unrotated_vector) ** 2 - radius**2)
+            * unrotated_vector.z,
+            unrotated_vector.y,
+            (radius / abs(unrotated_vector)) ** 2 * unrotated_vector.z
+            + (radius / abs(unrotated_vector) ** 2)
             * sqrt(abs(unrotated_vector) ** 2 - radius**2)
             * unrotated_vector.x,
         )
+        # intercept_point = polytunnel.curve._realign_mesh([intercept_point])[0]
+
+        # Plotting test code:
+        plt.figure(figsize=(10, 10))
+        ax = plt.axes(projection="3d")
+        ax.grid()
+
+        for mp in polytunnel.surface_mesh:
+            ax.scatter(
+                mp.polytunnel_frame_position.x,
+                mp.polytunnel_frame_position.y,
+                mp.polytunnel_frame_position.z,
+                c="blue",
+                marker="o",
+                s=20,
+            )
+
+        ax.scatter(
+            meshpoint.polytunnel_frame_position.x,
+            meshpoint.polytunnel_frame_position.y,
+            meshpoint.polytunnel_frame_position.z,
+            c="orange",
+            marker="X",
+            s=50,
+        )
+        ax.scatter(
+            intercept_point.x,
+            intercept_point.y,
+            intercept_point.z,
+            c="r",
+            marker="X",
+            s=50,
+        )
+        ax.scatter(
+            unrotated_vector.x,
+            unrotated_vector.y,
+            unrotated_vector.z,
+            c="b",
+            marker="h",
+            s=50,
+        )
+        ax.set_xlim(-4, 4)
+        ax.set_ylim(-4, 4)
+        ax.set_zlim(-4, 4)
+        plt.show()
 
         # Determine the vector to this intercept point.
         unrotated_vector_to_intercept = (
             unnormalised_vector_to_intercept := (intercept_point - unrotated_vector)
         ) / abs(unnormalised_vector_to_intercept)
+        unrotated_vector_to_intercept = polytunnel.curve._realign_mesh(
+            [unrotated_vector_to_intercept]
+        )[0] + (
+            polytunnel.curve.horizontal_vector
+            * (2 if polytunnel_meshpoint.theta_cylindrical > 0 else -2)
+            * polytunnel.width
+        )
 
         # Rotate this vector to the rotated frame of the polytunnel.
         rotated_vector_to_intercept = polytunnel.curve.calculate_rotated_vector(
@@ -2000,6 +2206,33 @@ def calculate_and_update_intercept_planes(polytunnel: Polytunnel) -> Polytunnel:
                 ]
             )
         )
+
+        # Plotting test code:
+        plt.figure(figsize=(10, 10))
+        ax = plt.axes(projection="3d")
+        ax.grid()
+
+        for mp in polytunnel.surface_mesh:
+            ax.scatter(mp.x, mp.y, mp.z, c="blue", marker="o", s=20)
+
+        ax.scatter(meshpoint.x, meshpoint.y, meshpoint.z, c="orange", marker="X", s=50)
+        ax.scatter(
+            (plane := polytunnel.surface_mesh[index].intercept_plane)._first_vector.x,
+            plane._first_vector.y,
+            plane._first_vector.z,
+            c="r",
+            marker="X",
+            s=50,
+        )
+        ax.scatter(
+            plane._second_vector.x,
+            plane._second_vector.y,
+            plane._second_vector.z,
+            c="r",
+            marker="X",
+            s=50,
+        )
+        plt.show()
 
     # >>>>>>
     # Test code, delete
