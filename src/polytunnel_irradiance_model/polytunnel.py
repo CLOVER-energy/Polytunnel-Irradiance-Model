@@ -1436,7 +1436,10 @@ class Curve(ABC):
         # Determine the radial distance transcribed by a single meshpoint.
         # This value will be the angule transcribed, in radians, multiplied by the
         # radius of curvature of the curve.
-        meshpoint_width = radius * self.maximum_theta_value / (meshgrid_resolution / 2)
+        meshpoint_width: float = (
+            radius * self.maximum_theta_value / (meshgrid_resolution / 2)
+        )
+        meshpoint_length: float = length / meshgrid_resolution
 
         # Setup theta and z iterators.
         for theta in np.linspace(
@@ -1444,9 +1447,11 @@ class Curve(ABC):
             self.maximum_theta_value - angular_size,
             meshgrid_resolution,
         ):
-            for z in np.linspace(0, length, meshgrid_resolution):
+            for z in np.linspace(
+                meshpoint_length / 2, length - meshpoint_length / 2, meshgrid_resolution
+            ):
                 yield MeshPoint.from_cylindrical_coordinates(
-                    radius, theta, z, length / meshgrid_resolution, meshpoint_width
+                    radius, theta, z, meshpoint_length, meshpoint_width
                 )
 
     def _mesh_overlap(
@@ -1979,16 +1984,26 @@ class Polytunnel:
         """
 
         # Create a mesh within the Polytunnel instance.
+        meshpoint_width: float = self.length / self.meshgrid_resolution
+        meshpoint_length: float = self.width / self.meshgrid_resolution
         meshgrid: list[MeshPoint] = []
-        for x in np.linspace(-self.width / 2, self.width / 2, self.meshgrid_resolution):
-            for y in np.linspace(0, self.length, self.meshgrid_resolution):
+        for x in np.linspace(
+            -self.width / 2 + meshpoint_width,
+            self.width / 2 - meshpoint_width,
+            self.meshgrid_resolution,
+        ):
+            for y in np.linspace(
+                meshpoint_length / 2,
+                self.length - meshpoint_length / 2,
+                self.meshgrid_resolution,
+            ):
                 meshgrid.append(
                     MeshPoint(
                         x,
                         y,
                         0,
-                        self.length / self.meshgrid_resolution,
-                        self.width / self.meshgrid_resolution,
+                        meshpoint_width,
+                        meshpoint_length,
                         _normal_vector=Vector(0, 0, 1),
                     )
                 )
@@ -2178,31 +2193,154 @@ def calculate_and_update_intercept_planes(polytunnel: Polytunnel) -> Polytunnel:
         unrotated_vector_to_intercept = (
             unnormalised_vector_to_intercept := (intercept_point - unrotated_vector)
         ) / abs(unnormalised_vector_to_intercept)
-        unrotated_vector_to_intercept = polytunnel.curve._realign_mesh(
-            [unrotated_vector_to_intercept]
-        )[0] + (
-            polytunnel.curve.horizontal_vector
-            * (2 if polytunnel_meshpoint.theta_cylindrical > 0 else -2)
-            * polytunnel.width
+
+        plt.figure(figsize=(10, 10))
+        ax = plt.axes(projection="3d")
+        ax.grid()
+
+        for mp in polytunnel.surface_mesh:
+            ax.scatter(
+                mp.polytunnel_frame_position.x,
+                mp.polytunnel_frame_position.y,
+                mp.polytunnel_frame_position.z,
+                c="blue",
+                marker="o",
+                s=20,
+            )
+
+        ax.scatter(
+            meshpoint.polytunnel_frame_position.x,
+            meshpoint.polytunnel_frame_position.y,
+            meshpoint.polytunnel_frame_position.z,
+            c="orange",
+            marker="X",
+            s=50,
+        )
+        ax.scatter(
+            intercept_point.x,
+            intercept_point.y,
+            intercept_point.z,
+            c="r",
+            marker="X",
+            s=50,
+        )
+        ax.scatter(
+            unrotated_vector.x,
+            unrotated_vector.y,
+            unrotated_vector.z,
+            c="b",
+            marker="h",
+            s=50,
         )
 
+        plt.plot(
+            [
+                meshpoint.polytunnel_frame_position.x,
+                (
+                    vector := meshpoint.polytunnel_frame_position
+                    + unrotated_vector_to_intercept
+                ).x,
+            ],
+            [meshpoint.polytunnel_frame_position.y, vector.y],
+            [meshpoint.polytunnel_frame_position.z, vector.z],
+        )
+
+        ax.set_xlim(-4, 4)
+        ax.set_ylim(-4, 4)
+        ax.set_zlim(-4, 4)
+        plt.show()
+
+        # This vector doesn't require re-alignment or stretching but does requrie
+        # rotation.
         # Rotate this vector to the rotated frame of the polytunnel.
         rotated_vector_to_intercept = polytunnel.curve.calculate_rotated_vector(
             unrotated_vector_to_intercept
         )
 
+        plt.figure(figsize=(10, 10))
+        ax = plt.axes(projection="3d")
+        ax.grid()
+
+        for mp in polytunnel.surface_mesh:
+            ax.scatter(
+                mp.x,
+                mp.y,
+                mp.z,
+                c="blue",
+                marker="o",
+                s=20,
+            )
+
+        ax.scatter(
+            meshpoint.x,
+            meshpoint.y,
+            meshpoint.z,
+            c="orange",
+            marker="X",
+            s=50,
+        )
+        ax.scatter(
+            (vector := rotated_vector_to_intercept + meshpoint).x,
+            vector.y,
+            vector.z,
+            c="r",
+            marker="X",
+            s=50,
+        )
+
+        plt.plot(
+            [
+                meshpoint.x,
+                vector.x,
+            ],
+            [meshpoint.y, vector.y],
+            [meshpoint.z, vector.z],
+        )
+
+        plt.plot(
+            [
+                meshpoint.x,
+                (
+                    vector_1 := vector
+                    + polytunnel.axial_vector
+                    * (polytunnel.length - (meshpoint.polytunnel_frame_position.y))
+                ).x,
+            ],
+            [meshpoint.y, vector_1.y],
+            [meshpoint.z, vector_1.z],
+            color="orange",
+        )
+
+        plt.plot(
+            [
+                meshpoint.x,
+                (
+                    vector_2 := vector
+                    - polytunnel.axial_vector * (meshpoint.polytunnel_frame_position.y)
+                ).x,
+            ],
+            [meshpoint.y, vector_2.y],
+            [meshpoint.z, vector_2.z],
+            color="green",
+        )
+
+        ax.set_xlim(-4, 4)
+        ax.set_ylim(-4, 4)
+        ax.set_zlim(-4, 4)
+        plt.show()
+
         # Add in, or subtract, the axial vector to reach the end of the polytunnel, and,
         # thus, define the intercept plane.
-        normalised_axial_vector = polytunnel.axial_vector / abs(polytunnel.axial_vector)
+        polytunnel.axial_vector
 
         polytunnel.surface_mesh[index].set_intercept_plane(
             Plane(
                 [
                     rotated_vector_to_intercept
-                    + normalised_axial_vector
-                    * (polytunnel.length - unrotated_vector_to_intercept.y),
+                    + polytunnel.axial_vector
+                    * (polytunnel.length - (unrotated_vector_to_intercept.y)),
                     rotated_vector_to_intercept
-                    - normalised_axial_vector * (unrotated_vector_to_intercept.y),
+                    - polytunnel.axial_vector * (unrotated_vector_to_intercept.y),
                 ]
             )
         )
