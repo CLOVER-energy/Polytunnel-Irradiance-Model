@@ -2145,110 +2145,10 @@ def calculate_and_update_intercept_planes(polytunnel: Polytunnel) -> Polytunnel:
         )
         # intercept_point = polytunnel.curve._realign_mesh([intercept_point])[0]
 
-        # Plotting test code:
-        plt.figure(figsize=(10, 10))
-        ax = plt.axes(projection="3d")
-        ax.grid()
-
-        for mp in polytunnel.surface_mesh:
-            ax.scatter(
-                mp.polytunnel_frame_position.x,
-                mp.polytunnel_frame_position.y,
-                mp.polytunnel_frame_position.z,
-                c="blue",
-                marker="o",
-                s=20,
-            )
-
-        ax.scatter(
-            meshpoint.polytunnel_frame_position.x,
-            meshpoint.polytunnel_frame_position.y,
-            meshpoint.polytunnel_frame_position.z,
-            c="orange",
-            marker="X",
-            s=50,
-        )
-        ax.scatter(
-            intercept_point.x,
-            intercept_point.y,
-            intercept_point.z,
-            c="r",
-            marker="X",
-            s=50,
-        )
-        ax.scatter(
-            unrotated_vector.x,
-            unrotated_vector.y,
-            unrotated_vector.z,
-            c="b",
-            marker="h",
-            s=50,
-        )
-        ax.set_xlim(-4, 4)
-        ax.set_ylim(-4, 4)
-        ax.set_zlim(-4, 4)
-        plt.show()
-
         # Determine the vector to this intercept point.
         unrotated_vector_to_intercept = (
             unnormalised_vector_to_intercept := (intercept_point - unrotated_vector)
         ) / abs(unnormalised_vector_to_intercept)
-
-        plt.figure(figsize=(10, 10))
-        ax = plt.axes(projection="3d")
-        ax.grid()
-
-        for mp in polytunnel.surface_mesh:
-            ax.scatter(
-                mp.polytunnel_frame_position.x,
-                mp.polytunnel_frame_position.y,
-                mp.polytunnel_frame_position.z,
-                c="blue",
-                marker="o",
-                s=20,
-            )
-
-        ax.scatter(
-            meshpoint.polytunnel_frame_position.x,
-            meshpoint.polytunnel_frame_position.y,
-            meshpoint.polytunnel_frame_position.z,
-            c="orange",
-            marker="X",
-            s=50,
-        )
-        ax.scatter(
-            intercept_point.x,
-            intercept_point.y,
-            intercept_point.z,
-            c="r",
-            marker="X",
-            s=50,
-        )
-        ax.scatter(
-            unrotated_vector.x,
-            unrotated_vector.y,
-            unrotated_vector.z,
-            c="b",
-            marker="h",
-            s=50,
-        )
-
-        plt.plot(
-            [
-                meshpoint.polytunnel_frame_position.x,
-                (
-                    vector := meshpoint.polytunnel_frame_position
-                    + unrotated_vector_to_intercept
-                ).x,
-            ],
-            [meshpoint.polytunnel_frame_position.y, vector.y],
-            [meshpoint.polytunnel_frame_position.z, vector.z],
-        )
-
-        ax.set_xlim(-4, 4)
-        ax.set_ylim(-4, 4)
-        ax.set_zlim(-4, 4)
-        plt.show()
 
         # This vector doesn't require re-alignment or stretching but does requrie
         # rotation.
@@ -2257,128 +2157,54 @@ def calculate_and_update_intercept_planes(polytunnel: Polytunnel) -> Polytunnel:
             unrotated_vector_to_intercept
         )
 
-        plt.figure(figsize=(10, 10))
-        ax = plt.axes(projection="3d")
-        ax.grid()
-
-        for mp in polytunnel.surface_mesh:
-            ax.scatter(
-                mp.x,
-                mp.y,
-                mp.z,
-                c="blue",
-                marker="o",
-                s=20,
-            )
-
-        ax.scatter(
-            meshpoint.x,
-            meshpoint.y,
-            meshpoint.z,
-            c="orange",
-            marker="X",
-            s=50,
+        # Calculate the two vectors which define the intercept plane
+        first_intercept_vector = (
+            rotated_vector_to_intercept
+            + polytunnel.axial_vector
+            * (polytunnel.length - (meshpoint.polytunnel_frame_position.y))
         )
-        ax.scatter(
-            (vector := rotated_vector_to_intercept + meshpoint).x,
-            vector.y,
-            vector.z,
-            c="r",
-            marker="X",
-            s=50,
+        second_intercept_vector = (
+            rotated_vector_to_intercept
+            - polytunnel.axial_vector * (meshpoint.polytunnel_frame_position.y)
         )
-
-        plt.plot(
-            [
-                meshpoint.x,
-                vector.x,
-            ],
-            [meshpoint.y, vector.y],
-            [meshpoint.z, vector.z],
-        )
-
-        plt.plot(
-            [
-                meshpoint.x,
-                (
-                    vector_1 := vector
-                    + polytunnel.axial_vector
-                    * (polytunnel.length - (meshpoint.polytunnel_frame_position.y))
-                ).x,
-            ],
-            [meshpoint.y, vector_1.y],
-            [meshpoint.z, vector_1.z],
-            color="orange",
-        )
-
-        plt.plot(
-            [
-                meshpoint.x,
-                (
-                    vector_2 := vector
-                    - polytunnel.axial_vector * (meshpoint.polytunnel_frame_position.y)
-                ).x,
-            ],
-            [meshpoint.y, vector_2.y],
-            [meshpoint.z, vector_2.z],
-            color="green",
-        )
-
-        ax.set_xlim(-4, 4)
-        ax.set_ylim(-4, 4)
-        ax.set_zlim(-4, 4)
-        plt.show()
 
         # Add in, or subtract, the axial vector to reach the end of the polytunnel, and,
         # thus, define the intercept plane.
-        polytunnel.axial_vector
-
         polytunnel.surface_mesh[index].set_intercept_plane(
             Plane(
                 [
-                    rotated_vector_to_intercept
-                    + polytunnel.axial_vector
-                    * (polytunnel.length - (unrotated_vector_to_intercept.y)),
-                    rotated_vector_to_intercept
-                    - polytunnel.axial_vector * (unrotated_vector_to_intercept.y),
+                    first_intercept_vector / abs(first_intercept_vector),
+                    second_intercept_vector / abs(second_intercept_vector),
                 ]
             )
         )
 
         # Plotting test code:
-        plt.figure(figsize=(10, 10))
-        ax = plt.axes(projection="3d")
-        ax.grid()
+        # plt.figure(figsize=(10, 10))
+        # ax = plt.axes(projection="3d")
+        # ax.grid()
 
-        for mp in polytunnel.surface_mesh:
-            ax.scatter(mp.x, mp.y, mp.z, c="blue", marker="o", s=20)
+        # for mp in polytunnel.surface_mesh:
+        #     ax.scatter(mp.x, mp.y, mp.z, c="blue", marker="o", s=20)
 
-        ax.scatter(meshpoint.x, meshpoint.y, meshpoint.z, c="orange", marker="X", s=50)
-        ax.scatter(
-            (plane := polytunnel.surface_mesh[index].intercept_plane)._first_vector.x,
-            plane._first_vector.y,
-            plane._first_vector.z,
-            c="r",
-            marker="X",
-            s=50,
-        )
-        ax.scatter(
-            plane._second_vector.x,
-            plane._second_vector.y,
-            plane._second_vector.z,
-            c="r",
-            marker="X",
-            s=50,
-        )
-        plt.show()
-
-    # >>>>>>
-    # Test code, delete
-    _calculate_meshpoint_intercept_plane(0)
-    import pdb
-
-    pdb.set_trace()
-    # <<<<<<
+        # ax.scatter(meshpoint.x, meshpoint.y, meshpoint.z, c="orange", marker="X", s=50)
+        # ax.scatter(
+        #     (vector:=(plane := polytunnel.surface_mesh[index].intercept_plane)._first_vector + meshpoint).x,
+        #     vector.y,
+        #     vector.z,
+        #     c="r",
+        #     marker="X",
+        #     s=50,
+        # )
+        # ax.scatter(
+        #     (vector:=plane._second_vector + meshpoint).x,
+        #     vector.y,
+        #     vector.z,
+        #     c="r",
+        #     marker="X",
+        #     s=50,
+        # )
+        # plt.show()
 
     def _update_pbar(*args) -> None:
         """Update the progress bar."""
