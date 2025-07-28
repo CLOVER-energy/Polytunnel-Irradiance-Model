@@ -446,15 +446,15 @@ class Vector:
         """
 
         if self.x > 0:
-            return atan(self.y / self.x) % (2 * pi)
+            return atan(self.y / self.x)
 
         if self.x < 0:
-            return (atan(self.y / self.x) + (pi if self.y >= 0 else -pi)) % (2 * pi)
+            return atan(self.y / self.x) + (pi if self.y >= 0 else -pi)
 
         if self.x == 0 and self.y == 0:
             return None
 
-        return pi / 2 if self.y > 0 else 3 * pi / 2
+        return pi / 2 if self.y > 0 else -pi / 2
 
     def normalise(self) -> _V:
         """
@@ -499,8 +499,7 @@ class Plane:
             raise Exception("Planes should be defined by two vectors within the plane.")
 
         _first_vector, _second_vector = vectors
-
-        if _first_vector.phi < _second_vector.phi:
+        if (_first_vector @ _second_vector).z > 0:
             self._first_vector = _first_vector
             self._second_vector = _second_vector
             return
@@ -548,10 +547,16 @@ class Plane:
 
         """
 
-        if not self._first_vector.phi < phi < self._second_vector.phi:
+        if (self._first_vector.phi * self._second_vector.phi) > 0:
+            if not self._first_vector.phi < phi < self._second_vector.phi:
+                raise NotInterceptError("Vector does not intercept the plane.")
+
+        if self._first_vector.phi < phi < self._second_vector.phi:
             raise NotInterceptError("Vector does not intercept the plane.")
 
-        phi_range = self._second_vector.phi - self._first_vector.phi
+        phi_range = self._second_vector.phi % (2 * pi) - self._first_vector.phi % (
+            2 * pi
+        )
         theta_range = (
             self._second_vector.theta_spherical - self._first_vector.theta_spherical
         )
@@ -559,7 +564,7 @@ class Plane:
 
         return (
             self._first_vector.theta_spherical
-            + (phi - self._first_vector.phi) * d_theta_by_d_phi
+            + (phi % (2 * pi) - self._first_vector.phi) * d_theta_by_d_phi
         )
 
 

@@ -421,7 +421,7 @@ def main(args: list[Any]) -> None:
     plt.figure()
     plt.title("Sun not shaded")
     sns.heatmap(
-        pd.DataFrame(
+        sun_not_shaded := pd.DataFrame(
             {
                 meshpoint_index: [
                     _sun_not_shaded(meshpoint.intercept_plane, solar_position)
@@ -450,7 +450,7 @@ def main(args: list[Any]) -> None:
     plt.figure()
     plt.title("Sun shining on polytunnel meshpoint")
     sns.heatmap(
-        pd.DataFrame(
+        sun_shining := pd.DataFrame(
             {
                 meshpoint_index: [
                     ((meshpoint._normal_vector * solar_position) > 0)
@@ -460,6 +460,30 @@ def main(args: list[Any]) -> None:
             }
         )
     )
+    plt.show()
+
+    plt.figure()
+    plt.scatter(range(144), [position.phi for position in solar_positions])
+    plt.axhline(
+        polytunnel.surface_mesh[0].intercept_plane._first_vector.phi, color="blue"
+    )
+    plt.axhline(
+        polytunnel.surface_mesh[0].intercept_plane._second_vector.phi, color="red"
+    )
+    plt.plot(range(144), sun_shining[0], "--")
+    plt.plot(range(144), sun_not_shaded[0], "-.")
+    plt.show()
+
+    plt.figure()
+    plt.scatter(range(144), [position.phi for position in solar_positions])
+    plt.axhline(
+        polytunnel.surface_mesh[-1].intercept_plane._first_vector.phi, color="blue"
+    )
+    plt.axhline(
+        polytunnel.surface_mesh[-1].intercept_plane._second_vector.phi, color="red"
+    )
+    plt.plot(range(144), sun_shining[99], "--")
+    plt.plot(range(144), sun_not_shaded[99], "-.")
     plt.show()
 
     d = 2 * semi_major_axis
