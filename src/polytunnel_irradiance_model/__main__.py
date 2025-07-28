@@ -342,9 +342,10 @@ def main(args: list[Any]) -> None:
     # Determine the intercept lines with neighbouring polytunnels.
     calculate_and_update_intercept_planes(polytunnel)
 
-    # * Determine whether any of the modules are shaded by neighbouring polytunnels,
+    # Determine whether any of the modules are shaded by neighbouring polytunnels,
     # either in terms of the direct or diffuse contributions of light that they receive.
     #
+
     # * Calculate the amount of polytunnel surface sunlight which will reach the ground,
     # both as diffuse and direct components.
     #

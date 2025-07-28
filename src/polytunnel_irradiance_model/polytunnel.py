@@ -2206,13 +2206,6 @@ def calculate_and_update_intercept_planes(polytunnel: Polytunnel) -> Polytunnel:
         # )
         # plt.show()
 
-    def _update_pbar(*args) -> None:
-        """Update the progress bar."""
-        pbar.update()
-
-    # Setup the progress bar with asynchronous update method.
-    pbar = tqdm()
-
     # Setup the worker pool and run.
     for index, _ in tqdm(
         enumerate(polytunnel.surface_mesh),
@@ -2221,10 +2214,6 @@ def calculate_and_update_intercept_planes(polytunnel: Polytunnel) -> Polytunnel:
         total=len(polytunnel.surface_mesh),
     ):
         _calculate_meshpoint_intercept_plane(index)
-
-    import pdb
-
-    pdb.set_trace()
 
     # class ElipticalPolytunnel(PolytunnelShape.ELIPTICAL):
     #     """
