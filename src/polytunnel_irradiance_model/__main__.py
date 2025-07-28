@@ -33,12 +33,15 @@ import yaml
 from src.polytunnel_irradiance_model.__utils__ import *
 from src.polytunnel_irradiance_model.functions import *
 from src.polytunnel_irradiance_model.polytunnel import (
-    Polytunnel,
     calculate_and_update_intercept_planes,
+    NotInterceptError,
+    Polytunnel,
+    Plane,
 )
 from src.polytunnel_irradiance_model.solar import (
     calculate_solar_position,
     calculate_clearsky_data_new,
+    SolarPositionVector,
 )
 from src.polytunnel_irradiance_model.irradiance import TunnelIrradiance
 from src.polytunnel_irradiance_model.tracing import Tracing
@@ -301,7 +304,7 @@ def main(args: list[Any]) -> None:
 
     # Carry out the Polytunnel geometry instantiation calculation.
     with time_execution("Polytunnel geometry calculation"):
-        polytunnel = Polytunnel.from_data(
+        polytunnel: Polytunnel = Polytunnel.from_data(
             polytunnel_data, parsed_args.meshgrid_resolution, pv_module_inputs
         )
 
@@ -311,21 +314,19 @@ def main(args: list[Any]) -> None:
     )
 
     with time_execution("Solar position calculation"):
-        solar_positions = [
-            calculate_solar_position(
-                location,
-                list(
-                    _yield_time(
-                        simulation_start_datetime,
-                        simulation_end_datetime,
-                        datetime.timedelta(
-                            minutes=parsed_args.modelling_temporal_resolution
-                        ),
-                    )
-                ),
-                altitude=location.altitude,
-            )
-        ]
+        solar_positions = calculate_solar_position(
+            location,
+            list(
+                _yield_time(
+                    simulation_start_datetime,
+                    simulation_end_datetime,
+                    datetime.timedelta(
+                        minutes=parsed_args.modelling_temporal_resolution
+                    ),
+                )
+            ),
+            altitude=location.altitude,
+        )
 
     # Compute the clearsky irradiance at the location, using the solar spectrum for a
     # clearsky day.
@@ -353,8 +354,49 @@ def main(args: list[Any]) -> None:
     #
 
     # Compute the direct and diffuse irradiance on each component of the grid
+    def _sun_not_shaded(intercept_plane: Plane, position: SolarPositionVector) -> bool:
+        """
+        Calculate whether the sun is shaded by the intercept of the next polytunnel.
+
+        :param: intercept_plane:
+            The plane of intercept with the next polytunnel.
+
+        :param: position:
+            The position vector of the sun.
+
+        :returns:
+            Whether the sun is shaded.
+
+        """
+
+        # If the sun is above the plane, then no shading occurs.
+        if intercept_plane.normal * position > 0:
+            return True
+
+        # Otherwise, if the sun is beyond the polytunnel, no shading occurs.
+        # So, compute the theta as a function of phi.
+        try:
+            return position.theta_spherical > intercept_plane.theta_from_phi(
+                position.phi
+            )
+        except NotInterceptError:
+            return True
+
     with time_execution("Direct surface calculation") as direct_surface_timer:
-        pass
+        surface_shaded_map = pd.DataFrame(
+            {
+                meshpoint_index: [
+                    bool(
+                        _sun_not_shaded(meshpoint.intercept_plane, solar_position)
+                        and ((meshpoint._normal_vector * solar_position) > 0)
+                        and (solar_position.elevation > 0)
+                    )
+                    for solar_position in solar_positions
+                ]
+                for meshpoint_index, meshpoint in enumerate(polytunnel.surface_mesh)
+            }
+        )
+        # direct_surface_irradiance =
 
     with time_execution("Diffuse surface calculation") as diffuse_ground_timer:
         pass
@@ -369,6 +411,56 @@ def main(args: list[Any]) -> None:
     import pdb
 
     pdb.set_trace()
+
+    import seaborn as sns
+    import matplotlib.pyplot as plt
+
+    sns.heatmap(surface_shaded_map)
+    plt.show()
+
+    plt.figure()
+    plt.title("Sun not shaded")
+    sns.heatmap(
+        pd.DataFrame(
+            {
+                meshpoint_index: [
+                    _sun_not_shaded(meshpoint.intercept_plane, solar_position)
+                    for solar_position in solar_positions
+                ]
+                for meshpoint_index, meshpoint in enumerate(polytunnel.surface_mesh)
+            }
+        )
+    )
+    plt.show()
+
+    plt.figure()
+    plt.title("Sun above horizon")
+    sns.heatmap(
+        pd.DataFrame(
+            {
+                meshpoint_index: [
+                    (solar_position.z > 0) for solar_position in solar_positions
+                ]
+                for meshpoint_index, meshpoint in enumerate(polytunnel.surface_mesh)
+            }
+        )
+    )
+    plt.show()
+
+    plt.figure()
+    plt.title("Sun shining on polytunnel meshpoint")
+    sns.heatmap(
+        pd.DataFrame(
+            {
+                meshpoint_index: [
+                    ((meshpoint._normal_vector * solar_position) > 0)
+                    for solar_position in solar_positions
+                ]
+                for meshpoint_index, meshpoint in enumerate(polytunnel.surface_mesh)
+            }
+        )
+    )
+    plt.show()
 
     d = 2 * semi_major_axis
     # sun transits#

@@ -73,6 +73,10 @@ PV_MODULE_SPACING: str = "module_spacing"
 WIDTH: str = "width"
 
 
+class NotInterceptError(Exception):
+    """Raised when a vector does not intercept a plane."""
+
+
 class UndergroundCellError(Exception):
     """Raised when a PV cell is underground."""
 
@@ -442,15 +446,15 @@ class Vector:
         """
 
         if self.x > 0:
-            return atan(self.y / self.x)
+            return atan(self.y / self.x) % (2 * pi)
 
         if self.x < 0:
-            return atan(self.y / self.x) + (pi if self.y >= 0 else -pi)
+            return (atan(self.y / self.x) + (pi if self.y >= 0 else -pi)) % (2 * pi)
 
         if self.x == 0 and self.y == 0:
             return None
 
-        return pi / 2 if self.y > 0 else -pi / 2
+        return pi / 2 if self.y > 0 else 3 * pi / 2
 
     def normalise(self) -> _V:
         """
@@ -494,8 +498,15 @@ class Plane:
         if len(vectors) != 2:
             raise Exception("Planes should be defined by two vectors within the plane.")
 
-        self._first_vector = vectors.pop()
-        self._second_vector = vectors.pop()
+        _first_vector, _second_vector = vectors
+
+        if _first_vector.phi < _second_vector.phi:
+            self._first_vector = _first_vector
+            self._second_vector = _second_vector
+            return
+
+        self._first_vector = _second_vector
+        self._second_vector = _first_vector
 
     @property
     def normal(self) -> Vector:
@@ -507,7 +518,7 @@ class Plane:
 
         """
 
-        # Calculate the cross product
+        # Calculate the cross product ensuring that it points vertically upward
         crossed_vector = self._first_vector @ self._second_vector
 
         # Normalise and return
@@ -524,6 +535,32 @@ class Plane:
         """
 
         return [self._first_vector, self._second_vector]
+
+    def theta_from_phi(self, phi: float) -> float:
+        """
+        Return, based on a value of phi, the value of theta that defines the plane.
+
+        :param: phi:
+            The value of phi to use.
+
+        :returns:
+            The value of theta at this value of phi.
+
+        """
+
+        if not self._first_vector.phi < phi < self._second_vector.phi:
+            raise NotInterceptError("Vector does not intercept the plane.")
+
+        phi_range = self._second_vector.phi - self._first_vector.phi
+        theta_range = (
+            self._second_vector.theta_spherical - self._first_vector.theta_spherical
+        )
+        d_theta_by_d_phi = theta_range / phi_range
+
+        return (
+            self._first_vector.theta_spherical
+            + (phi - self._first_vector.phi) * d_theta_by_d_phi
+        )
 
 
 # Type variable for Meshpoint and children.
@@ -647,8 +684,17 @@ class MeshPoint(Vector):
         x = r * sin(theta)
         z = r * cos(theta)
 
+        # Compute the normal vector which will point normally away from the cylinder.
+
         # Instantiate and return.
-        return cls(x, y, z, length, width)
+        return cls(
+            x,
+            y,
+            z,
+            length,
+            width,
+            _normal_vector=Vector.from_cylindrical_coordinates(1, theta, 0),
+        )
 
     def __add__(self, other) -> _V:
         """
@@ -1648,12 +1694,12 @@ class Curve(ABC):
         return self._tilt_rotation_matrix
 
     def calculate_rotated_vector(
-        self, un_rotated_normal: MeshPoint | Vector
+        self, un_rotated_vector: MeshPoint | Vector
     ) -> MeshPoint | Vector:
         """
         Rotate the vector based on the orientation of the curve/Polytunnel.
 
-        :param: **un_rotated_normal:**
+        :param: **un_rotated_vector:**
             The surface or position vector in the un-rotated frame.
 
         :returns: A :class:`MeshPoint` instance.
@@ -1661,11 +1707,11 @@ class Curve(ABC):
         """
 
         # Rotate this normal vector based on the tilt and azimuth of the polytunnel.
-        rotated_normal = self.azimuth_rotation_matrix @ (
-            self.tilt_rotation_matrix @ un_rotated_normal
+        rotated_vector = self.azimuth_rotation_matrix @ (
+            self.tilt_rotation_matrix @ un_rotated_vector
         )
 
-        return rotated_normal
+        return rotated_vector
 
 
 @dataclass(kw_only=True)

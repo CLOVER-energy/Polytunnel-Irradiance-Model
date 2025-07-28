@@ -99,10 +99,10 @@ class SolarPositionVector(Vector):
         z_coord: float = cos(
             (theta_radians := pi / 2 - radians(solar_position.elevation))
         )
-        x_coord: float = sin(theta_radians) * cos(
+        x_coord: float = sin(theta_radians) * sin(
             phi_radians := radians(solar_position.azimuthal_angle)
         )
-        y_coord: float = sin(theta_radians) * sin(phi_radians)
+        y_coord: float = sin(theta_radians) * cos(phi_radians)
 
         return cls(
             x_coord,
