@@ -469,6 +469,25 @@ class Vector:
         return self
 
 
+def poly_abs(vector: Vector) -> float:
+    """
+    Return the absolute value of a vector in terms of how far away it is from the axis.
+
+    When computing intercept points for polytunnels, the absolute value of a vector away
+    from the axis of the polytunnel is important whereas the distance from the origin is
+    of less significance.
+
+    :param: vector:
+        The vector to calculate the absolute value for.
+
+    :returns:
+        The absolute distance of the vector away from the axis of the polytunnel.
+
+    """
+
+    return sqrt(vector.x**2 + vector.z**2)
+
+
 class Plane:
     """
     Represents a plane.
@@ -547,16 +566,34 @@ class Plane:
 
         """
 
-        if (self._first_vector.phi * self._second_vector.phi) > 0:
-            if not self._first_vector.phi < phi < self._second_vector.phi:
-                raise NotInterceptError("Vector does not intercept the plane.")
+        def _phi_norm(phi_to_norm: float) -> float:
+            """
+            Normlise phi.
 
-        if self._first_vector.phi < phi < self._second_vector.phi:
+            :param: phi_to_norm:
+                The phi to normalise.
+
+            :returns:
+                The normalised phi.
+
+            """
+
+            return ((phi_to_norm + pi) % (2 * pi)) - pi
+
+        # If the plane vectors are both positive, then if the vector isn't within the
+        # two vectors, then no intercept exists.
+        first_phi = self._first_vector.phi
+        if first_phi > 0:
+            second_phi = self._second_vector.phi + (2 * pi if self._second_vector.phi < 0 else 0)
+            normalised_phi = phi + (2 * pi if phi < 0 else 0)
+        else:
+            second_phi = self._second_vector.phi
+            normalised_phi = phi
+
+        if not (first_phi < normalised_phi < second_phi):
             raise NotInterceptError("Vector does not intercept the plane.")
 
-        phi_range = self._second_vector.phi % (2 * pi) - self._first_vector.phi % (
-            2 * pi
-        )
+        phi_range = second_phi - first_phi
         theta_range = (
             self._second_vector.theta_spherical - self._first_vector.theta_spherical
         )
@@ -564,7 +601,7 @@ class Plane:
 
         return (
             self._first_vector.theta_spherical
-            + (phi % (2 * pi) - self._first_vector.phi) * d_theta_by_d_phi
+            + (normalised_phi - first_phi) * d_theta_by_d_phi
         )
 
 
@@ -2172,8 +2209,11 @@ def calculate_and_update_intercept_planes(polytunnel: Polytunnel) -> Polytunnel:
 
         # Consider equations from the polytunnel of intercept.
         if (
-            polytunnel_meshpoint := meshpoint.polytunnel_frame_position
-        ).theta_cylindrical > 0:
+            point_to_left := (
+                polytunnel_meshpoint := meshpoint.polytunnel_frame_position
+            ).theta_cylindrical
+            > 0
+        ):
             unrotated_vector: Vector = polytunnel_meshpoint - Vector(
                 polytunnel.width, 0, 0
             )
@@ -2184,16 +2224,19 @@ def calculate_and_update_intercept_planes(polytunnel: Polytunnel) -> Polytunnel:
 
         # Determine the meshpoint's intercept point on the corresponding polytunnel.
         intercept_point: Vector = Vector(
-            (radius / abs(unrotated_vector)) ** 2 * unrotated_vector.x
-            - (radius / abs(unrotated_vector) ** 2)
-            * sqrt(abs(unrotated_vector) ** 2 - radius**2)
+            (radius / poly_abs(unrotated_vector)) ** 2 * unrotated_vector.x
+            + (1 if point_to_left else -1)
+            * (radius / poly_abs(unrotated_vector) ** 2)
+            * sqrt(poly_abs(unrotated_vector) ** 2 - radius**2)
             * unrotated_vector.z,
             unrotated_vector.y,
-            (radius / abs(unrotated_vector)) ** 2 * unrotated_vector.z
-            + (radius / abs(unrotated_vector) ** 2)
-            * sqrt(abs(unrotated_vector) ** 2 - radius**2)
+            (radius / poly_abs(unrotated_vector)) ** 2 * unrotated_vector.z
+            + (-1 if point_to_left else 1)
+            * (radius / poly_abs(unrotated_vector) ** 2)
+            * sqrt(poly_abs(unrotated_vector) ** 2 - radius**2)
             * unrotated_vector.x,
         )
+
         # intercept_point = polytunnel.curve._realign_mesh([intercept_point])[0]
 
         # Determine the vector to this intercept point.
@@ -2237,10 +2280,25 @@ def calculate_and_update_intercept_planes(polytunnel: Polytunnel) -> Polytunnel:
 
         # for mp in polytunnel.surface_mesh:
         #     ax.scatter(mp.x, mp.y, mp.z, c="blue", marker="o", s=20)
+        #     ax.scatter(
+        #         mp.x
+        #         + polytunnel.width
+        #         * (-1 if polytunnel_meshpoint.theta_cylindrical > 0 else 1),
+        #         mp.y,
+        #         mp.z,
+        #         c="blue",
+        #         marker="o",
+        #         s=20,
+        #     )
 
         # ax.scatter(meshpoint.x, meshpoint.y, meshpoint.z, c="orange", marker="X", s=50)
         # ax.scatter(
-        #     (vector:=(plane := polytunnel.surface_mesh[index].intercept_plane)._first_vector + meshpoint).x,
+        #     (
+        #         vector := (
+        #             plane := polytunnel.surface_mesh[index].intercept_plane
+        #         )._first_vector
+        #         + meshpoint
+        #     ).x,
         #     vector.y,
         #     vector.z,
         #     c="r",
@@ -2248,13 +2306,53 @@ def calculate_and_update_intercept_planes(polytunnel: Polytunnel) -> Polytunnel:
         #     s=50,
         # )
         # ax.scatter(
-        #     (vector:=plane._second_vector + meshpoint).x,
+        #     (vector := plane._second_vector + meshpoint).x,
         #     vector.y,
         #     vector.z,
         #     c="r",
         #     marker="X",
         #     s=50,
         # )
+        # ax.scatter(
+        #     (vector := first_intercept_vector + meshpoint).x,
+        #     vector.y,
+        #     vector.z,
+        #     c="orange",
+        #     marker="X",
+        #     s=50,
+        # )
+        # ax.scatter(
+        #     (vector := second_intercept_vector + meshpoint).x,
+        #     vector.y,
+        #     vector.z,
+        #     c="orange",
+        #     marker="X",
+        #     s=50,
+        # )
+        # ax.scatter(
+        #     (
+        #         vector := meshpoint
+        #         + polytunnel.curve.calculate_rotated_vector(
+        #             unnormalised_vector_to_intercept
+        #         )
+        #     ).x,
+        #     vector.y,
+        #     vector.z,
+        #     c="green",
+        #     marker="H",
+        #     s=50,
+        # )
+        # ax.scatter(
+        #     (vector := polytunnel_meshpoint).x,
+        #     vector.y,
+        #     vector.z,
+        #     c="brown",
+        #     marker="H",
+        #     s=50,
+        # )
+        # ax.set_xlabel("X")
+        # ax.set_ylabel("Y")
+        # ax.set_zlabel("Z")
         # plt.show()
 
     # Setup the worker pool and run.

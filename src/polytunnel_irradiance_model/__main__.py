@@ -370,18 +370,25 @@ def main(args: list[Any]) -> None:
         """
 
         # If the sun is above the plane, then no shading occurs.
-        if intercept_plane.normal * position > 0:
+        if (intercept_plane.normal * position) > 0:
             return True
 
         # Otherwise, if the sun is beyond the polytunnel, no shading occurs.
         # So, compute the theta as a function of phi.
         try:
-            return position.theta_spherical > intercept_plane.theta_from_phi(
+            return position.theta_spherical < intercept_plane.theta_from_phi(
                 position.phi
             )
         except NotInterceptError:
             return True
 
+    import pdb
+
+    pdb.set_trace()
+    _sun_not_shaded(polytunnel.surface_mesh[0].intercept_plane, solar_positions[24])
+    _sun_not_shaded(polytunnel.surface_mesh[2].intercept_plane, solar_positions[24])
+    _sun_not_shaded(polytunnel.surface_mesh[10].intercept_plane, solar_positions[24])
+    _sun_not_shaded(polytunnel.surface_mesh[-2].intercept_plane, solar_positions[120])
     with time_execution("Direct surface calculation") as direct_surface_timer:
         surface_shaded_map = pd.DataFrame(
             {
@@ -396,7 +403,9 @@ def main(args: list[Any]) -> None:
                 for meshpoint_index, meshpoint in enumerate(polytunnel.surface_mesh)
             }
         )
-        # direct_surface_irradiance =
+        direct_surface_irradiance = surface_shaded_map.mul(
+            clearsky_irradiance["dni"].values, axis=0
+        )
 
     with time_execution("Diffuse surface calculation") as diffuse_ground_timer:
         pass
@@ -418,6 +427,9 @@ def main(args: list[Any]) -> None:
     sns.heatmap(surface_shaded_map)
     plt.show()
 
+    sns.heatmap(direct_surface_irradiance, cmap="viridis")
+    plt.show()
+
     plt.figure()
     plt.title("Sun not shaded")
     sns.heatmap(
@@ -432,6 +444,19 @@ def main(args: list[Any]) -> None:
         )
     )
     plt.show()
+
+    for time_index, irradiance in direct_surface_irradiance.iterrows():
+        if irradiance.sum(axis=0) == 0:
+            continue
+        plt.figure()
+        sns.heatmap(
+            np.reshape(irradiance, (10, 10)),
+            cmap="viridis",
+            vmin=0,
+            vmax=max(direct_surface_irradiance.max(axis=0)),
+        )
+        plt.title(f"Time index: {time_index}. Time: {time_index // 6}:{time_index % 6}0")
+        plt.show()
 
     plt.figure()
     plt.title("Sun above horizon")
