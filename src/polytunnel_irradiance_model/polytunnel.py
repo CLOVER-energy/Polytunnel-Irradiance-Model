@@ -2408,11 +2408,19 @@ def calculate_adjacent_polytunnel_solid_angle(
 
         for surface_meshpoint in polytunnel.surface_mesh:
             # Compute the distance between the two points
-            distance: float = abs(_surface_to_point := (meshpoint - surface_meshpoint))
+            _surface_to_point = unrotated_vector - (
+                unrotated_surface_meshpoint := surface_meshpoint.polytunnel_frame_position
+            )
+            _rotated_surface_to_point = polytunnel.curve.calculate_rotated_vector(
+                _surface_to_point
+            )
+            distance: float = abs(_surface_to_point)
 
             # Skip points which are around the wrong side of the polytunnel
             if (
-                _dot_product := (_surface_to_point * surface_meshpoint._normal_vector)
+                _dot_product := (
+                    _rotated_surface_to_point * surface_meshpoint._normal_vector
+                )
             ) < 0:
                 continue
 
@@ -2426,30 +2434,50 @@ def calculate_adjacent_polytunnel_solid_angle(
             # Add to the solid angle
             solid_angle += projected_area / distance**2
 
-        import pdb
-
-        pdb.set_trace()
+        return solid_angle
 
     if polytunnel.curve.curve_type == CurveType.CIRCULAR:
         if isinstance(meshpoints, MeshPoint):
-            return _calculate_meshpoint_adjacent_polytunnel_solid_angle(
-                meshpoints.polytunnel_frame_position
-            )
+            return _calculate_meshpoint_adjacent_polytunnel_solid_angle(meshpoints)
         if len(meshpoints) == 1:
-            return _calculate_meshpoint_adjacent_polytunnel_solid_angle(
-                meshpoints[0].polytunnel_frame_position
-            )
+            return _calculate_meshpoint_adjacent_polytunnel_solid_angle(meshpoints[0])
 
         return [
-            _calculate_meshpoint_adjacent_polytunnel_solid_angle(
-                meshpoint.polytunnel_frame_position
-            )
+            _calculate_meshpoint_adjacent_polytunnel_solid_angle(meshpoint)
             for meshpoint in meshpoints
         ]
 
     raise NotImplementedError(
         "Intercept calculations for non-circular polytunnels are not implemented."
     )
+
+
+def calculate_solid_angles(
+    meshpoints: MeshPoint | list[MeshPoint], polytunnel: Polytunnel
+) -> float:
+    """
+    Calculate the solid angle of the sky seen by a meshpoint.
+
+    :param: meshpoints:
+        The :class:`Meshpoint` instance or `list` of :class:`Meshpoint` instances for
+        which to compute shaded solid angles.
+
+    :param: polytunnel:
+        The :class:`Polytunnel` instance.
+
+    :return:
+        The solid angle which can be seen by any given polytunnel meshpoint or `list` of
+        meshpoints.
+
+    """
+
+    obstructed_solid_angles: float | list[float] = (
+        calculate_adjacent_polytunnel_solid_angle(meshpoints, polytunnel)
+    )
+
+    import pdb
+
+    pdb.set_trace()
 
 
 ################

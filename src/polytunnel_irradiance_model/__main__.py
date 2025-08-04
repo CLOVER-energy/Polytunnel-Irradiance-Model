@@ -37,6 +37,7 @@ from src.polytunnel_irradiance_model.functions import *
 from src.polytunnel_irradiance_model.polytunnel import (
     calculate_adjacent_polytunnel_shading,
     calculate_and_update_intercept_planes,
+    calculate_solid_angles,
     MeshPoint,
     NotInterceptError,
     Polytunnel,
@@ -375,6 +376,7 @@ def main(args: list[Any]) -> None:
 
     # Calculate the amount of diffuse light reaching the ground.
     with time_execution("Diffuse surface calculation"):
+        calculate_solid_angles(polytunnel.surface_mesh, polytunnel)
         import pdb
 
         pdb.set_trace()
