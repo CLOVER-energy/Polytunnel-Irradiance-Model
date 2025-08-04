@@ -44,6 +44,10 @@ CURVE: str = "curve"
 #   Keyword for parsing curve type information.
 CURVE_TYPE: str = "curve_type"
 
+# DIFFUSIVITY:
+#   Keyword used for parsing diffusivity data.
+DIFFUSIVITY: str = "diffusivity"
+
 # Floating point precision:
 #   The floating-point precision of the numbers to use when doing rotations.
 FLOATING_POINT_PRECISION: int = 8
@@ -67,6 +71,10 @@ PV_MODULE: str = "pv_module"
 # PV_MODULE_SPACING:
 #   Keyword for determining the spacing between PV modules.
 PV_MODULE_SPACING: str = "module_spacing"
+
+# TRANSMISSIVITY:
+#   Keyword used for parsing transmissivity data.
+TRANSMISSIVITY: str = "transmissivity"
 
 # WIDTH:
 #   Keyword used for parsing the polytunnel width.
@@ -2056,6 +2064,12 @@ class Polytunnel:
     .. attribute:: curve:
         The curve which defines the shape of the polytunnel.
 
+    .. attribute:: diffusivity:
+        The diffusivity of the material that makes up the polytunnel surface. A value of
+        1 indicates that all light striking the surface will be converted into diffuse
+        light within the polytunnel whilst a value of 0 indicates that all light will
+        remain in the form is it was when indcident on the surface.
+
     .. attribute:: ground_mesh:
         The mesh of :class:`MeshPoint` instances representing the ground within the
         :class:`Polytunnel` instance.
@@ -2079,16 +2093,21 @@ class Polytunnel:
         The mesh of :class:`MeshPoint` instances representing the surface of the
         :class:`Polytunnel` instance.
 
+    .. attribute:: transmissivity:
+        The transmissivity of the material that makes up the polytunnel surface.
+
     """
 
     def __init__(
         self,
         curve: Curve,
+        diffusivity: float,
         length: float,
         meshgrid_resolution: int,
         name: str,
         pv_module: PVModule,
         pv_module_spacing: float,
+        transmissivity: float,
     ):
         """
         Instantiate a Polytunnel instance.
@@ -2102,11 +2121,13 @@ class Polytunnel:
         """
 
         self.curve = curve
+        self.diffusivity = diffusivity
         self.length = length
         self.meshgrid_resolution = meshgrid_resolution
         self.name = name
         self.pv_module = pv_module
         self.pv_module_spacing = pv_module_spacing
+        self.transmissivity = transmissivity
 
         # Generate and store the meshes on the instance of the polytunnel.
         self.ground_mesh: list[MeshPoint] = self.generate_ground_mesh()
@@ -2248,11 +2269,13 @@ class Polytunnel:
 
         return cls(
             curve,
+            input_data.get(DIFFUSIVITY, 0),
             input_data[LENGTH],
             meshgrid_resolution,
             input_data[NAME],
             pv_module,
             input_data[PV_MODULE_SPACING],
+            input_data.get(TRANSMISSIVITY, 1),
         )
 
 
