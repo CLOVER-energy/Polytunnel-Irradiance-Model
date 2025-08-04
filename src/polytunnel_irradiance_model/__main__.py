@@ -388,19 +388,28 @@ def main(args: list[Any]) -> None:
                 )
             }
         )
+        diffuse_total_irradiance = (
+            diffuse_surface_irradiance
+            + polytunnel.diffusivity
+            * polytunnel.transmissivity
+            * direct_surface_irradiance
+        )
 
-    # * Calculate the amount of polytunnel surface sunlight which will reach the ground,
+    # Calculate the amount of polytunnel surface sunlight which will reach the ground,
     # both as diffuse and direct components.
-    #
-    # * Scale this map by the map of irradiance on the surface, OR, do this step first.
-    #
 
-    # Compute the on-the-ground irradiance
+    # Compute the amount of direct light reaching the ground.
     with time_execution("Direct on-the-ground calculation") as direct_ground_timer:
         pass
 
+    # Compute the amount of diffuse light reaching the ground.
     with time_execution("Diffuse on-the-ground calculation") as diffuse_ground_timer:
-        pass
+        import pdb
+
+        pdb.set_trace()
+
+    # * Scale this map by the map of irradiance on the surface, OR, do this step first.
+    #
 
     import pdb
 

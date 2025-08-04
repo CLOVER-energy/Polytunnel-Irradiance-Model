@@ -48,6 +48,10 @@ CURVE_TYPE: str = "curve_type"
 #   Keyword used for parsing diffusivity data.
 DIFFUSIVITY: str = "diffusivity"
 
+# END_TYPE:
+#   Keyword used for parsing end-type information.
+END_TYPE: str = "end_type"
+
 # Floating point precision:
 #   The floating-point precision of the numbers to use when doing rotations.
 FLOATING_POINT_PRECISION: int = 8
@@ -2050,6 +2054,22 @@ class ElipticalCurve(Curve, curve_type=CurveType.ELIPTICAL):
         raise NotImplementedError("Eliptical curves are not implemented.")
 
 
+class EndType(enum.Enum):
+    """
+    Stores information about whether the ends of the polytunnel are open or closed.
+
+    - CLOSED:
+        Indicates that the ends are closed.
+
+    - OPEN:
+        Indicates that the ends are open.
+
+    """
+
+    CLOSED: str = "closed"
+    OPEN: str = "open"
+
+
 # Type variable for Polytunnel and children.
 _P = TypeVar(
     "_P",
@@ -2102,6 +2122,7 @@ class Polytunnel:
         self,
         curve: Curve,
         diffusivity: float,
+        ends: EndType,
         length: float,
         meshgrid_resolution: int,
         name: str,
@@ -2122,6 +2143,7 @@ class Polytunnel:
 
         self.curve = curve
         self.diffusivity = diffusivity
+        self.ends = ends
         self.length = length
         self.meshgrid_resolution = meshgrid_resolution
         self.name = name
@@ -2270,6 +2292,7 @@ class Polytunnel:
         return cls(
             curve,
             input_data.get(DIFFUSIVITY, 0),
+            EndType(input_data.get(END_TYPE, EndType.OPEN.value)),
             input_data[LENGTH],
             meshgrid_resolution,
             input_data[NAME],
