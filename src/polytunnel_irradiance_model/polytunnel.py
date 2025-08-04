@@ -584,7 +584,9 @@ class Plane:
         # two vectors, then no intercept exists.
         first_phi = self._first_vector.phi
         if first_phi > 0:
-            second_phi = self._second_vector.phi + (2 * pi if self._second_vector.phi < 0 else 0)
+            second_phi = self._second_vector.phi + (
+                2 * pi if self._second_vector.phi < 0 else 0
+            )
             normalised_phi = phi + (2 * pi if phi < 0 else 0)
         else:
             second_phi = self._second_vector.phi
@@ -1410,10 +1412,12 @@ class Curve(ABC):
     name: str = ""
     width: float | None = None
     _axial_vector: Vector | None = None
-    _azimuth_rotation_matrix: list[list[float]] | None = None
+    _azimuth_rotation_matrix: RotationMatrix | None = None
+    _inverse_azimuth_rotation_matrix: RotationMatrix | None = None
+    _inverse_tilt_rotation_matrix: RotationMatrix | None = None
     _maximum_arc_length: float | None = None
     _midpoint_height: float = 0
-    _tilt_rotation_matrix: list[list[float]] | None = None
+    _tilt_rotation_matrix: RotationMatrix | None = None
     _vertical_vector: Vector | None = None
 
     def __init_subclass__(cls, curve_type: CurveType) -> None:
@@ -1707,6 +1711,25 @@ class Curve(ABC):
         return self._azimuth_rotation_matrix
 
     @property
+    def inverse_azimuth_rotation_matrix(self) -> list[list[float]]:
+        """
+        The inverse rotation matrix for an azimuth rotation.
+
+        Returns:
+            - A `list` of `list`s representing the matrix.
+
+        """
+
+        if self._inverse_azimuth_rotation_matrix is None:
+            self._inverse_azimuth_rotation_matrix = (
+                RotationMatrix.from_rotation_angle_and_axis(
+                    -self.zenith_rotation_angle, CartesianAxis.Z
+                )
+            )
+
+        return self._inverse_azimuth_rotation_matrix
+
+    @property
     def tilt_rotation_angle(self) -> float:
         """
         The rotation angle for the zenith rotation needs to be adjusted also.
@@ -1735,6 +1758,25 @@ class Curve(ABC):
 
         return self._tilt_rotation_matrix
 
+    @property
+    def inverse_tilt_rotation_matrix(self) -> list[list[float]]:
+        """
+        The inverse rotation matrix for an azimuth rotation.
+
+        Returns:
+            - A `list` of `list`s representing the matrix.
+
+        """
+
+        if self._inverse_tilt_rotation_matrix is None:
+            self._inverse_tilt_rotation_matrix = (
+                RotationMatrix.from_rotation_angle_and_axis(
+                    -self.tilt_rotation_angle, CartesianAxis.X
+                )
+            )
+
+        return self._inverse_tilt_rotation_matrix
+
     def calculate_rotated_vector(
         self, un_rotated_vector: MeshPoint | Vector
     ) -> MeshPoint | Vector:
@@ -1754,6 +1796,27 @@ class Curve(ABC):
         )
 
         return rotated_vector
+
+    def calculate_unrotated_vector(
+        self, rotated_vector: MeshPoint | Vector
+    ) -> MeshPoint | Vector:
+        """
+        Inverse rotate the vector based on the orientation of the curve/Polytunnel.
+
+        :param: **rotated_vector:**
+            The surface or position vector in the rotated frame.
+
+        :returns: A :class:`MeshPoint` instance representing the vector in the
+            un-rotated frame.
+
+        """
+
+        # Rotate this normal vector based on the tilt and azimuth of the polytunnel.
+        un_rotated_vector = self.inverse_tilt_rotation_matrix @ (
+            self.inverse_azimuth_rotation_matrix @ rotated_vector
+        )
+
+        return un_rotated_vector
 
 
 @dataclass(kw_only=True)
@@ -2165,6 +2228,142 @@ class Polytunnel:
         )
 
 
+def calculate_adjacent_polytunnel_shading(
+    meshpoints: MeshPoint | list[MeshPoint],
+    polytunnel: Polytunnel,
+    solar_position: Vector,
+) -> bool | list[bool]:
+    """
+    Calculates whether the sun is shaded by a neighouring polytunnel.
+
+    The logic proceeds as follows:
+    - Rotate the solar position into the frame of the polytunnel;
+    - Construct the parametric quadratic equation that can be solved to determine the
+      value of the parameter, t, which will be set at the intercept point(s);
+    - Determine the descriminant of this equation and, if there is no intercept point,
+      then stop the calculation and return a False value;
+    - If there is an intercept point, solve for the value and then determine the y-value
+      of the intercept point to determine whether the sun is shining around the end of
+      the polytunnel or not.
+
+    :param: meshpoints:
+        The meshpoint or meshpoints to calculate.
+
+    :param: polytunnel:
+        The polytunnel to compute the intercept for.
+
+    :param: solar_position:
+        The current position of the sun.
+
+    :returns:
+        Either a single `bool` value or a `list` of `bool` instances that indicate
+        whether the single meshpoint, or `list` of meshpoints intercept and are shaded
+        by the neighbouring polytunnel or not.
+
+    """
+
+    def _calculate_intercept_values_circular(meshpoint: MeshPoint) -> bool:
+        """
+        Calculate the value for a single meshpoint.
+
+        :param: meshpoint:
+            The :class:`Meshpoint` instance to calculate the value for.
+
+        :returns:
+            Whether the sun shades the meshpoint (`true`) or not (`false`).
+
+        """
+
+        def _in_bounds() -> bool:
+            """
+            Determines whether a point is in-bounds, as in, within length limits.
+
+            Just because an infinite cylinder has an intercept does not mean that, when
+            the length of the cylinder is conidered/taken into account, the intercept
+            point will fall within the allowable range.
+
+            :returns:
+                Whether the point is in-bounds given the length of the cylinder.
+
+            """
+
+            # Determine the intercept parameter
+            _t: float = (-_b + sqrt(descriminant)) / (2 * _a)
+            _u: float = (-_b - sqrt(descriminant)) / (2 * _a)
+
+            # If the intercept points are not in the positive direction, i.e., the
+            # direction of the sun, then break.
+            if _t < 0 or _u < 0:
+                raise NotInterceptError("Wrong direction for intercept.")
+
+            # Take the smallest value and return whether the y-position is in-bounds.
+            _t_value: float = min(_t, _u)
+            y_value_of_intercept: float = _m.y + _t_value * _v.y
+
+            return 0 <= y_value_of_intercept <= polytunnel.length
+
+        # Calculate components of the parameteric quadratic equation for the intercept of
+        # this polytunnel and the next polytunnel to the right.
+        _a: float = ((_v := polytunnel_frame_solar_position).x) ** 2 + _v.z**2
+        _b: float = float(
+            2 * _v.z * (_m := meshpoint).z
+            + 2 * _v.x * (_m.x - 2 * (_R := polytunnel.curve.radius_of_curvature))
+        )
+        _c: float = float((_m.x - 2 * _R) ** 2 + _m.z**2 - _R**2)
+
+        # Compute the descriminant of the quadratic equation
+        descriminant: float = _b**2 - 4 * _a * _c
+
+        # If there is an intercept, solve to check it occurs along the length of the
+        # polytunnel.
+        if descriminant > 0:
+            try:
+                return _in_bounds()
+            except NotInterceptError:
+                pass
+
+        # Re-calculate to compare to the left-hand polytunnel.
+        _b: float = float(2 * _v.z * _m.z + 2 * _v.x * (_m.x + 2 * _R))
+        _c: float = float((_m.x + 2 * _R) ** 2 + _m.z**2 - _R**2)
+
+        # Compute the descriminant of the quadratic equation
+        descriminant: float = _b**2 - 4 * _a * _c
+
+        # If there is an intercept, solve to check it occurs along the length of the
+        # polytunnel.
+        if descriminant > 0:
+            try:
+                return _in_bounds()
+            except NotInterceptError:
+                return False
+
+        return False
+
+    # Compute the un-rotated solar vector.
+    polytunnel_frame_solar_position = polytunnel.curve.calculate_unrotated_vector(
+        solar_position
+    )
+
+    if polytunnel.curve.curve_type == CurveType.CIRCULAR:
+        if isinstance(meshpoints, MeshPoint):
+            return _calculate_intercept_values_circular(
+                meshpoints.polytunnel_frame_position
+            )
+        if len(meshpoints) == 1:
+            return _calculate_intercept_values_circular(
+                meshpoints[0].polytunnel_frame_position
+            )
+
+        return [
+            _calculate_intercept_values_circular(meshpoint.polytunnel_frame_position)
+            for meshpoint in meshpoints
+        ]
+
+    raise NotImplementedError(
+        "Intercept calculations for non-circular polytunnels are not implemented."
+    )
+
+
 def calculate_and_update_intercept_planes(polytunnel: Polytunnel) -> Polytunnel:
     """
     Calculate, for each surface meshpoint, intercept planes.
@@ -2358,7 +2557,7 @@ def calculate_and_update_intercept_planes(polytunnel: Polytunnel) -> Polytunnel:
     # Setup the worker pool and run.
     for index, _ in tqdm(
         enumerate(polytunnel.surface_mesh),
-        desc="intercept-plane calculation",
+        desc="Intercept-plane calculation",
         leave=True,
         total=len(polytunnel.surface_mesh),
     ):

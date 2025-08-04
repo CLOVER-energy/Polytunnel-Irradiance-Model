@@ -30,10 +30,14 @@ import pandas as pd
 import pvlib
 import yaml
 
+from tqdm import tqdm
+
 from src.polytunnel_irradiance_model.__utils__ import *
 from src.polytunnel_irradiance_model.functions import *
 from src.polytunnel_irradiance_model.polytunnel import (
+    calculate_adjacent_polytunnel_shading,
     calculate_and_update_intercept_planes,
+    MeshPoint,
     NotInterceptError,
     Polytunnel,
     Plane,
@@ -70,7 +74,7 @@ FAILED: str = "[ FAILED ]"
 MODULES: str = "modules"
 
 
-def code_print(string_to_print: str) -> None:
+def code_print(string_to_print: str, end: str = "") -> None:
     """
     Print a line with dots.
 
@@ -80,10 +84,6 @@ def code_print(string_to_print: str) -> None:
     """
 
     print(string_to_print + "." * (54 - len(string_to_print)), end="")
-
-
-def compute_surface_grid():
-    """Returns the surface grid"""
 
 
 def _yield_time(
@@ -230,7 +230,7 @@ def time_execution(
 
     """
 
-    code_print(this_code_block_name)
+    # code_print(this_code_block_name, end="\r")
     start_time: float = time.perf_counter()
     end_time: float | None = None
 
@@ -241,9 +241,11 @@ def time_execution(
             else time.perf_counter() - start_time
         )
     except Exception:
+        code_print(this_code_block_name, end="")
         print(f"{'.' * 10} {FAILED}")
         raise
     else:
+        code_print(this_code_block_name, end="")
         execution_time: str = str(round(time.perf_counter() - start_time, 3))
         print(f"{'.' * (10 - len(execution_time))} {execution_time} s {DONE}")
     finally:
@@ -341,71 +343,41 @@ def main(args: list[Any]) -> None:
         )
 
     # Determine the intercept lines with neighbouring polytunnels.
-    calculate_and_update_intercept_planes(polytunnel)
+    # calculate_and_update_intercept_planes(polytunnel)
 
     # Determine whether any of the modules are shaded by neighbouring polytunnels,
     # either in terms of the direct or diffuse contributions of light that they receive.
     #
+    with time_execution("Direct surface calculation") as direct_surface_timer:
+        surface_shaded_map = pd.DataFrame(
+            {
+                meshpoint_index: [
+                    bool(
+                        not calculate_adjacent_polytunnel_shading(
+                            meshpoint, polytunnel, solar_position
+                        )
+                        and ((meshpoint._normal_vector * solar_position) > 0)
+                        and (solar_position.elevation > 0)
+                    )
+                    for solar_position in solar_positions
+                ]
+                for meshpoint_index, meshpoint in tqdm(
+                    enumerate(polytunnel.surface_mesh),
+                    desc="Surface shading calculation",
+                    leave=False,
+                    total=len(polytunnel.surface_mesh),
+                )
+            }
+        )
+        direct_surface_irradiance = surface_shaded_map.mul(
+            clearsky_irradiance["dni"].values, axis=0
+        )
 
     # * Calculate the amount of polytunnel surface sunlight which will reach the ground,
     # both as diffuse and direct components.
     #
     # * Scale this map by the map of irradiance on the surface, OR, do this step first.
     #
-
-    # Compute the direct and diffuse irradiance on each component of the grid
-    def _sun_not_shaded(intercept_plane: Plane, position: SolarPositionVector) -> bool:
-        """
-        Calculate whether the sun is shaded by the intercept of the next polytunnel.
-
-        :param: intercept_plane:
-            The plane of intercept with the next polytunnel.
-
-        :param: position:
-            The position vector of the sun.
-
-        :returns:
-            Whether the sun is shaded.
-
-        """
-
-        # If the sun is above the plane, then no shading occurs.
-        if (intercept_plane.normal * position) > 0:
-            return True
-
-        # Otherwise, if the sun is beyond the polytunnel, no shading occurs.
-        # So, compute the theta as a function of phi.
-        try:
-            return position.theta_spherical < intercept_plane.theta_from_phi(
-                position.phi
-            )
-        except NotInterceptError:
-            return True
-
-    import pdb
-
-    pdb.set_trace()
-    _sun_not_shaded(polytunnel.surface_mesh[0].intercept_plane, solar_positions[24])
-    _sun_not_shaded(polytunnel.surface_mesh[2].intercept_plane, solar_positions[24])
-    _sun_not_shaded(polytunnel.surface_mesh[10].intercept_plane, solar_positions[24])
-    _sun_not_shaded(polytunnel.surface_mesh[-2].intercept_plane, solar_positions[120])
-    with time_execution("Direct surface calculation") as direct_surface_timer:
-        surface_shaded_map = pd.DataFrame(
-            {
-                meshpoint_index: [
-                    bool(
-                        _sun_not_shaded(meshpoint.intercept_plane, solar_position)
-                        and ((meshpoint._normal_vector * solar_position) > 0)
-                        and (solar_position.elevation > 0)
-                    )
-                    for solar_position in solar_positions
-                ]
-                for meshpoint_index, meshpoint in enumerate(polytunnel.surface_mesh)
-            }
-        )
-        direct_surface_irradiance = surface_shaded_map.mul(
-            clearsky_irradiance["dni"].values, axis=0
-        )
 
     with time_execution("Diffuse surface calculation") as diffuse_ground_timer:
         pass
@@ -430,19 +402,21 @@ def main(args: list[Any]) -> None:
     sns.heatmap(direct_surface_irradiance, cmap="viridis")
     plt.show()
 
+    sun_not_shaded = pd.DataFrame(
+        {
+            meshpoint_index: [
+                calculate_adjacent_polytunnel_shading(
+                    meshpoint, polytunnel, solar_position
+                )
+                for solar_position in solar_positions
+            ]
+            for meshpoint_index, meshpoint in enumerate(polytunnel.surface_mesh)
+        }
+    )
+
     plt.figure()
     plt.title("Sun not shaded")
-    sns.heatmap(
-        sun_not_shaded := pd.DataFrame(
-            {
-                meshpoint_index: [
-                    _sun_not_shaded(meshpoint.intercept_plane, solar_position)
-                    for solar_position in solar_positions
-                ]
-                for meshpoint_index, meshpoint in enumerate(polytunnel.surface_mesh)
-            }
-        )
-    )
+    sns.heatmap(sun_not_shaded)
     plt.show()
 
     for time_index, irradiance in direct_surface_irradiance.iterrows():
@@ -455,7 +429,22 @@ def main(args: list[Any]) -> None:
             vmin=0,
             vmax=max(direct_surface_irradiance.max(axis=0)),
         )
-        plt.title(f"Time index: {time_index}. Time: {time_index // 6}:{time_index % 6}0")
+        plt.title(
+            f"Time index: {time_index}. Date: {time_index // (6 * 24)}; Time: {time_index // 6}:{time_index % 6}0"
+        )
+        plt.show()
+
+    for time_index, sun_not_shaded_row in sun_not_shaded.iterrows():
+        plt.figure()
+        sns.heatmap(
+            np.reshape(sun_not_shaded_row, (10, 10)),
+            cmap="viridis",
+            vmin=0,
+            vmax=1,
+        )
+        plt.title(
+            f"Time index: {time_index}. Date: {time_index // (6 * 24)}; Time: {time_index // 6}:{time_index % 6}0"
+        )
         plt.show()
 
     plt.figure()
