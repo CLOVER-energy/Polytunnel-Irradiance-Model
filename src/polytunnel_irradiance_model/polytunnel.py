@@ -654,8 +654,9 @@ class MeshPoint(Vector):
     _intercept_plane: Plane | None = None
     _normal_vector: Vector | None = None
     _polytunnel_frame_position: Vector | None = None
-    _u_vector: Vector | None = None
+    _solid_angle: float | None = None
     _t_vector: Vector | None = None
+    _u_vector: Vector | None = None
 
     def __post_init__(self) -> None:
         """Method run post instantiation of the point."""
@@ -918,6 +919,33 @@ class MeshPoint(Vector):
         """
 
         self._intercept_plane = plane
+
+    @property
+    def solid_angle(self) -> float:
+        """
+        Return the solid angle of the sky that the meshpoint can see.
+
+        :returns:
+            The solid angle of the sky that the meshpoint can see.
+
+        """
+
+        if self._solid_angle is None:
+            raise Exception("Solid angle called before set.")
+
+        return self._solid_angle
+
+    @solid_angle.setter
+    def solid_angle(self, solid_angle: float) -> None:
+        """
+        Set the solid angle.
+
+        :param: solid_angle:
+            The value of the solid angle to set.
+
+        """
+
+        self._solid_angle = solid_angle
 
 
 # Type variable for Curve and children.
@@ -2471,13 +2499,26 @@ def calculate_solid_angles(
 
     """
 
+    # Compute the solid angle that the neighbouring polytunnel obstructs.
     obstructed_solid_angles: float | list[float] = (
         calculate_adjacent_polytunnel_solid_angle(meshpoints, polytunnel)
     )
 
-    import pdb
+    # Compute the overall solid angle that would have been seen.
+    if isinstance(meshpoints, MeshPoint):
+        meshpoints = [meshpoints]
 
-    pdb.set_trace()
+    unobstructed_solid_angles: float | list[float] = [
+        pi - abs(meshpoint.theta_spherical) for meshpoint in meshpoints
+    ]
+
+    # Subtract the obstruction, save, and return.
+    for index, meshpoint in enumerate(meshpoints):
+        meshpoint.solid_angle = (
+            unobstructed_solid_angles[index] - obstructed_solid_angles[index]
+        )
+
+    return [meshpoint.solid_angle for meshpoint in meshpoints]
 
 
 ################

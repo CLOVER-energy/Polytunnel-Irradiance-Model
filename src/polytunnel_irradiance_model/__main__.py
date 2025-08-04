@@ -377,9 +377,17 @@ def main(args: list[Any]) -> None:
     # Calculate the amount of diffuse light reaching the ground.
     with time_execution("Diffuse surface calculation"):
         calculate_solid_angles(polytunnel.surface_mesh, polytunnel)
-        import pdb
-
-        pdb.set_trace()
+        diffuse_surface_irradiance = pd.DataFrame(
+            {
+                meshpoint_index: meshpoint.solid_angle * clearsky_irradiance["dhi"]
+                for meshpoint_index, meshpoint in tqdm(
+                    enumerate(polytunnel.surface_mesh),
+                    desc="Diffuse surface calculation",
+                    leave=False,
+                    total=len(polytunnel.surface_mesh),
+                )
+            }
+        )
 
     # * Calculate the amount of polytunnel surface sunlight which will reach the ground,
     # both as diffuse and direct components.
