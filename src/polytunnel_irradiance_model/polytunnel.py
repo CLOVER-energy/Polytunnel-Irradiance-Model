@@ -660,6 +660,7 @@ class MeshPoint(Vector):
     length: float | None = None
     width: float | None = None
     _area: float | None = None
+    _bottom_end_solid_angle: float | None = None
     _corners: list[Vector] | None = None
     _covered_area: float | None = None
     _covered_fraction: float | None = None
@@ -668,6 +669,7 @@ class MeshPoint(Vector):
     _polytunnel_frame_position: Vector | None = None
     _solid_angle: float | None = None
     _t_vector: Vector | None = None
+    _top_end_solid_angle: float | None = None
     _u_vector: Vector | None = None
 
     def __post_init__(self) -> None:
@@ -766,9 +768,9 @@ class MeshPoint(Vector):
         """
 
         meshpoint_dict: dict[str, Any] = asdict(self)
-        meshpoint_dict["x"] = (self.x + other.x,)
-        meshpoint_dict["y"] = (self.y + other.y,)
-        meshpoint_dict["z"] = (self.z + other.z,)
+        meshpoint_dict["x"] = self.x + other.x
+        meshpoint_dict["y"] = self.y + other.y
+        meshpoint_dict["z"] = self.z + other.z
 
         return MeshPoint(**meshpoint_dict)
 
@@ -798,9 +800,9 @@ class MeshPoint(Vector):
         """
 
         meshpoint_dict: dict[str, Any] = asdict(self)
-        meshpoint_dict["x"] = (self.x - other.x,)
-        meshpoint_dict["y"] = (self.y - other.y,)
-        meshpoint_dict["z"] = (self.z - other.z,)
+        meshpoint_dict["x"] = self.x - other.x
+        meshpoint_dict["y"] = self.y - other.y
+        meshpoint_dict["z"] = self.z - other.z
 
         return MeshPoint(**meshpoint_dict)
 
@@ -1453,6 +1455,7 @@ class Curve(ABC):
     width: float | None = None
     _axial_vector: Vector | None = None
     _azimuth_rotation_matrix: RotationMatrix | None = None
+    _end_area: float | None = None
     _inverse_azimuth_rotation_matrix: RotationMatrix | None = None
     _inverse_tilt_rotation_matrix: RotationMatrix | None = None
     _maximum_arc_length: float | None = None
@@ -1817,6 +1820,33 @@ class Curve(ABC):
 
         return self._inverse_tilt_rotation_matrix
 
+    @property
+    def end_area(self) -> float:
+        """
+        Return the area of the end of the curve.
+
+        :returns:
+            The area at the end of the curve.
+
+        """
+
+        if self._end_area is None:
+            raise Exception("Cannot call end area when not defined.")
+
+        return self._end_area
+
+    @end_area.setter
+    def end_area(self, end_area: float) -> None:
+        """
+        Set the end area.
+
+        :param: end_area:
+            The value of the end area to set.
+
+        """
+
+        self._end_area = end_area
+
     def calculate_rotated_vector(
         self, un_rotated_vector: MeshPoint | Vector
     ) -> MeshPoint | Vector:
@@ -1871,6 +1901,12 @@ class CircularCurve(Curve, curve_type=CurveType.CIRCULAR):
 
     radius_of_curvature: float
     _midpoint_height: float | None = None
+
+    def __post_init__(self) -> None:
+        """Post-instantiation call."""
+
+        self.end_area = pi * self.radius_of_curvature**2
+        return super().__post_init__()
 
     @property
     def maximum_theta_value(self) -> float:
@@ -2028,6 +2064,13 @@ class CircularCurve(Curve, curve_type=CurveType.CIRCULAR):
 
         for meshpoint in meshgrid:
             meshpoint -= Vector(0, 0, self.midpoint_height)
+
+        # Determine the new area of the ends of the polytunnel
+        _theta: float = self.maximum_theta_value
+        _triangle_area: float = (
+            self.midpoint_height * self.radius_of_curvature * sin(_theta)
+        )
+        self.end_area = _theta * self.radius_of_curvature**2 - _triangle_area
 
         return meshgrid
 
@@ -2205,6 +2248,8 @@ class Polytunnel:
 
         """
 
+        # Determine the area of the ends of the polytunnel.
+
         # Create a mesh within the Polytunnel instance.
         meshpoint_width: float = self.length / self.meshgrid_resolution
         meshpoint_length: float = self.width / self.meshgrid_resolution
@@ -2227,8 +2272,17 @@ class Polytunnel:
                         meshpoint_width,
                         meshpoint_length,
                         _normal_vector=Vector(0, 0, 1),
+                        # FIXME
+                        _bottom_end_solid_angle=self.curve.end_area
+                        * cos(atan(x / y))
+                        / y**2,
+                        _top_end_solid_angle=self.curve.end_area
+                        * cos(atan(x / (end_dist := self.length - y)))
+                        / end_dist**2,
                     )
                 )
+
+                # Determine the end solid angle for the meshpoint
 
         # Rotate these points as appropriate.
         return self.curve.rotate_mesh(meshgrid)

@@ -20,8 +20,10 @@ import os
 import sys
 import time
 
+from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
+from math import pi
 from typing import Any, Callable, Generator
 
 # import matplotlib.pyplot as plt
@@ -38,6 +40,7 @@ from src.polytunnel_irradiance_model.polytunnel import (
     calculate_adjacent_polytunnel_shading,
     calculate_and_update_intercept_planes,
     calculate_solid_angles,
+    EndType,
     MeshPoint,
     NotInterceptError,
     Polytunnel,
@@ -372,7 +375,7 @@ def main(args: list[Any]) -> None:
         )
         direct_surface_irradiance = surface_shaded_map.mul(
             clearsky_irradiance["dni"].values, axis=0
-        )
+        ).reset_index(drop=True)
 
     # Calculate the amount of diffuse light reaching the ground.
     with time_execution("Diffuse surface calculation"):
@@ -388,11 +391,10 @@ def main(args: list[Any]) -> None:
                 )
             }
         )
-        diffuse_total_irradiance = (
-            diffuse_surface_irradiance
-            + polytunnel.diffusivity
-            * polytunnel.transmissivity
-            * direct_surface_irradiance
+        diffuse_total_irradiance = diffuse_surface_irradiance.reset_index(
+            drop=True
+        ) + polytunnel.diffusivity * polytunnel.transmissivity * direct_surface_irradiance.reset_index(
+            drop=True
         )
 
     # Calculate the amount of polytunnel surface sunlight which will reach the ground,
@@ -400,13 +402,90 @@ def main(args: list[Any]) -> None:
 
     # Compute the amount of direct light reaching the ground.
     with time_execution("Direct on-the-ground calculation") as direct_ground_timer:
+        # If the ends are open, add the irradiance from the ends.
         pass
 
     # Compute the amount of diffuse light reaching the ground.
     with time_execution("Diffuse on-the-ground calculation") as diffuse_ground_timer:
+        # Consider each point on the surface as imparting diffuse light on the ground.
+        ground_to_surface_projection_map: defaultdict[int, dict[int, float]] = {
+            ground_index: {
+                surface_index: abs(
+                    (_vector := (ground_meshpoint - surface_meshpoint))
+                    * ground_meshpoint._normal_vector
+                )
+                * abs(_vector * surface_meshpoint._normal_vector)
+                / (
+                    abs(surface_meshpoint._normal_vector)
+                    * abs(ground_meshpoint._normal_vector)
+                    * abs(_vector) ** 4
+                )
+                for surface_index, surface_meshpoint in enumerate(
+                    polytunnel.surface_mesh
+                )
+            }
+            for ground_index, ground_meshpoint in tqdm(
+                enumerate(polytunnel.ground_mesh),
+                desc="Mesh-mesh distance calculation",
+                leave=False,
+                total=len(polytunnel.ground_mesh),
+            )
+        }
+
+        ground_diffuse_irradiance_map: pd.DataFrame = pd.DataFrame(
+            {
+                ground_index: (
+                    (
+                        diffuse_total_irradiance * polytunnel.transmissivity
+                        + direct_surface_irradiance
+                        * polytunnel.transmissivity
+                        * polytunnel.diffusivity
+                    )
+                    * ground_to_surface_projection_map[ground_index]
+                ).sum(axis=1)
+                for ground_index, _ in tqdm(
+                    enumerate(polytunnel.ground_mesh),
+                    desc="Mesh-mesh diffuse calculation",
+                    leave=True,
+                    total=len(polytunnel.ground_mesh),
+                )
+            }
+        )
+
         import pdb
 
         pdb.set_trace()
+
+        # Add the irradiance from the ends of the polytunnel.
+        sun_at_bottom: list[bool] = [
+            polytunnel.axial_vector.phi - pi / 2
+            <= position.phi
+            <= polytunnel.axial_vector.phi + pi / 2
+            for position in solar_positions
+        ]
+        sun_at_top: list[bool] = [not entry for entry in sun_at_bottom]
+        sun_in_sky: list[bool] = [
+            position.elevation >= 0 for position in solar_positions
+        ]
+
+        sun_at_bottom = [bottom * sky for bottom, sky in zip(sun_at_bottom, sun_in_sky)]
+        sun_at_top = [top * sky for top, sky in zip(sun_at_top, sun_in_sky)]
+
+        # if polytunnel.ends == EndType.CLOSED:
+        #     bottom_diffuse_irradiance: pd.DataFrame = pd.DataFrame(
+        #         {
+        #             meshpoint_index: (
+        #                 clearsky_irradiance["dhi"].reset_index(drop=True)
+        #                 * polytunnel.transmissivity
+        #                 + clearsky_irradiance["dni"].reset_index(drop=True)
+        #                 * polytunnel.transmissivity
+        #                 * polytunnel.diffusivity
+        #                 * sun_at_bottom
+        #             )
+        #             * meshpoint._bottom_end_solid_angle
+        #             for meshpoint_index, meshpoint in enumerate(polytunnel.ground_mesh)
+        #         }
+        #     )
 
     # * Scale this map by the map of irradiance on the surface, OR, do this step first.
     #
