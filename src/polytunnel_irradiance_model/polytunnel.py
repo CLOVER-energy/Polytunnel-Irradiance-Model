@@ -2364,6 +2364,99 @@ def calculate_adjacent_polytunnel_shading(
     )
 
 
+def calculate_adjacent_polytunnel_solid_angle(
+    meshpoints: MeshPoint | list[MeshPoint], polytunnel: Polytunnel
+) -> float:
+    """
+    Calculate, for a given meshpoint or `list` of meshpoints, their shaded solid angles.
+
+    :param: meshpoints:
+        The :class:`Meshpoint` instance or `list` of :class:`Meshpoint` instances for
+        which to compute shaded solid angles.
+
+    :param: polytunnel:
+        The :class:`Polytunnel` instance.
+
+    :return:
+        The solid angle which is obstructued by the adjactent polytunnel.
+
+    """
+
+    radius: float = polytunnel.curve.radius_of_curvature
+
+    def _calculate_meshpoint_adjacent_polytunnel_solid_angle(
+        meshpoint: MeshPoint,
+    ) -> float:
+        # Consider equations from the polytunnel of intercept.
+        if (
+            point_to_left := (
+                polytunnel_meshpoint := meshpoint.polytunnel_frame_position
+            ).theta_cylindrical
+            > 0
+        ):
+            unrotated_vector: Vector = polytunnel_meshpoint - Vector(
+                polytunnel.width, 0, 0
+            )
+        else:
+            unrotated_vector: Vector = polytunnel_meshpoint + Vector(
+                polytunnel.width, 0, 0
+            )
+
+        # Loop through the meshpoints and, for each that shades the meshpoint in question,
+        # add to the subtended solid angle.
+        solid_angle: float = 0
+
+        for surface_meshpoint in polytunnel.surface_mesh:
+            # Compute the distance between the two points
+            distance: float = abs(_surface_to_point := (meshpoint - surface_meshpoint))
+
+            # Skip points which are around the wrong side of the polytunnel
+            if (
+                _dot_product := (_surface_to_point * surface_meshpoint._normal_vector)
+            ) < 0:
+                continue
+
+            # Reduce the area by the cos of the angle
+            projected_area: float = (
+                surface_meshpoint.area
+                * _dot_product
+                / (abs(_surface_to_point) * abs(surface_meshpoint._normal_vector))
+            )
+
+            # Add to the solid angle
+            solid_angle += projected_area / distance**2
+
+        import pdb
+
+        pdb.set_trace()
+
+    if polytunnel.curve.curve_type == CurveType.CIRCULAR:
+        if isinstance(meshpoints, MeshPoint):
+            return _calculate_meshpoint_adjacent_polytunnel_solid_angle(
+                meshpoints.polytunnel_frame_position
+            )
+        if len(meshpoints) == 1:
+            return _calculate_meshpoint_adjacent_polytunnel_solid_angle(
+                meshpoints[0].polytunnel_frame_position
+            )
+
+        return [
+            _calculate_meshpoint_adjacent_polytunnel_solid_angle(
+                meshpoint.polytunnel_frame_position
+            )
+            for meshpoint in meshpoints
+        ]
+
+    raise NotImplementedError(
+        "Intercept calculations for non-circular polytunnels are not implemented."
+    )
+
+
+################
+# Un-used code #
+################
+
+
 def calculate_and_update_intercept_planes(polytunnel: Polytunnel) -> Polytunnel:
     """
     Calculate, for each surface meshpoint, intercept planes.
@@ -2397,8 +2490,6 @@ def calculate_and_update_intercept_planes(polytunnel: Polytunnel) -> Polytunnel:
             The updated meshpoint.
 
         """
-
-        import matplotlib.pyplot as plt
 
         if not isinstance(polytunnel.curve, CircularCurve):
             raise NotImplementedError
@@ -2473,6 +2564,7 @@ def calculate_and_update_intercept_planes(polytunnel: Polytunnel) -> Polytunnel:
         )
 
         # Plotting test code:
+        # import matplotlib.pyplot as plt
         # plt.figure(figsize=(10, 10))
         # ax = plt.axes(projection="3d")
         # ax.grid()

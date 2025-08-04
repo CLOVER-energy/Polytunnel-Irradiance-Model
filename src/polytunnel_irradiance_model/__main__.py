@@ -348,7 +348,7 @@ def main(args: list[Any]) -> None:
     # Determine whether any of the modules are shaded by neighbouring polytunnels,
     # either in terms of the direct or diffuse contributions of light that they receive.
     #
-    with time_execution("Direct surface calculation") as direct_surface_timer:
+    with time_execution("Direct surface calculation"):
         surface_shaded_map = pd.DataFrame(
             {
                 meshpoint_index: [
@@ -373,14 +373,17 @@ def main(args: list[Any]) -> None:
             clearsky_irradiance["dni"].values, axis=0
         )
 
+    # Calculate the amount of diffuse light reaching the ground.
+    with time_execution("Diffuse surface calculation"):
+        import pdb
+
+        pdb.set_trace()
+
     # * Calculate the amount of polytunnel surface sunlight which will reach the ground,
     # both as diffuse and direct components.
     #
     # * Scale this map by the map of irradiance on the surface, OR, do this step first.
     #
-
-    with time_execution("Diffuse surface calculation") as diffuse_ground_timer:
-        pass
 
     # Compute the on-the-ground irradiance
     with time_execution("Direct on-the-ground calculation") as direct_ground_timer:
