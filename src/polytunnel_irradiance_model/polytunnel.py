@@ -974,9 +974,6 @@ class Matrix:
     """
     Represents a matrix.
 
-    .. attribute:: array:
-        The matrix points.
-
     """
 
     _array: list[list[float]]
@@ -1373,7 +1370,6 @@ class PVModule:
     .. attribute:: multistack:
         The number of stacks to include
 
-
     .. attribute:: name:
         The name of the :class:`PVModule` instance.
 
@@ -1437,15 +1433,11 @@ class Curve(ABC):
     length scale. These last two are wrapped up in a single function which takes a
     disaplcement along the curve and returns the angles at that point.
 
-    .. attribute:: curvature_azimuth:
+    .. attribute:: axis_azimuth:
         The azimuth angle for the curvature axis in degrees.
 
-    .. attribute:: curvature_tilt:
+    .. attribute:: axis_tilt:
         The tilt angle for the curvature axis in degrees.
-
-    .. attribute:: get_angles_from_surface_disaplacement:
-        A callable function which can return the azimuth and tilt at any point on the
-        surface based on the distance from the central axis.
 
     """
 
