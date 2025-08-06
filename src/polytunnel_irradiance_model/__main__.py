@@ -422,66 +422,36 @@ def main(args: list[Any]) -> None:
 
     # Compute the amount of direct light reaching the ground.
     with time_execution("Direct on-the-ground calculation") as direct_ground_timer:
-        # If the ends are open, add the irradiance from the ends.
-        end_intercept_projection: pd.DataFrame = pd.DataFrame(
-            [
-                open_end_direct_irradiance(
-                    polytunnel.ground_mesh, polytunnel, solar_position
-                )
-                for solar_position in tqdm(
-                    solar_positions,
-                    desc="Light from ends",
-                    leave=False,
-                    total=len(solar_positions),
-                )
-            ]
-        )
-        end_direct_irradiance_map: pd.DataFrame = (
-            end_intercept_projection.transpose()
-            .mul(clearsky_irradiance["dhi"].values)
-            .transpose()
-        )
+
         import pdb
 
         pdb.set_trace()
 
-        # import matplotlib.pyplot as plt
-        # import matplotlib.animation as animation
-        # import seaborn as sns
-        # import numpy as np
-
-        # fig, ax = plt.subplots()
-
-        # # Create initial heatmap with dummy data
-        # initial_data = np.reshape(end_direct_irradiance_map.iloc[0], (10, 10))
-        # vmin = 0
-        # vmax = max(end_direct_irradiance_map.max(axis=0))
-        # heatmap = sns.heatmap(
-        #     initial_data, vmin=vmin, vmax=vmax, cmap="viridis", cbar=True, ax=ax
-        # )
-
-        # def update(time_index: int):
-        #     ax.clear()  # clear previous heatmap
-        #     data = np.reshape(end_direct_irradiance_map.iloc[time_index], (10, 10))
-        #     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
-        #     ax.set_title(
-        #         f"Time index: {time_index}. Date: {time_index // (6 * 24)}; Time: {time_index // 6}:{time_index % 6}0"
-        #     )
-
-        # # Create the animation
-        # ani = animation.FuncAnimation(
-        #     fig,
-        #     update,
-        #     frames=len(end_direct_irradiance_map),
-        #     interval=300,
-        #     repeat=False,
-        # )
-        # ani.save("end_irradiance.gif", writer="pillow", fps=15)
-        # plt.show()
-
         ground_direct_irradiance_map: pd.DataFrame = None
+        # If the ends are open, add the irradiance from the ends.
         if polytunnel.ends == EndType.OPEN:
-            ground_direct_irradiance_map += pd.DataFrame()
+            end_intercept_projection: pd.DataFrame = pd.DataFrame(
+                [
+                    open_end_direct_irradiance(
+                        polytunnel.ground_mesh, polytunnel, solar_position
+                    )
+                    for solar_position in tqdm(
+                        solar_positions,
+                        desc="Light from ends",
+                        leave=False,
+                        total=len(solar_positions),
+                    )
+                ]
+            )
+            end_direct_irradiance_map: pd.DataFrame = (
+                end_intercept_projection.transpose()
+                .mul(clearsky_irradiance["dhi"].values)
+                .transpose()
+            )
+
+            #######################
+            # Plotting code No. 1 #
+            #######################
 
     # Compute the amount of diffuse light reaching the ground.
     with time_execution("Diffuse on-the-ground calculation") as diffuse_ground_timer:
@@ -1133,6 +1103,45 @@ def main(args: list[Any]) -> None:
     print(f"Total time { total_time - start_simulation_time }")
 
     # viz.plot_power(time_array, power_total_ground_diffuse, power_total_ground_direct, power_total_out, f'figures/Date_{date_simulation}/power-received_{parameters_sim}.png')
+
+
+#######################
+# Plotting code No. 1 #
+#######################
+
+# import matplotlib.pyplot as plt
+# import matplotlib.animation as animation
+# import seaborn as sns
+# import numpy as np
+
+# fig, ax = plt.subplots()
+
+# # Create initial heatmap with dummy data
+# initial_data = np.reshape(end_direct_irradiance_map.iloc[0], (10, 10))
+# vmin = 0
+# vmax = max(end_direct_irradiance_map.max(axis=0))
+# heatmap = sns.heatmap(
+#     initial_data, vmin=vmin, vmax=vmax, cmap="viridis", cbar=True, ax=ax
+# )
+
+# def update(time_index: int):
+#     ax.clear()  # clear previous heatmap
+#     data = np.reshape(end_direct_irradiance_map.iloc[time_index], (10, 10))
+#     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
+#     ax.set_title(
+#         f"Time index: {time_index}. Date: {time_index // (6 * 24)}; Time: {time_index // 6}:{time_index % 6}0"
+#     )
+
+# # Create the animation
+# ani = animation.FuncAnimation(
+#     fig,
+#     update,
+#     frames=len(end_direct_irradiance_map),
+#     interval=300,
+#     repeat=False,
+# )
+# ani.save("end_irradiance.gif", writer="pillow", fps=15)
+# plt.show()
 
 
 if __name__ == "__main__":
