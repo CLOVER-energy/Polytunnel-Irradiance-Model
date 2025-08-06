@@ -216,6 +216,7 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
 
     parser.add_argument(
         "--meshgrid-resolution",
+        "-mres",
         type=int,
         default=10,
         help="The resolution of the mesh grid in terms of the number of points along "
@@ -435,7 +436,7 @@ def main(args: list[Any]) -> None:
                     polytunnel.ground_mesh,
                     polytunnel,
                     surface_shaded_map.loc[time_index]
-                    * clearsky_irradiance["dni"][time_index],
+                    * clearsky_irradiance["dni"].iloc[time_index],
                     solar_position,
                 )
                 for time_index, solar_position in tqdm(
@@ -533,7 +534,9 @@ def main(args: list[Any]) -> None:
 
     # Compute the total on-the-ground irradiance map
     with time_execution("Global on-the-ground calculation") as diffuse_ground_timer:
-        pass
+        total_ground_irradiance_map: pd.DataFrame = (
+            ground_direct_irradiance_map + ground_diffuse_irradiance_map
+        )
 
     import pdb
 
@@ -1113,16 +1116,21 @@ def main(args: list[Any]) -> None:
 # fig, ax = plt.subplots()
 
 # # Create initial heatmap with dummy data
-# initial_data = np.reshape(end_direct_irradiance_map.iloc[0], (10, 10))
+# initial_data = np.reshape(
+#     total_ground_irradiance_map.iloc[0],
+#     (_dim := parsed_args.meshgrid_resolution, _dim),
+# )
 # vmin = 0
-# vmax = max(end_direct_irradiance_map.max(axis=0))
+# vmax = max(total_ground_irradiance_map.max(axis=0))
 # heatmap = sns.heatmap(
 #     initial_data, vmin=vmin, vmax=vmax, cmap="viridis", cbar=True, ax=ax
 # )
 
 # def update(time_index: int):
 #     ax.clear()  # clear previous heatmap
-#     data = np.reshape(end_direct_irradiance_map.iloc[time_index], (10, 10))
+#     data = np.reshape(
+#         total_ground_irradiance_map.iloc[time_index], (_dim, _dim)
+#     )
 #     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
 #     ax.set_title(
 #         f"Time index: {time_index}. Date: {time_index // (6 * 24)}; Time: {time_index // 6}:{time_index % 6}0"
@@ -1132,11 +1140,11 @@ def main(args: list[Any]) -> None:
 # ani = animation.FuncAnimation(
 #     fig,
 #     update,
-#     frames=len(end_direct_irradiance_map),
+#     frames=len(total_ground_irradiance_map),
 #     interval=300,
 #     repeat=False,
 # )
-# ani.save("end_irradiance.gif", writer="pillow", fps=15)
+# ani.save("global_ground_irradiance.gif", writer="pillow", fps=15)
 # plt.show()
 
 
