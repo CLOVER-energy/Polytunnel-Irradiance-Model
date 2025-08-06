@@ -1,3 +1,19 @@
+########################################################################################
+# irradiance.py --- Polytunnel irradiance module for the Polytunnel-Irradiance Module. #
+#                                                                                      #
+# Author(s): Taylor Pomfret, Emilio Nunez-Andrade, Benedict Winchester                 #
+# Date created: Summer 2024/25                                                         #
+#                                                                                      #
+########################################################################################
+
+"""
+Polytunnel Irradiance Model: `irradiance.py`
+
+This module contains some irradiance calculations.
+
+"""
+
+
 import numpy as np
 import matplotlib.pyplot as plt
 import tmm_fast as tmm
@@ -6,6 +22,99 @@ import tracing as tracer
 import os
 import pandas as pd
 import torch
+
+from src.polytunnel_irradiance_model.polytunnel import MeshPoint, Polytunnel
+from src.polytunnel_irradiance_model.solar import SolarPositionVector
+
+
+def open_end_direct_irradiance(
+    meshpoints: MeshPoint | list[MeshPoint],
+    polytunnel: Polytunnel,
+    solar_position: SolarPositionVector,
+) -> list[float]:
+    """
+    Compute the direct irradiance that falls on the ground within the polytunnel from ends.
+
+    If a polytunnel has open ends, then some irradiance will fall on the ground by coming in
+    through these open ends. This irradiance is computed here by determining whether the
+    sunlight shines in through the ends of the polytunnel onto the meshpoints.
+
+    :param: meshpoints:
+        The single :class:`Meshpoint` instance or `list` of :class:`Meshpoint` instances
+        which are part of the ground mesh for which the sunlight should be computed.
+
+    :param: polytunnel:
+        The polytunnel to compute.
+
+    :param: solar_position:
+        The position of the sun.
+
+    :returns:
+        The fraction which falls on the :class:`Meshpoint` or `list` of
+        :class:`Meshpoint` instances given the solar position.
+
+    """
+
+    # Rotate the solar position into the polytunnel frame.
+    polytunnel_frame_solar_position = polytunnel.curve.calculate_unrotated_vector(
+        solar_position
+    )
+
+    # Parameterise the curve with t and determine the value of t which would intersect
+    # the ends of the polytunnel.
+    if polytunnel_frame_solar_position.y == 0:
+        return 0
+
+    def _single_meshpoint_open_end_direct_irradiance(meshpoint: MeshPoint) -> float:
+        """
+        Perform the calculation for a single meshpoint.
+
+        :param: meshpoint:
+            The single :class:`Meshpoint` instance to compute for.
+
+        :returns:
+            The fraction of the irradiance which falls.
+
+        """
+
+        if polytunnel_frame_solar_position.y > 0:
+            _t: float = (
+                polytunnel.length - (_m := meshpoint.polytunnel_frame_position).y
+            ) / (_v := polytunnel_frame_solar_position).y
+        else:
+            _t = (
+                -(_m := meshpoint.polytunnel_frame_position).y
+                / (_v := polytunnel_frame_solar_position).y
+            )
+
+        # Compute the x and z values for the intercept
+        _x_intercept: float = _m.x + _t * _v.x
+        _z_intercept: float = (
+            _m_z := _m.z + polytunnel.curve.midpoint_height
+        ) + _t * _v.z
+
+        # If the intercept is out of bounds, no light fell.
+        if (
+            _x_intercept**2 + _z_intercept**2
+        ) > polytunnel.curve.radius_of_curvature**2:
+            return 0
+
+        # If the intercept is below the horizon, no light fell.
+        if _z_intercept < _m_z:
+            return 0
+
+        # Return the fraction which falls within this region.
+        return _v * polytunnel.curve.calculate_unrotated_vector(
+            meshpoint._normal_vector
+        )
+
+    if isinstance(meshpoints, MeshPoint):
+        return [_single_meshpoint_open_end_direct_irradiance(meshpoints)]
+
+    return [
+        _single_meshpoint_open_end_direct_irradiance(meshpoint)
+        for meshpoint in meshpoints
+    ]
 
 
 class TunnelIrradiance:
