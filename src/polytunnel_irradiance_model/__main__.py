@@ -348,11 +348,10 @@ def main(args: list[Any]) -> None:
 
     # Determine the intercept lines with neighbouring polytunnels.
     # calculate_and_update_intercept_planes(polytunnel)
-
-    # Determine whether any of the modules are shaded by neighbouring polytunnels,
-    # either in terms of the direct or diffuse contributions of light that they receive.
-    #
     with time_execution("Direct surface calculation"):
+        # Determine whether any of the modules are shaded by neighbouring polytunnels,
+        # either in terms of the direct or diffuse contributions of light that they receive.
+        #
         surface_shaded_map = pd.DataFrame(
             {
                 meshpoint_index: [
@@ -373,9 +372,30 @@ def main(args: list[Any]) -> None:
                 )
             }
         )
-        direct_surface_irradiance = surface_shaded_map.mul(
-            clearsky_irradiance["dni"].values, axis=0
-        ).reset_index(drop=True)
+
+        # Compute the solar position dot-product across the surface of the polytunnel.
+        dot_product_map = pd.DataFrame(
+            {
+                meshpoint_index: [
+                    meshpoint._normal_vector * solar_position
+                    for solar_position in solar_positions
+                ]
+                for meshpoint_index, meshpoint in tqdm(
+                    enumerate(polytunnel.surface_mesh),
+                    desc="Surface dot-product calculation",
+                    leave=False,
+                    total=len(polytunnel.surface_mesh),
+                )
+            }
+        )
+
+        # Construct a map of the surface irradiance on the polytunnel (direct) as a
+        # function of time.
+        direct_surface_irradiance = (
+            (surface_shaded_map * dot_product_map)
+            .mul(clearsky_irradiance["dni"].values, axis=0)
+            .reset_index(drop=True)
+        )
 
     # Calculate the amount of diffuse light reaching the ground.
     with time_execution("Diffuse surface calculation"):
