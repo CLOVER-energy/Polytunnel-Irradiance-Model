@@ -693,10 +693,10 @@ class MeshPoint(Vector):
 
         # Compute the four corners.
         self._corners: list[Vector] = [
-            self.position_vector + _x_vector + _y_vector,
-            self.position_vector + _x_vector - _y_vector,
-            self.position_vector - _x_vector + _y_vector,
             self.position_vector - _x_vector - _y_vector,
+            self.position_vector + _x_vector - _y_vector,
+            self.position_vector + _x_vector + _y_vector,
+            self.position_vector - _x_vector + _y_vector,
         ]
 
         # Save the u and t vectors.
@@ -885,6 +885,18 @@ class MeshPoint(Vector):
 
         return self._covered_area
 
+    @covered_area.setter
+    def covered_area(self, covered_area: float) -> float:
+        """
+        Set the covered area of the meshpoint.
+
+        :param: covered_area:
+            The area of the meshpoint covered.
+
+        """
+
+        self._covered_area = covered_area
+
     @property
     def covered_fraction(self) -> float:
         """
@@ -899,6 +911,18 @@ class MeshPoint(Vector):
             self._covered_fraction = self.covered_area / self.area
 
         return self._covered_fraction
+
+    @covered_fraction.setter
+    def covered_fraction(self, covered_fraction: float) -> float:
+        """
+        Set the covered fraction.
+
+        :param: covered_fraction:
+            The fraction to set.
+
+        """
+
+        self._covered_fraction = covered_fraction
 
     def set_normal_vector(self, new_normal_vector: Vector) -> None:
         """
@@ -1581,6 +1605,7 @@ class Curve(ABC):
                     radius, theta, z, meshpoint_length, meshpoint_width
                 )
 
+    @abstractmethod
     def _mesh_overlap(
         self, meshgrid: list[MeshPoint], pv_module: PVModule, pv_module_spacing: float
     ) -> list[MeshPoint]:
@@ -1602,9 +1627,7 @@ class Curve(ABC):
 
         """
 
-        # TODO: Implement this function.
-
-        return meshgrid
+        pass
 
     @abstractmethod
     def _stretch_mesh(self, meshgrid: list[MeshPoint]) -> list[MeshPoint]:
@@ -1707,11 +1730,11 @@ class Curve(ABC):
         # Stretch the meshgrid.
         meshgrid = self._stretch_mesh(meshgrid)
 
-        # Re-align the mesh so that the points are on the ground, as appopriate.
-        meshgrid = self._realign_mesh(meshgrid)
-
         # Compute the overlap of the mesh with the PV modules.
         meshgrid = self._mesh_overlap(meshgrid, pv_module, pv_module_spacing)
+
+        # Re-align the mesh so that the points are on the ground, as appopriate.
+        meshgrid = self._realign_mesh(meshgrid)
 
         # Rotate all meshpoints
         return self.rotate_mesh(meshgrid)
@@ -1941,6 +1964,106 @@ class CircularCurve(Curve, curve_type=CurveType.CIRCULAR):
             )
 
         return self._midpoint_height
+
+    def _mesh_overlap(
+        self,
+        meshgrid: list[MeshPoint],
+        pv_module: PVModule,
+        pv_module_spacing: float,
+        pv_module_theta_wise_spacing: float | None = None,
+    ) -> list[MeshPoint]:
+        """
+        Update the mesh points with the area and fractional area that overlaps modules.
+
+        :param: meshgrid:
+            The `list` of :class:`MeshPoint` instances.
+
+        :param: PVModule:
+            The :class:`PVModule` instance.
+
+        :param: pv_module_spacing:
+            The spacing between PV modules along the length of the polytunnel.
+
+        :param: pv_module_theta_wise_spacing:
+            The spacing between PV modules around the axis of the polytunnel.
+
+        :returns:
+            The updated `list` of :class:`MeshPoint` instances where each's overlap with
+            the PV modules on the polytunnel is computed.
+
+        """
+
+        if pv_module_theta_wise_spacing is not None:
+            raise NotImplementedError(
+                "Multiple modules around a polytunnel is not implemented."
+            )
+
+        def _within_module(point: Vector) -> bool:
+            """
+            Return whether the point lies within a PV module or not.
+
+            :param: point:
+                The :class:`Vector` instance to check.
+
+            :returns:
+                Whether the point lies within a PV module (`true`) or not (`false`).
+
+            """
+
+            return bool(
+                # The point lies within bounds along the polytunnel.
+                (point.y % pv_module_spacing) < pv_module.width
+                and -pv_module.length / 2
+                < self.radius_of_curvature * point.theta_cylindrical
+                < pv_module.length / 2
+                # The point lies within bounds around the polytunnel.
+            )
+
+        #######################
+        # Plotting code No. 2 #
+        #######################
+
+        for meshpoint in tqdm(
+            meshgrid,
+            desc="Determining PV--mesh overlap",
+            leave=False,
+            total=len(meshgrid),
+        ):
+            # Determine which of the corners of the meshpoint are within a module.
+            corners_in: tuple[bool, bool, bool, bool] = tuple(
+                _within_module(corner) for corner in meshpoint._corners
+            )
+
+            # If none overlap, then no fraction overlaps.
+            if not any(corners_in):
+                meshpoint.covered_area = 0
+                continue
+
+            # Otherwise, determine the type of meshpoint based on a switch.
+            match corners_in:
+                # Top points within, bottom points without (type B)
+                case (False, False, True, True):
+                    meshpoint.covered_area = meshpoint.width * (
+                        meshpoint._corners[2].y % pv_module_spacing
+                    )
+
+                # All area covered (type E)
+                case (True, True, True, True):
+                    meshpoint.covered_area = meshpoint.area
+
+                # Bottom points within, top points without (type H)
+                case (True, True, False, False):
+                    meshpoint.covered_area = meshpoint.width * (
+                        pv_module.width - meshpoint._corners[1].y % pv_module_spacing
+                    )
+
+                case _:
+                    import pdb
+
+                    pdb.set_trace()
+                    raise Exception("Unable to classify point")
+
+        return meshgrid
 
     def _stretch_mesh(self, meshgrid: list[MeshPoint]) -> list[MeshPoint]:
         """
@@ -2633,6 +2756,48 @@ def calculate_solid_angles(
         )
 
     return [meshpoint.solid_angle for meshpoint in meshpoints]
+
+
+#######################
+# Plotting code No. 2 #
+#######################
+
+# import matplotlib.pyplot as plt
+# import seaborn as sns
+
+# sns.set_palette(sns.cubehelix_palette(start=0.4, rot=-0.4, n_colors=5))
+# plt.scatter(
+#     self.radius_of_curvature * meshpoint._corners[0].theta_cylindrical,
+#     meshpoint._corners[0].y,
+#     marker="x",
+#     label="0",
+# )
+# plt.scatter(
+#     self.radius_of_curvature * meshpoint._corners[1].theta_cylindrical,
+#     meshpoint._corners[1].y,
+#     marker="x",
+#     label="1",
+# )
+# plt.scatter(
+#     self.radius_of_curvature * meshpoint._corners[2].theta_cylindrical,
+#     meshpoint._corners[2].y,
+#     marker="x",
+#     label="2",
+# )
+# plt.scatter(
+#     self.radius_of_curvature * meshpoint._corners[3].theta_cylindrical,
+#     meshpoint._corners[3].y,
+#     marker="x",
+#     label="3",
+# )
+# plt.axvline(-pv_module.length / 2, color="C4", dashes=(2, 2))
+# plt.axvline(pv_module.length / 2, color="C4", dashes=(2, 2))
+# plt.axhline(pv_module.width, color="C4", dashes=(2, 2))
+# plt.xlim(
+#     -self.radius_of_curvature * pi / 2, self.radius_of_curvature * pi / 2
+# )
+# plt.ylim(0, pv_module_spacing)
+# plt.show()
 
 
 ################

@@ -546,9 +546,32 @@ def main(args: list[Any]) -> None:
     import matplotlib.pyplot as plt
 
     sns.heatmap(surface_shaded_map)
+    plt.savefig(
+        "surface_shaded_unmodulatead.pdf",
+        format="pdf",
+        bbox_inches="tight",
+        pad_inches=0,
+    )
     plt.show()
 
     sns.heatmap(direct_surface_irradiance, cmap="viridis")
+    plt.savefig(
+        "direct_surface_unmodulatead.pdf",
+        format="pdf",
+        bbox_inches="tight",
+        pad_inches=0,
+    )
+    plt.show()
+
+    sns.heatmap(
+        np.reshape(
+            [meshpoint.covered_fraction for meshpoint in polytunnel.surface_mesh],
+            (parsed_args.meshgrid_resolution, parsed_args.meshgrid_resolution),
+        )
+    )
+    plt.savefig(
+        "polytunnel_positions.pdf", format="pdf", bbox_inches="tight", pad_inches=0
+    )
     plt.show()
 
     sun_not_shaded = pd.DataFrame(
