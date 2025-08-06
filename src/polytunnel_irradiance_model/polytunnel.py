@@ -2279,6 +2279,28 @@ class Polytunnel:
         # Rotate these points as appropriate.
         return self.curve.rotate_mesh(meshgrid)
 
+    def surface_from_theta_y(self, theta: float, y: float) -> tuple[int, MeshPoint]:
+        """
+        Return a surface meshpoint index and point from theta and y.
+
+        :param: theta:
+            The theta value to use.
+
+        :param: y:
+            The y-value to use.
+
+        """
+
+        y_index = int(y // (self.length / self.meshgrid_resolution))
+        theta_index = int(
+            (theta + self.curve.maximum_theta_value)
+            // (2 * self.curve.maximum_theta_value / self.meshgrid_resolution)
+        )
+
+        meshpoint_index: int = theta_index * self.meshgrid_resolution + y_index
+
+        return meshpoint_index, self.surface_mesh[meshpoint_index]
+
     @classmethod
     def from_data(
         cls,
