@@ -1563,7 +1563,7 @@ class Curve(ABC):
         self._vertical_vector = self.calculate_rotated_vector(Vector(0, 0, 1))
 
     def _instantiate_mesh(
-        self, length: float, meshgrid_resolution: int
+        self, length: float, meshgrid_resolution: int, pv_module_spacing: float
     ) -> Iterator[MeshPoint]:
         """
         Generate a series of points around the curve, un-distorted.
@@ -1577,6 +1577,9 @@ class Curve(ABC):
         :param: meshgrid_resolution:
             The number of points to use in each direction.
 
+        :param: pv_module_spacing:
+            The spacing between PV modules.
+
         :returns: A `list` of :class:`MeshPoint` instances.
 
         """
@@ -1584,13 +1587,18 @@ class Curve(ABC):
         # Set a default radius for the un-distorted shape.
         radius: int = 1
 
+        # Create more z-wise points depending on the PV module spacing
+        z_wise_meshgrid_resolution = meshgrid_resolution * int(
+            length // pv_module_spacing
+        )
+
         # Determine the radial distance transcribed by a single meshpoint.
         # This value will be the angule transcribed, in radians, multiplied by the
         # radius of curvature of the curve.
         meshpoint_width: float = (
             radius * self.maximum_theta_value / (meshgrid_resolution / 2)
         )
-        meshpoint_length: float = length / meshgrid_resolution
+        meshpoint_length: float = length / z_wise_meshgrid_resolution
 
         # Setup theta and z iterators.
         for theta in np.linspace(
@@ -1599,7 +1607,9 @@ class Curve(ABC):
             meshgrid_resolution,
         ):
             for z in np.linspace(
-                meshpoint_length / 2, length - meshpoint_length / 2, meshgrid_resolution
+                meshpoint_length / 2,
+                length - meshpoint_length / 2,
+                z_wise_meshgrid_resolution,
             ):
                 yield MeshPoint.from_cylindrical_coordinates(
                     radius, theta, z, meshpoint_length, meshpoint_width
@@ -1725,7 +1735,9 @@ class Curve(ABC):
         """
 
         # Generate an equally-spaced, un-distorted mesh.
-        meshgrid = list(self._instantiate_mesh(length, meshgrid_resolution))
+        meshgrid = list(
+            self._instantiate_mesh(length, meshgrid_resolution, pv_module_spacing)
+        )
 
         # Stretch the meshgrid.
         meshgrid = self._stretch_mesh(meshgrid)
@@ -1998,6 +2010,20 @@ class CircularCurve(Curve, curve_type=CurveType.CIRCULAR):
                 "Multiple modules around a polytunnel is not implemented."
             )
 
+        def _surface_displacement(point: Vector) -> float:
+            """
+            Return the distance along a surface based on a theta value.
+
+            :param: point:
+                The point on the surface.
+
+            :returns:
+                The distance along the surface.
+
+            """
+
+            return point.theta_cylindrical * self.radius_of_curvature
+
         def _within_module(point: Vector) -> bool:
             """
             Return whether the point lies within a PV module or not.
@@ -2014,7 +2040,7 @@ class CircularCurve(Curve, curve_type=CurveType.CIRCULAR):
                 # The point lies within bounds along the polytunnel.
                 (point.y % pv_module_spacing) < pv_module.width
                 and -pv_module.length / 2
-                < self.radius_of_curvature * point.theta_cylindrical
+                < _surface_displacement(point)
                 < pv_module.length / 2
                 # The point lies within bounds around the polytunnel.
             )
@@ -2039,23 +2065,78 @@ class CircularCurve(Curve, curve_type=CurveType.CIRCULAR):
                 meshpoint.covered_area = 0
                 continue
 
-            # Otherwise, determine the type of meshpoint based on a switch.
+            # Otherwise, determine the type of meshpoint based on a switch:
+            # G H I
+            # D E F
+            # A B C
+            #
             match corners_in:
+                # Top-right point within (type A)
+                case (False, False, True, False):
+                    # print("Type A")
+                    meshpoint.covered_area = (
+                        (pv_module.length / 2)
+                        - _surface_displacement(meshpoint._corners[2])
+                    ) * (meshpoint._corners[2].y % pv_module_spacing)
+
                 # Top points within, bottom points without (type B)
                 case (False, False, True, True):
+                    # print("Type B")
                     meshpoint.covered_area = meshpoint.width * (
                         meshpoint._corners[2].y % pv_module_spacing
                     )
 
+                # Top-left point within (type C)
+                case (False, False, False, True):
+                    # print("Type C")
+                    meshpoint.covered_area = (
+                        (pv_module.length / 2)
+                        - abs(_surface_displacement(meshpoint._corners[3]))
+                    ) * (meshpoint._corners[3].y % pv_module_spacing)
+
+                # Right two within, left two without (type D)
+                case (False, True, True, False):
+                    # print("Type D")
+                    meshpoint.covered_area = (
+                        (pv_module.length / 2)
+                        - abs(_surface_displacement(meshpoint._corners[1]))
+                    ) * meshpoint.length
+
                 # All area covered (type E)
                 case (True, True, True, True):
+                    # print("Type E")
                     meshpoint.covered_area = meshpoint.area
+
+                # Left two within, right two without (type F)
+                case (True, False, False, True):
+                    # print("Type F")
+                    meshpoint.covered_area = (
+                        (pv_module.length / 2)
+                        - abs(_surface_displacement(meshpoint._corners[0]))
+                    ) * meshpoint.length
+
+                # Bottom-right point within (type G)
+                case (False, True, False, False):
+                    # print("Type G")
+                    meshpoint.covered_area = (
+                        (pv_module.length / 2)
+                        - abs(_surface_displacement(meshpoint._corners[1]))
+                    ) * (pv_module.width - meshpoint._corners[1].y % pv_module_spacing)
 
                 # Bottom points within, top points without (type H)
                 case (True, True, False, False):
+                    # print("Type H")
                     meshpoint.covered_area = meshpoint.width * (
                         pv_module.width - meshpoint._corners[1].y % pv_module_spacing
                     )
+
+                # Bottom-keft point within (type I)
+                case (True, False, False, False):
+                    # print("Type I")
+                    meshpoint.covered_area = (
+                        (pv_module.length / 2)
+                        - abs(_surface_displacement(meshpoint._corners[0]))
+                    ) * (pv_module.width - meshpoint._corners[0].y % pv_module_spacing)
 
                 case _:
                     import pdb
@@ -2315,6 +2396,8 @@ class Polytunnel:
             self.length, meshgrid_resolution, self.pv_module, self.pv_module_spacing
         )
 
+        assert len(self.ground_mesh) == len(self.surface_mesh)
+
     @property
     def axial_vector(self) -> Vector:
         """
@@ -2353,6 +2436,21 @@ class Polytunnel:
 
         return self.curve.width
 
+    @property
+    def length_wise_meshgrid_resolution(self) -> int:
+        """
+        Return the length-wise meshgrid resolution.
+
+        :returns:
+            The length-wise meshgrid resolution.
+
+        """
+
+        if self.ground_mesh is None and self.surface_mesh is None:
+            raise Exception("Fatal exception in processing order.")
+
+        return int(len(self.ground_mesh) / self.meshgrid_resolution)
+
     def generate_ground_mesh(self) -> list[MeshPoint]:
         """
         Generate the set of points representing the ground within the polytunnel.
@@ -2363,11 +2461,14 @@ class Polytunnel:
 
         """
 
-        # Determine the area of the ends of the polytunnel.
+        # Create more length-wise meshpoints based on the PV module spacing.
+        length_wise_meshgrid_resolution: int = self.meshgrid_resolution * int(
+            self.length // self.pv_module_spacing
+        )
 
         # Create a mesh within the Polytunnel instance.
         meshpoint_width: float = self.length / self.meshgrid_resolution
-        meshpoint_length: float = self.width / self.meshgrid_resolution
+        meshpoint_length: float = self.width / length_wise_meshgrid_resolution
         meshgrid: list[MeshPoint] = []
         for x in np.linspace(
             -self.width / 2 + meshpoint_width,
@@ -2377,7 +2478,7 @@ class Polytunnel:
             for y in np.linspace(
                 meshpoint_length / 2,
                 self.length - meshpoint_length / 2,
-                self.meshgrid_resolution,
+                length_wise_meshgrid_resolution,
             ):
                 meshgrid.append(
                     MeshPoint(
@@ -2414,13 +2515,15 @@ class Polytunnel:
 
         """
 
-        y_index = int(y // (self.length / self.meshgrid_resolution))
+        y_index = int(y // (self.length / self.length_wise_meshgrid_resolution))
         theta_index = int(
             (theta + self.curve.maximum_theta_value)
             // (2 * self.curve.maximum_theta_value / self.meshgrid_resolution)
         )
 
-        meshpoint_index: int = theta_index * self.meshgrid_resolution + y_index
+        meshpoint_index: int = (
+            theta_index * self.length_wise_meshgrid_resolution + y_index
+        )
 
         return meshpoint_index, self.surface_mesh[meshpoint_index]
 
@@ -2709,7 +2812,12 @@ def calculate_adjacent_polytunnel_solid_angle(
 
         return [
             _calculate_meshpoint_adjacent_polytunnel_solid_angle(meshpoint)
-            for meshpoint in meshpoints
+            for meshpoint in tqdm(
+                meshpoints,
+                desc="Solid-angle calculation",
+                leave=False,
+                total=len(meshpoints),
+            )
         ]
 
     raise NotImplementedError(
@@ -2762,6 +2870,10 @@ def calculate_solid_angles(
 # Plotting code No. 2 #
 #######################
 
+# print(
+#     f"Area: {meshpoint.covered_area}; Fraction: {meshpoint.covered_fraction:.3f}"
+# )
+
 # import matplotlib.pyplot as plt
 # import seaborn as sns
 
@@ -2771,24 +2883,28 @@ def calculate_solid_angles(
 #     meshpoint._corners[0].y,
 #     marker="x",
 #     label="0",
+#     s=40,
 # )
 # plt.scatter(
 #     self.radius_of_curvature * meshpoint._corners[1].theta_cylindrical,
 #     meshpoint._corners[1].y,
-#     marker="x",
+#     marker="+",
 #     label="1",
+#     s=40,
 # )
 # plt.scatter(
 #     self.radius_of_curvature * meshpoint._corners[2].theta_cylindrical,
 #     meshpoint._corners[2].y,
-#     marker="x",
+#     marker="h",
 #     label="2",
+#     s=40,
 # )
 # plt.scatter(
 #     self.radius_of_curvature * meshpoint._corners[3].theta_cylindrical,
 #     meshpoint._corners[3].y,
-#     marker="x",
+#     marker="H",
 #     label="3",
+#     s=40,
 # )
 # plt.axvline(-pv_module.length / 2, color="C4", dashes=(2, 2))
 # plt.axvline(pv_module.length / 2, color="C4", dashes=(2, 2))
@@ -2797,6 +2913,7 @@ def calculate_solid_angles(
 #     -self.radius_of_curvature * pi / 2, self.radius_of_curvature * pi / 2
 # )
 # plt.ylim(0, pv_module_spacing)
+# plt.legend()
 # plt.show()
 
 

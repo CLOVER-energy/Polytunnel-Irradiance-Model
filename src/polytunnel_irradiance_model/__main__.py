@@ -318,6 +318,10 @@ def main(args: list[Any]) -> None:
             polytunnel_data, parsed_args.meshgrid_resolution, pv_module_inputs
         )
 
+        polytunnel_surface_pv_uncovered_fraction_map = pd.DataFrame(
+            [1 - meshpoint.covered_fraction for meshpoint in polytunnel.surface_mesh]
+        )
+
     # Compute the position of the sun at each time within the simulation.
     location = Location(
         parsed_args.altitude, parsed_args.latitude, parsed_args.longitude
@@ -336,6 +340,11 @@ def main(args: list[Any]) -> None:
                 )
             ),
             altitude=location.altitude,
+        )
+        polytunnel_surface_pv_uncovered_fraction_mask = pd.concat(
+            [polytunnel_surface_pv_uncovered_fraction_map.transpose()]
+            * len(solar_positions),
+            axis=0,
         )
 
     # Compute the clearsky irradiance at the location, using the solar spectrum for a
@@ -425,18 +434,23 @@ def main(args: list[Any]) -> None:
             drop=True
         ) + polytunnel.diffusivity * direct_surface_irradiance.reset_index(drop=True)
 
+        #######################
+        # Plotting code No. 1 #
+        #######################
+
     # Calculate the amount of polytunnel surface sunlight which will reach the ground,
     # both as diffuse and direct components.
 
     # Compute the amount of direct light reaching the ground.
-    with time_execution("Direct on-the-ground calculation") as direct_ground_timer:
+    with time_execution("Direct on-the-ground calculation"):
         ground_direct_irradiance_map: pd.DataFrame = pd.DataFrame(
             [
                 ground_direct_irradiance(
                     polytunnel.ground_mesh,
                     polytunnel,
                     surface_shaded_map.loc[time_index]
-                    * clearsky_irradiance["dni"].iloc[time_index],
+                    * clearsky_irradiance["dni"].iloc[time_index]
+                    * polytunnel_surface_pv_uncovered_fraction_mask.iloc[time_index],
                     solar_position,
                 )
                 for time_index, solar_position in tqdm(
@@ -480,7 +494,7 @@ def main(args: list[Any]) -> None:
             #######################
 
     # Compute the amount of diffuse light reaching the ground.
-    with time_execution("Diffuse on-the-ground calculation") as diffuse_ground_timer:
+    with time_execution("Diffuse on-the-ground calculation"):
         # Consider each point on the surface as imparting diffuse light on the ground.
         ground_to_surface_projection_map: defaultdict[int, dict[int, float]] = {
             ground_index: {
@@ -515,15 +529,20 @@ def main(args: list[Any]) -> None:
         }
 
         # Compute the diffuse irradiance on the ground.
+        masked_transmitted_diffuse_surface: pd.DataFrame = (
+            diffuse_total_surface_irradiance
+            * polytunnel.transmissivity
+            * polytunnel_surface_pv_uncovered_fraction_mask.reset_index(drop=True)
+        )
         ground_diffuse_irradiance_map: pd.DataFrame = pd.DataFrame(
             {
                 ground_index: (
-                    (diffuse_total_surface_irradiance * polytunnel.transmissivity)
+                    masked_transmitted_diffuse_surface
                     * ground_to_surface_projection_map[ground_index]
                 ).sum(axis=1)
                 for ground_index, _ in tqdm(
                     enumerate(polytunnel.ground_mesh),
-                    desc="Mesh-mesh diffuse calculation",
+                    desc="Ground diffuse-irradiance calculation",
                     leave=True,
                     total=len(polytunnel.ground_mesh),
                 )
@@ -533,7 +552,7 @@ def main(args: list[Any]) -> None:
         # TODO: Implement diffuse light from the ends of the polytunnel.
 
     # Compute the total on-the-ground irradiance map
-    with time_execution("Global on-the-ground calculation") as diffuse_ground_timer:
+    with time_execution("Global on-the-ground calculation"):
         total_ground_irradiance_map: pd.DataFrame = (
             ground_direct_irradiance_map + ground_diffuse_irradiance_map
         )
@@ -541,6 +560,48 @@ def main(args: list[Any]) -> None:
     import pdb
 
     pdb.set_trace()
+
+    import matplotlib.pyplot as plt
+    import matplotlib.animation as animation
+    import seaborn as sns
+    import numpy as np
+
+    fig, ax = plt.subplots()
+
+    # Create initial heatmap with dummy data
+    initial_data = np.reshape(
+        total_ground_irradiance_map.iloc[0],
+        (
+            _dim_x := polytunnel.meshgrid_resolution,
+            _dim_y := polytunnel.length_wise_meshgrid_resolution,
+        ),
+    )
+    vmin = 0
+    vmax = max(total_ground_irradiance_map.max(axis=0))
+    heatmap = sns.heatmap(
+        initial_data, vmin=vmin, vmax=vmax, cmap="viridis", cbar=True, ax=ax
+    )
+
+    def update(time_index: int):
+        ax.clear()  # clear previous heatmap
+        data = np.reshape(
+            total_ground_irradiance_map.iloc[time_index], (_dim_x, _dim_y)
+        )
+        sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
+        ax.set_title(
+            f"Time index: {time_index}. Date: {time_index // (6 * 24)}; Time: {time_index // 6}:{time_index % 6}0"
+        )
+
+    # Create the animation
+    ani = animation.FuncAnimation(
+        fig,
+        update,
+        frames=len(total_ground_irradiance_map),
+        interval=300,
+        repeat=False,
+    )
+    ani.save("total_ground_irradiance_map_avec_pv.gif", writer="pillow", fps=15)
+    plt.show()
 
     import seaborn as sns
     import matplotlib.pyplot as plt
@@ -1140,34 +1201,37 @@ def main(args: list[Any]) -> None:
 
 # # Create initial heatmap with dummy data
 # initial_data = np.reshape(
-#     total_ground_irradiance_map.iloc[0],
-#     (_dim := parsed_args.meshgrid_resolution, _dim),
+#     direct_surface_irradiance.iloc[0],
+#     (
+#         _dim_x := polytunnel.meshgrid_resolution,
+#         _dim_y := polytunnel.length_wise_meshgrid_resolution,
+#     ),
 # )
 # vmin = 0
-# vmax = max(total_ground_irradiance_map.max(axis=0))
+# vmax = max(direct_surface_irradiance.max(axis=0))
 # heatmap = sns.heatmap(
 #     initial_data, vmin=vmin, vmax=vmax, cmap="viridis", cbar=True, ax=ax
 # )
 
+
 # def update(time_index: int):
 #     ax.clear()  # clear previous heatmap
-#     data = np.reshape(
-#         total_ground_irradiance_map.iloc[time_index], (_dim, _dim)
-#     )
+#     data = np.reshape(direct_surface_irradiance.iloc[time_index], (_dim_x, _dim_y))
 #     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
 #     ax.set_title(
 #         f"Time index: {time_index}. Date: {time_index // (6 * 24)}; Time: {time_index // 6}:{time_index % 6}0"
 #     )
 
+
 # # Create the animation
 # ani = animation.FuncAnimation(
 #     fig,
 #     update,
-#     frames=len(total_ground_irradiance_map),
+#     frames=len(direct_surface_irradiance),
 #     interval=300,
 #     repeat=False,
 # )
-# ani.save("global_ground_irradiance.gif", writer="pillow", fps=15)
+# ani.save("direct_surface_irradiance.gif", writer="pillow", fps=15)
 # plt.show()
 
 
