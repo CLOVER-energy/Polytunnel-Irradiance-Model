@@ -25,7 +25,7 @@ import numpy as np
 
 from tqdm import tqdm
 
-from src.polytunnel_irradiance_model.__utils__ import NAME
+from src.polytunnel_irradiance_model.__utils__ import NAME, NotInterceptError
 
 
 # AXIS_AZIMUTH:
@@ -83,10 +83,6 @@ TRANSMISSIVITY: str = "transmissivity"
 # WIDTH:
 #   Keyword used for parsing the polytunnel width.
 WIDTH: str = "width"
-
-
-class NotInterceptError(Exception):
-    """Raised when a vector does not intercept a plane."""
 
 
 class UndergroundCellError(Exception):
@@ -1602,7 +1598,10 @@ class Curve(ABC):
 
         # Setup theta and z iterators.
         for theta in np.linspace(
-            -(self.maximum_theta_value - (angular_size := pi / meshgrid_resolution)),
+            -(
+                self.maximum_theta_value
+                - (angular_size := 2 * self.maximum_theta_value / meshgrid_resolution)
+            ),
             self.maximum_theta_value - angular_size,
             meshgrid_resolution,
         ):
@@ -2036,6 +2035,9 @@ class CircularCurve(Curve, curve_type=CurveType.CIRCULAR):
 
             """
 
+            if pv_module is None:
+                return False
+
             return bool(
                 # The point lies within bounds along the polytunnel.
                 (point.y % pv_module_spacing) < pv_module.width
@@ -2343,7 +2345,7 @@ class Polytunnel:
         The name of the polytunnel instance.
 
     .. attribute:: pv_module:
-        The pv module on the polytunnel.
+        The pv module on the polytunnel, if present.
 
     .. attribute:: pv_module_spacing:
         The spacing between the PV modules.
@@ -2365,7 +2367,7 @@ class Polytunnel:
         length: float,
         meshgrid_resolution: int,
         name: str,
-        pv_module: PVModule,
+        pv_module: PVModule | None,
         pv_module_spacing: float,
         transmissivity: float,
     ):
@@ -2525,6 +2527,9 @@ class Polytunnel:
             theta_index * self.length_wise_meshgrid_resolution + y_index
         )
 
+        if meshpoint_index < 0:
+            raise NotInterceptError()
+
         return meshpoint_index, self.surface_mesh[meshpoint_index]
 
     @classmethod
@@ -2563,25 +2568,33 @@ class Polytunnel:
             raise KeyError("Missing curve information.") from None
 
         # Parse the module information.
-        try:
-            module_input_data[module_name][MODULE_TYPE] = ModuleType(
-                module_input_data[(module_name := input_data[PV_MODULE])][MODULE_TYPE]
-            )
-        except KeyError:
-            raise KeyError("Missing module-type information.") from None
+        if not input_data[PV_MODULE]:
+            pv_module: PVModule | None = None
 
-        try:
-            module_input_data[module_name][MATERIALS] = [
-                PVCellMaterial.from_entry(material_information)
-                for material_information in module_input_data[module_name][MATERIALS]
-            ]
-        except KeyError:
-            raise KeyError("Missing PV material information.") from None
+        else:
+            try:
+                module_input_data[module_name][MODULE_TYPE] = ModuleType(
+                    module_input_data[(module_name := input_data[PV_MODULE])][
+                        MODULE_TYPE
+                    ]
+                )
+            except KeyError:
+                raise KeyError("Missing module-type information.") from None
 
-        try:
-            pv_module = PVModule(**module_input_data[input_data[PV_MODULE]])
-        except KeyError:
-            raise KeyError("Missing PV-module information.") from None
+            try:
+                module_input_data[module_name][MATERIALS] = [
+                    PVCellMaterial.from_entry(material_information)
+                    for material_information in module_input_data[module_name][
+                        MATERIALS
+                    ]
+                ]
+            except KeyError:
+                raise KeyError("Missing PV material information.") from None
+
+            try:
+                pv_module = PVModule(**module_input_data[input_data[PV_MODULE]])
+            except KeyError:
+                raise KeyError("Missing PV-module information.") from None
 
         return cls(
             curve,

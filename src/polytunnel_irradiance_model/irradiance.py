@@ -25,6 +25,7 @@ import torch
 
 from math import pi, sqrt
 
+from src.polytunnel_irradiance_model.__utils__ import NotInterceptError
 from src.polytunnel_irradiance_model.polytunnel import (
     CurveType,
     MeshPoint,
@@ -123,9 +124,12 @@ def ground_direct_irradiance(
             return 0
 
         # Determine the meshpoint index based on this coordinate.
-        surface_index, surface_point = polytunnel.surface_from_theta_y(
-            _intercept_point.theta_cylindrical, _intercept_point.y
-        )
+        try:
+            surface_index, surface_point = polytunnel.surface_from_theta_y(
+                _intercept_point.theta_cylindrical, _intercept_point.y
+            )
+        except NotInterceptError:
+            return 0
         # un_rotated_surface_normal = polytunnel.curve.calculate_unrotated_vector(surface_point._normal_vector)
 
         # Multiply the irradiance on the surface by the orientation of the surface to

@@ -22,6 +22,7 @@ import pvlib
 __all__ = (
     "Location",
     "NAME",
+    "NotInterceptError",
 )
 
 # NAME:
@@ -73,3 +74,7 @@ class Location:
             )
 
         return self._location
+
+
+class NotInterceptError(Exception):
+    """Raised when a vector does not intercept a plane."""
