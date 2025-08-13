@@ -32,6 +32,7 @@ import pandas as pd
 import pvlib
 import yaml
 
+from numpy import inf
 from tqdm import tqdm
 
 from src.polytunnel_irradiance_model.__utils__ import *
@@ -68,6 +69,10 @@ warnings.filterwarnings(
 __all__ = ("compute_surface_grid", "main")
 
 
+# AUTO_GENERATED:
+#   Name for the auto generated--files directory.
+AUTO_GENERATED: str = "auto_generated"
+
 # DONE:
 #   Snippet to print when code is succesffully executed.
 DONE: str = "[  DONE  ]"
@@ -75,6 +80,14 @@ DONE: str = "[  DONE  ]"
 # FAILED:
 #   Snippet to print when code fails to execute.
 FAILED: str = "[ FAILED ]"
+
+# HADLOW_WEATHER_FILENAME:
+#   The Hadlow weather filename.
+HADLOW_WEATHER_FILENAME: str = "hadlow_combined.csv"
+
+# INCOMING_SHORTWAVE:
+#   Keyword for parsing Hadlow's incoming shortwave information.
+INCOMING_SHORTWAVE: str = "SWIN_LEVEL3"
 
 # MODULES:
 #   Keyword for parsing PV-module information.
@@ -108,8 +121,8 @@ def _yield_time(
 
     this_time = start_time
     while end_time > this_time:
-        this_time += timestep
         yield this_time
+        this_time += timestep
 
 
 def parse_args(args: list[Any]) -> argparse.Namespace:
@@ -171,7 +184,7 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
         "--modelling-temporal-resolution",
         "-rtm",
         type=float,
-        default=10,
+        default=30,
         help="The temporal resolution, in minutes, to use when simulating throughout "
         "the day.",
     )
@@ -359,84 +372,279 @@ def main(args: list[Any]) -> None:
             ),
         )
 
-    # Determine the intercept lines with neighbouring polytunnels.
-    # calculate_and_update_intercept_planes(polytunnel)
-    with time_execution("Direct surface calculation"):
-        # Determine whether any of the modules are shaded by neighbouring polytunnels,
-        # either in terms of the direct or diffuse contributions of light that they receive.
-        #
-        surface_shaded_map = pd.DataFrame(
-            {
-                meshpoint_index: [
-                    bool(
-                        not calculate_adjacent_polytunnel_shading(
-                            meshpoint, polytunnel, solar_position
+    # Compute weather-realted parameters
+    with time_execution("Weather calculation"):
+        # Read the Hadlow weather data if available.
+        with open(
+            os.path.join(HADLOW_WEATHER_FILENAME), "r", encoding="UTF-8"
+        ) as hadlow_weather_file:
+            hadlow_weather_data: pd.DataFrame = (
+                pd.read_csv(hadlow_weather_file).drop([0, 1]).set_index("parameter-id")
+            )
+
+        hadlow_weather_data.index = pd.DatetimeIndex(hadlow_weather_data.index)
+
+        # Slice using the start and end weather values.
+        hadlow_dni_slice: pd.DataFrame = hadlow_weather_data[
+            parsed_args.start_time.replace("T", " ")
+            .replace("Z", "") : parsed_args.end_time.replace("T", " ")
+            .replace("Z", "")
+        ][INCOMING_SHORTWAVE].astype(float)
+
+        dhi_to_hadlow_adjustment_factor: pd.DataFrame = pd.concat(
+            [
+                (hadlow_dni_slice / clearsky_irradiance["dhi"])
+                .clip(0, None)
+                .replace([inf, -inf], 0)
+            ]
+            * len(polytunnel.surface_mesh),
+            axis=1,
+        )
+        dni_to_hadlow_adjustment_factor: pd.DataFrame = pd.concat(
+            [
+                (hadlow_dni_slice / clearsky_irradiance["dni"])
+                .clip(0, None)
+                .replace([inf, -inf], 0)
+            ]
+            * len(polytunnel.surface_mesh),
+            axis=1,
+        )
+
+    # Make the auto-generated directory.
+    os.makedirs(AUTO_GENERATED, exist_ok=True)
+    os.makedirs(os.path.join(AUTO_GENERATED, polytunnel.name), exist_ok=True)
+
+    # Carry out a calculation if the outputs have not already been saved.
+    if not os.path.isfile(
+        diffuse_day_filename := os.path.join(
+            AUTO_GENERATED,
+            polytunnel.name,
+            f"{polytunnel.name}_diffuse_day_{parsed_args.start_time.replace(":","_")}_"
+            f"{parsed_args.end_time.replace(":","_")}.csv",
+        )
+    ):
+
+        # Determine the intercept lines with neighbouring polytunnels.
+        # calculate_and_update_intercept_planes(polytunnel)
+        with time_execution("Direct surface calculation"):
+            # Determine whether any of the modules are shaded by neighbouring polytunnels,
+            # either in terms of the direct or diffuse contributions of light that they receive.
+            #
+            surface_shaded_map = pd.DataFrame(
+                {
+                    meshpoint_index: [
+                        bool(
+                            not calculate_adjacent_polytunnel_shading(
+                                meshpoint, polytunnel, solar_position
+                            )
+                            and ((meshpoint._normal_vector * solar_position) > 0)
+                            and (solar_position.elevation > 0)
                         )
-                        and ((meshpoint._normal_vector * solar_position) > 0)
-                        and (solar_position.elevation > 0)
+                        for solar_position in solar_positions
+                    ]
+                    for meshpoint_index, meshpoint in tqdm(
+                        enumerate(polytunnel.surface_mesh),
+                        desc="Surface shading calculation",
+                        leave=False,
+                        total=len(polytunnel.surface_mesh),
                     )
-                    for solar_position in solar_positions
-                ]
-                for meshpoint_index, meshpoint in tqdm(
-                    enumerate(polytunnel.surface_mesh),
-                    desc="Surface shading calculation",
-                    leave=False,
-                    total=len(polytunnel.surface_mesh),
+                }
+            )
+
+            # Compute the solar position dot-product across the surface of the polytunnel.
+            dot_product_map = pd.DataFrame(
+                {
+                    meshpoint_index: [
+                        meshpoint._normal_vector * solar_position
+                        for solar_position in solar_positions
+                    ]
+                    for meshpoint_index, meshpoint in tqdm(
+                        enumerate(polytunnel.surface_mesh),
+                        desc="Surface dot-product calculation",
+                        leave=False,
+                        total=len(polytunnel.surface_mesh),
+                    )
+                }
+            )
+
+            # Construct a map of the surface irradiance on the polytunnel (direct) as a
+            # function of time.
+            direct_surface_irradiance = (
+                (surface_shaded_map * dot_product_map)
+                .mul(clearsky_irradiance["dni"].values, axis=0)
+                .reset_index(drop=True)
+            )
+
+            #######################
+            # Plotting code No. 1 #
+            #######################
+
+        # Calculate the amount of diffuse light reaching the ground.
+        with time_execution("Diffuse surface calculation"):
+            calculate_solid_angles(polytunnel.surface_mesh, polytunnel)
+            diffuse_surface_irradiance = pd.DataFrame(
+                {
+                    meshpoint_index: meshpoint.solid_angle
+                    * clearsky_irradiance["dhi"]
+                    / (2 * pi)
+                    for meshpoint_index, meshpoint in tqdm(
+                        enumerate(polytunnel.surface_mesh),
+                        desc="Diffuse surface calculation",
+                        leave=False,
+                        total=len(polytunnel.surface_mesh),
+                    )
+                }
+            )
+            diffuse_total_surface_irradiance = diffuse_surface_irradiance.reset_index(
+                drop=True
+            ) + polytunnel.diffusivity * direct_surface_irradiance.reset_index(
+                drop=True
+            )
+
+            diffuse_day_diffuse_surface_irradiance = (
+                diffuse_surface_irradiance * dhi_to_hadlow_adjustment_factor
+            )
+            direct_day_diffuse_surface_irradiance = (
+                diffuse_total_surface_irradiance
+                * dni_to_hadlow_adjustment_factor.reset_index(drop=True)
+            )
+
+            #######################
+            # Plotting code No. 1 #
+            #######################
+
+        with open(
+            diffuse_day_filename,
+            "w",
+            encoding="UTF-8",
+        ) as output_file:
+            diffuse_day_total_ground_irradiance_map.to_csv(output_file)
+
+        with open(
+            os.path.join(
+                AUTO_GENERATED,
+                polytunnel.name,
+                f"{polytunnel.name}_direct_day_"
+                f"{parsed_args.start_time.replace(":","_")}_"
+                f"{parsed_args.end_time.replace(":","_")}.csv",
+            ),
+            "w",
+            encoding="UTF-8",
+        ) as output_file:
+            direct_day_total_ground_irradiance_map.to_csv(output_file)
+
+        with open(
+            os.path.join(
+                AUTO_GENERATED,
+                polytunnel.name,
+                f"{polytunnel.name}_clearsky_{parsed_args.start_time.replace(":","_")}"
+                f"_{parsed_args.end_time.replace(":","_")}.csv",
+            ),
+            "w",
+            encoding="UTF-8",
+        ) as output_file:
+            clearsky_total_ground_irradiance_map.to_csv(output_file)
+
+        with open(
+            os.path.join(
+                AUTO_GENERATED,
+                polytunnel.name,
+                f"{polytunnel.name}_diffuse_surface_irradiance_"
+                f"{parsed_args.start_time.replace(":","_")}_"
+                f"{parsed_args.end_time.replace(":","_")}.csv",
+            ),
+            "w",
+            encoding="UTF-8",
+        ) as output_file:
+            diffuse_surface_irradiance.to_csv(output_file)
+
+        with open(
+            os.path.join(
+                AUTO_GENERATED,
+                polytunnel.name,
+                f"{polytunnel.name}_direct_surface_irradiance_"
+                f"{parsed_args.start_time.replace(":","_")}_"
+                f"{parsed_args.end_time.replace(":","_")}.csv",
+            ),
+            "w",
+            encoding="UTF-8",
+        ) as output_file:
+            direct_surface_irradiance.to_csv(output_file)
+
+    else:
+        with time_execution("Opening diffuse-day data"):
+            with open(
+                diffuse_day_filename,
+                "r",
+                encoding="UTF-8",
+            ) as diffuse_day_file:
+                diffuse_day_total_ground_irradiance_map: pd.DataFrame = pd.read_csv(
+                    diffuse_day_file
                 )
-            }
-        )
 
-        # Compute the solar position dot-product across the surface of the polytunnel.
-        dot_product_map = pd.DataFrame(
-            {
-                meshpoint_index: [
-                    meshpoint._normal_vector * solar_position
-                    for solar_position in solar_positions
-                ]
-                for meshpoint_index, meshpoint in tqdm(
-                    enumerate(polytunnel.surface_mesh),
-                    desc="Surface dot-product calculation",
-                    leave=False,
-                    total=len(polytunnel.surface_mesh),
+        with time_execution("Opening direct-day data"):
+            with open(
+                os.path.join(
+                    AUTO_GENERATED,
+                    polytunnel.name,
+                    f"{polytunnel.name}_direct_day_"
+                    f"{parsed_args.start_time.replace(":","_")}_"
+                    f"{parsed_args.end_time.replace(":","_")}.csv",
+                ),
+                "r",
+                encoding="UTF-8",
+            ) as direct_day_file:
+                direct_day_total_ground_irradiance_map: pd.DataFrame = pd.read_csv(
+                    direct_day_file
                 )
-            }
-        )
 
-        # Construct a map of the surface irradiance on the polytunnel (direct) as a
-        # function of time.
-        direct_surface_irradiance = (
-            (surface_shaded_map * dot_product_map)
-            .mul(clearsky_irradiance["dni"].values, axis=0)
-            .reset_index(drop=True)
-        )
-
-        #######################
-        # Plotting code No. 1 #
-        #######################
-
-    # Calculate the amount of diffuse light reaching the ground.
-    with time_execution("Diffuse surface calculation"):
-        calculate_solid_angles(polytunnel.surface_mesh, polytunnel)
-        diffuse_surface_irradiance = pd.DataFrame(
-            {
-                meshpoint_index: meshpoint.solid_angle
-                * clearsky_irradiance["dhi"]
-                / (2 * pi)
-                for meshpoint_index, meshpoint in tqdm(
-                    enumerate(polytunnel.surface_mesh),
-                    desc="Diffuse surface calculation",
-                    leave=False,
-                    total=len(polytunnel.surface_mesh),
+        with time_execution("Opening clearsky ground data"):
+            with open(
+                os.path.join(
+                    AUTO_GENERATED,
+                    polytunnel.name,
+                    f"{polytunnel.name}_clearsky_"
+                    f"{parsed_args.start_time.replace(":","_")}_"
+                    f"{parsed_args.end_time.replace(":","_")}.csv",
+                ),
+                "r",
+                encoding="UTF-8",
+            ) as clearsky_ground_ifle:
+                clearsky_total_ground_irradiance_map: pd.DataFrame = pd.read_csv(
+                    clearsky_ground_ifle
                 )
-            }
-        )
-        diffuse_total_surface_irradiance = diffuse_surface_irradiance.reset_index(
-            drop=True
-        ) + polytunnel.diffusivity * direct_surface_irradiance.reset_index(drop=True)
 
-        #######################
-        # Plotting code No. 1 #
-        #######################
+        with time_execution("Opening diffuse-surface data"):
+            with open(
+                os.path.join(
+                    AUTO_GENERATED,
+                    polytunnel.name,
+                    f"{polytunnel.name}_diffuse_surface_irradiance_"
+                    f"{parsed_args.start_time.replace(":","_")}_"
+                    f"{parsed_args.end_time.replace(":","_")}.csv",
+                ),
+                "r",
+                encoding="UTF-8",
+            ) as diffuse_surface_file:
+                diffuse_surface_irradiance: pd.DataFrame = pd.read_csv(
+                    diffuse_surface_file
+                )
+
+        with time_execution("Opening direct-surface data"):
+            with open(
+                os.path.join(
+                    AUTO_GENERATED,
+                    polytunnel.name,
+                    f"{polytunnel.name}_direct_surface_irradiance_"
+                    f"{parsed_args.start_time.replace(":","_")}_"
+                    f"{parsed_args.end_time.replace(":","_")}.csv",
+                ),
+                "r",
+                encoding="UTF-8",
+            ) as direct_surface_file:
+                direct_surface_irradiance: pd.DataFrame = pd.read_csv(
+                    direct_surface_file
+                )
 
     # Calculate the amount of polytunnel surface sunlight which will reach the ground,
     # both as diffuse and direct components.
@@ -481,7 +689,7 @@ def main(args: list[Any]) -> None:
                     )
                 ]
             )
-            end_direct_irradiance_map: pd.DataFrame = (
+            end_direct_irradiance_map: pd.DataFrame | None = (
                 end_intercept_projection.transpose()
                 .mul(clearsky_irradiance["dni"].values)
                 .transpose()
@@ -489,9 +697,27 @@ def main(args: list[Any]) -> None:
 
             ground_direct_irradiance_map += end_direct_irradiance_map
 
+            with open(
+                os.path.join(
+                    AUTO_GENERATED,
+                    polytunnel.name,
+                    f"{polytunnel.name}_end_irradiance_"
+                    f"{parsed_args.start_time.replace(":","_")}_"
+                    f"{parsed_args.end_time.replace(":","_")}.csv",
+                ),
+                "w",
+                encoding="UTF-8",
+            ) as end_irradiance_file:
+                end_direct_irradiance_map.to_csv(end_irradiance_file)
+
             #######################
             # Plotting code No. 1 #
             #######################
+
+        direct_day_ground_direct_irradiance = (
+            ground_direct_irradiance_map
+            * dni_to_hadlow_adjustment_factor.reset_index(drop=True)
+        )
 
     # Compute the amount of diffuse light reaching the ground.
     with time_execution("Diffuse on-the-ground calculation"):
@@ -549,12 +775,64 @@ def main(args: list[Any]) -> None:
             }
         )
 
+        # Compute the diffuse irradiance on the ground given diffuse and direct
+        # assumptions for the Hadlow data
+        diffuse_day_ground_diffuse_irradiance_map: pd.DataFrame = pd.DataFrame(
+            {
+                ground_index: (
+                    diffuse_day_diffuse_surface_irradiance.reset_index(drop=True)
+                    * polytunnel.transmissivity
+                    * polytunnel_surface_pv_uncovered_fraction_mask.reset_index(
+                        drop=True
+                    )
+                    * ground_to_surface_projection_map[ground_index]
+                ).sum(axis=1)
+                for ground_index, _ in tqdm(
+                    enumerate(polytunnel.ground_mesh),
+                    desc="Ground diffuse-irradiance calculation",
+                    leave=True,
+                    total=len(polytunnel.ground_mesh),
+                )
+            }
+        )
+
+        direct_day_ground_diffuse_irradiance_map: pd.DataFrame = pd.DataFrame(
+            {
+                ground_index: (
+                    direct_day_diffuse_surface_irradiance
+                    * polytunnel.transmissivity
+                    * polytunnel_surface_pv_uncovered_fraction_mask.reset_index(
+                        drop=True
+                    )
+                    * ground_to_surface_projection_map[ground_index]
+                ).sum(axis=1)
+                for ground_index, _ in tqdm(
+                    enumerate(polytunnel.ground_mesh),
+                    desc="Ground diffuse-irradiance calculation",
+                    leave=True,
+                    total=len(polytunnel.ground_mesh),
+                )
+            }
+        )
+
         # TODO: Implement diffuse light from the ends of the polytunnel.
 
     # Compute the total on-the-ground irradiance map
     with time_execution("Global on-the-ground calculation"):
-        total_ground_irradiance_map: pd.DataFrame = (
+        # Compute a generalised on-the-ground map for clearsky conditions.
+        clearsky_total_ground_irradiance_map: pd.DataFrame = (
             ground_direct_irradiance_map + ground_diffuse_irradiance_map
+        )
+
+        # Compute a map where all irradiance on the surface is taken to be direct
+        # solar irradiance but is scaled by the Hadlow numbers.
+        direct_day_total_ground_irradiance_map: pd.DataFrame = (
+            direct_day_ground_diffuse_irradiance_map
+            + direct_day_ground_direct_irradiance
+        )
+
+        diffuse_day_total_ground_irradiance_map: pd.DataFrame = (
+            diffuse_day_ground_diffuse_irradiance_map
         )
 
     import pdb
@@ -570,37 +848,83 @@ def main(args: list[Any]) -> None:
 
     # Create initial heatmap with dummy data
     initial_data = np.reshape(
-        total_ground_irradiance_map.iloc[0],
+        direct_day_total_ground_irradiance_map.iloc[0],
         (
             _dim_x := polytunnel.meshgrid_resolution,
             _dim_y := polytunnel.length_wise_meshgrid_resolution,
         ),
     )
     vmin = 0
-    vmax = max(total_ground_irradiance_map.max(axis=0))
+    vmax = max(direct_day_total_ground_irradiance_map.max(axis=0))
     heatmap = sns.heatmap(
         initial_data, vmin=vmin, vmax=vmax, cmap="viridis", cbar=True, ax=ax
+    )
+
+    _ten_minutes: int = int(
+        _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
     )
 
     def update(time_index: int):
         ax.clear()  # clear previous heatmap
         data = np.reshape(
-            total_ground_irradiance_map.iloc[time_index], (_dim_x, _dim_y)
+            direct_day_total_ground_irradiance_map.iloc[time_index], (_dim_x, _dim_y)
         )
         sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
         ax.set_title(
-            f"Time index: {time_index}. Date: {time_index // (6 * 24)}; Time: {time_index // 6}:{time_index % 6}0"
+            f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
+            f"Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
         )
 
     # Create the animation
     ani = animation.FuncAnimation(
         fig,
         update,
-        frames=len(total_ground_irradiance_map),
+        frames=len(direct_day_total_ground_irradiance_map),
         interval=300,
         repeat=False,
     )
-    ani.save("total_ground_irradiance_map_avec_pv.gif", writer="pillow", fps=15)
+    ani.save("direct_day_total_ground_irradiance_map.gif", writer="pillow", fps=15)
+    plt.show()
+
+    fig, ax = plt.subplots()
+
+    # Create initial heatmap with dummy data
+    initial_data = np.reshape(
+        diffuse_day_total_ground_irradiance_map.iloc[0],
+        (
+            _dim_x := polytunnel.meshgrid_resolution,
+            _dim_y := polytunnel.length_wise_meshgrid_resolution,
+        ),
+    )
+    vmin = 0
+    vmax = max(diffuse_day_total_ground_irradiance_map.max(axis=0))
+    heatmap = sns.heatmap(
+        initial_data, vmin=vmin, vmax=vmax, cmap="viridis", cbar=True, ax=ax
+    )
+
+    _ten_minutes: int = int(
+        _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
+    )
+
+    def update(time_index: int):
+        ax.clear()  # clear previous heatmap
+        data = np.reshape(
+            diffuse_day_total_ground_irradiance_map.iloc[time_index], (_dim_x, _dim_y)
+        )
+        sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
+        ax.set_title(
+            f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
+        )
+
+    # Create the animation
+    ani = animation.FuncAnimation(
+        fig,
+        update,
+        frames=len(diffuse_day_total_ground_irradiance_map),
+        interval=300,
+        repeat=False,
+    )
+    ani.save("diffuse_day_total_ground_irradiance_map.gif", writer="pillow", fps=15)
     plt.show()
 
     import seaborn as sns
@@ -1201,25 +1525,31 @@ def main(args: list[Any]) -> None:
 
 # # Create initial heatmap with dummy data
 # initial_data = np.reshape(
-#     direct_surface_irradiance.iloc[0],
+#     direct_day_diffuse_surface_irradiance.iloc[0],
 #     (
 #         _dim_x := polytunnel.meshgrid_resolution,
 #         _dim_y := polytunnel.length_wise_meshgrid_resolution,
 #     ),
 # )
 # vmin = 0
-# vmax = max(direct_surface_irradiance.max(axis=0))
+# vmax = max(direct_day_diffuse_surface_irradiance.max(axis=0))
 # heatmap = sns.heatmap(
 #     initial_data, vmin=vmin, vmax=vmax, cmap="viridis", cbar=True, ax=ax
+# )
+
+# _ten_minutes: int = int(
+#     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
 # )
 
 
 # def update(time_index: int):
 #     ax.clear()  # clear previous heatmap
-#     data = np.reshape(direct_surface_irradiance.iloc[time_index], (_dim_x, _dim_y))
+#     data = np.reshape(
+#         direct_day_diffuse_surface_irradiance.iloc[time_index], (_dim_x, _dim_y)
+#     )
 #     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
 #     ax.set_title(
-#         f"Time index: {time_index}. Date: {time_index // (6 * 24)}; Time: {time_index // 6}:{time_index % 6}0"
+#         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
 #     )
 
 
@@ -1227,11 +1557,11 @@ def main(args: list[Any]) -> None:
 # ani = animation.FuncAnimation(
 #     fig,
 #     update,
-#     frames=len(direct_surface_irradiance),
+#     frames=len(direct_day_diffuse_surface_irradiance),
 #     interval=300,
 #     repeat=False,
 # )
-# ani.save("direct_surface_irradiance.gif", writer="pillow", fps=15)
+# ani.save("direct_day_diffuse_surface_irradiance.gif", writer="pillow", fps=15)
 # plt.show()
 
 

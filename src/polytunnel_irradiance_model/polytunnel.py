@@ -2854,7 +2854,7 @@ def calculate_solid_angles(
         meshpoints = [meshpoints]
 
     unobstructed_solid_angles: float | list[float] = [
-        pi - abs(meshpoint.theta_spherical) for meshpoint in meshpoints
+        pi - abs(meshpoint.theta_cylindrical) for meshpoint in meshpoints
     ]
 
     # Subtract the obstruction, save, and return.
