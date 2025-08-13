@@ -45,6 +45,8 @@ def ground_direct_irradiance(
     polytunnel: Polytunnel,
     solar_irradiance: pd.Series,
     solar_position: SolarPositionVector,
+    *,
+    diffusivity: float | None = None,
 ) -> list[float]:
     """
     Compute the direct irradiance falling on the ground.
@@ -67,6 +69,9 @@ def ground_direct_irradiance(
         The irradiance which falls on the ground meshpoint(s) being considered.
 
     """
+
+    if diffusivity is None:
+        diffusivity: float = polytunnel.diffusivity
 
     def _single_meshpoint_ground_direct_irradiance(meshpoint: MeshPoint) -> float:
         """
@@ -140,7 +145,7 @@ def ground_direct_irradiance(
             # the sun's position;
             * _v.z
             * polytunnel.transmissivity
-            * (1 - polytunnel.diffusivity)
+            * (1 - diffusivity)
         )
 
     if not polytunnel.curve.curve_type == CurveType.CIRCULAR:
@@ -246,6 +251,51 @@ def open_end_direct_irradiance(
         _single_meshpoint_open_end_direct_irradiance(meshpoint)
         for meshpoint in meshpoints
     ]
+
+
+def power_to_photon_spectra(wavelengths_sample: pd.Series, power_spectra: pd.Series):
+    """
+    Power spectrum to a photon flux spectrum in micromoles (μmol).
+
+    Args:
+        wavelengths_sample (array): Wavelengths (in nanometers).
+        power_spectra (array): Multidimensional array of spectral power (W/m²/nm) per time
+
+    Returns:
+        np.ndarray: Array of the same shape as power_spectra, representing photon flux in μmol/s/m²/nm.
+    """
+
+    # Physical constants
+    h = 6.63e-34  # Planck's constant (J·s)
+    c = 3e8  # Speed of light (m/s)
+    N = 6.02e23  # Avogadro's number (1/mol)
+
+    # Convert wavelengths from nanometers to meters
+    wavelengths_m = wavelengths_sample * 1e-9  # nm to m
+
+    # Initialize the photon spectra array
+    photon_spectra = np.zeros_like(power_spectra)
+
+    # Conversion from Watts (W) to micromoles of photons (μmol):
+    # The formula used is:
+    # photon_flux (μmol) = power (W) * (λ / (h * c)) * N * 1e6
+    # Where:
+    # - λ: wavelength in meters (m)
+    # - h: Planck's constant (J·s)
+    # - c: speed of light (m/s)
+    # - N: Avogadro's number (mol⁻¹)
+    # - 1e6: conversion factor from mol to μmol
+
+    # Iterate over all indices in the power_spectra array
+    for i in range(len(power_spectra)):
+        for j in range(len(power_spectra[i])):
+            for k in range(len(power_spectra[i][j])):
+                photon_spectra[i][j][k] = (
+                    power_spectra[i][j][k] * (wavelengths_m[k] / (h * c * N)) * 1e6
+                )
+                # photon_spectra[i][j][k] = ( power_spectra[i][j][k] * (wavelengths_sample[k] / (h * c * N)) * 1e6 )
+
+    return photon_spectra
 
 
 class TunnelIrradiance:

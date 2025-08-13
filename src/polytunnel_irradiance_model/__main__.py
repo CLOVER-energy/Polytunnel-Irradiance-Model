@@ -16,6 +16,7 @@ distribution within a curved structure, _e.g._, a polytunnel.
 
 import argparse
 import datetime
+import enum
 import os
 import sys
 import time
@@ -26,13 +27,15 @@ from dataclasses import dataclass
 from math import pi
 from typing import Any, Callable, Generator
 
-# import matplotlib.pyplot as plt
 import json
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pvlib
+import seaborn as sns
 import yaml
 
+from matplotlib import rc, rcParams
 from numpy import inf
 from tqdm import tqdm
 
@@ -70,6 +73,19 @@ warnings.filterwarnings(
 __all__ = ("compute_surface_grid", "main")
 
 
+# Plotting context
+rc("font", **{"family": "sans-serif", "sans-serif": ["Arial"], "size": 5})
+sns.set_context("paper", rc={"font.size": 5, "axes.titlesize": 5, "axes.labelsize": 5})
+sns.set_style("ticks")
+
+plt.rcParams["pdf.fonttype"] = 42
+plt.rcParams["ps.fonttype"] = 42
+rcParams["pdf.fonttype"] = 42
+rcParams["ps.fonttype"] = 42
+
+plt.rcParams["font.size"] = 5
+
+
 # AUTO_GENERATED:
 #   Name for the auto generated--files directory.
 AUTO_GENERATED: str = "auto_generated"
@@ -93,6 +109,38 @@ INCOMING_SHORTWAVE: str = "SWIN_LEVEL3"
 # MODULES:
 #   Keyword for parsing PV-module information.
 MODULES: str = "modules"
+
+# MM:
+#   Conversion factor from mm to inches.
+MM = 1 / 25.4
+
+
+class ValidationColumns(enum.Enum):
+    """
+    Contains the names of the column headers in the validationd data.
+
+    - DIFFUSE_PAR:
+        The diffuse PAR information
+
+    - DIRECT_PAR:
+        The direct PAR illumination.
+
+    - LABEL:
+        The name of the label.
+
+    - SECTION:
+        The name of the section being used.
+
+    - TOTAL_PAR:
+        The total PAR illumination.
+
+    """
+
+    DIFFUSE_PAR: str = "diffuse illum umol  m2 -1 s -1"
+    DIRECT_PAR: str = "direct illum"
+    LABEL: str = "Label"
+    SECTION: str = "Section"
+    TOTAL_PAR: str = "total illum umol m2 -1 s -1"
 
 
 def code_print(string_to_print: str, end: str = "") -> None:
@@ -188,6 +236,13 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
         default=30,
         help="The temporal resolution, in minutes, to use when simulating throughout "
         "the day.",
+    )
+    simulation_arguments.add_argument(
+        "--validation-filename",
+        "-vf",
+        type=str,
+        default=None,
+        help="The name of the validation file to use.",
     )
 
     # Polytunnel arguments
@@ -596,13 +651,15 @@ def main(args: list[Any]) -> None:
                 [int(entry) for entry in direct_surface_irradiance.columns]
             )
 
+    diffuse_surface_irradiance.index = hadlow_dni_slice.index
+    direct_surface_irradiance.index = hadlow_dni_slice.index
+
     if not os.path.isfile(
         mesh_mesh_filename := os.path.join(
             AUTO_GENERATED,
             polytunnel.name,
-            f"{polytunnel.name}_mesh_mesh_distance_"
-            f"{parsed_args.start_time.replace(":","_")}_"
-            f"{parsed_args.end_time.replace(":","_")}.json",
+            f"{polytunnel.name}_{polytunnel.meshgrid_resolution}_by_"
+            f"{polytunnel.length_wise_meshgrid_resolution}_mesh_mesh_distance.json",
         )
     ):
         with time_execution("Mesh-mesh distance calculation"):
@@ -652,6 +709,10 @@ def main(args: list[Any]) -> None:
                     int(key): value for key, value in json.load(mesh_mesh_file).items()
                 }
 
+    ground_to_surface_projection_frame: pd.DataFrame = pd.DataFrame(
+        ground_to_surface_projection_map
+    )
+
     with time_execution("Readjusting with Hadlow data"):
         clearsky_total_diffuse_surface_irradiance = (
             diffuse_surface_irradiance.reset_index(drop=True)
@@ -673,6 +734,10 @@ def main(args: list[Any]) -> None:
             * dni_to_hadlow_adjustment_factor.reset_index(drop=True)
         )
 
+    clearsky_total_diffuse_surface_irradiance.index = hadlow_dni_slice.index
+    diffuse_day_total_diffuse_surface_irradiance.index = hadlow_dni_slice.index
+    direct_day_total_diffuse_surface_irradiance.index = hadlow_dni_slice.index
+
     # Calculate the amount of polytunnel surface sunlight which will reach the ground,
     # both as diffuse and direct components.
 
@@ -690,6 +755,7 @@ def main(args: list[Any]) -> None:
                     ).reset_index(drop=True)
                     * polytunnel_surface_pv_uncovered_fraction_mask.iloc[time_index],
                     solar_position,
+                    diffusivity=parsed_args.diffusivity,
                 )
                 for time_index, solar_position in tqdm(
                     enumerate(solar_positions),
@@ -752,16 +818,15 @@ def main(args: list[Any]) -> None:
     # Compute the amount of diffuse light reaching the ground.
     with time_execution("Diffuse on-the-ground calculation"):
         # Compute the diffuse irradiance on the ground.
-        masked_transmitted_diffuse_surface: pd.DataFrame = (
-            clearsky_total_diffuse_surface_irradiance.reset_index(drop=True)
-            * polytunnel.transmissivity
-            * polytunnel_surface_pv_uncovered_fraction_mask.reset_index(drop=True)
-        )
         clearsky_ground_diffuse_irradiance_map: pd.DataFrame = pd.DataFrame(
             {
                 ground_index: (
-                    masked_transmitted_diffuse_surface
-                    * ground_to_surface_projection_map[ground_index]
+                    clearsky_total_diffuse_surface_irradiance.reset_index(drop=True)
+                    * polytunnel.transmissivity
+                    * polytunnel_surface_pv_uncovered_fraction_mask.reset_index(
+                        drop=True
+                    )
+                    * ground_to_surface_projection_frame.iloc[ground_index]
                 ).sum(axis=1)
                 for ground_index, _ in tqdm(
                     enumerate(polytunnel.ground_mesh),
@@ -782,7 +847,7 @@ def main(args: list[Any]) -> None:
                     * polytunnel_surface_pv_uncovered_fraction_mask.reset_index(
                         drop=True
                     )
-                    * ground_to_surface_projection_map[ground_index]
+                    * ground_to_surface_projection_frame.iloc[ground_index]
                 ).sum(axis=1)
                 for ground_index, _ in tqdm(
                     enumerate(polytunnel.ground_mesh),
@@ -796,12 +861,12 @@ def main(args: list[Any]) -> None:
         direct_day_ground_diffuse_irradiance_map: pd.DataFrame = pd.DataFrame(
             {
                 ground_index: (
-                    direct_day_total_diffuse_surface_irradiance
+                    direct_day_total_diffuse_surface_irradiance.reset_index(drop=True)
                     * polytunnel.transmissivity
                     * polytunnel_surface_pv_uncovered_fraction_mask.reset_index(
                         drop=True
                     )
-                    * ground_to_surface_projection_map[ground_index]
+                    * ground_to_surface_projection_frame.iloc[ground_index]
                 ).sum(axis=1)
                 for ground_index, _ in tqdm(
                     enumerate(polytunnel.ground_mesh),
@@ -818,24 +883,155 @@ def main(args: list[Any]) -> None:
     with time_execution("Global on-the-ground calculation"):
         # Compute a generalised on-the-ground map for clearsky conditions.
         clearsky_total_ground_irradiance_map: pd.DataFrame = (
-            clearsky_ground_direct_irradiance_map
-            + clearsky_ground_diffuse_irradiance_map
+            clearsky_ground_direct_irradiance_map.reset_index(drop=True)
+            + clearsky_ground_diffuse_irradiance_map.reset_index(drop=True)
         )
 
         # Compute a map where all irradiance on the surface is taken to be direct
         # solar irradiance but is scaled by the Hadlow numbers.
         direct_day_total_ground_irradiance_map: pd.DataFrame = (
-            direct_day_ground_diffuse_irradiance_map
-            + direct_day_ground_direct_irradiance
+            direct_day_ground_diffuse_irradiance_map.reset_index(drop=True)
+            + direct_day_ground_direct_irradiance.reset_index(drop=True)
         )
 
         diffuse_day_total_ground_irradiance_map: pd.DataFrame = (
-            diffuse_day_ground_diffuse_irradiance_map
+            diffuse_day_ground_diffuse_irradiance_map.reset_index(drop=True)
         )
+
+    clearsky_total_ground_irradiance_map.index = hadlow_dni_slice.index
+    clearsky_ground_direct_irradiance_map.index = hadlow_dni_slice.index
+    clearsky_ground_diffuse_irradiance_map.index = hadlow_dni_slice.index
+
+    direct_day_ground_diffuse_irradiance_map.index = hadlow_dni_slice.index
+    direct_day_ground_direct_irradiance.index = hadlow_dni_slice.index
+    direct_day_total_ground_irradiance_map.index = hadlow_dni_slice.index
+
+    diffuse_day_ground_diffuse_irradiance_map.index = hadlow_dni_slice.index
+    diffuse_day_total_ground_irradiance_map.index = hadlow_dni_slice.index
+
+    # Parse the validation data if provided to compare against.
+    if parsed_args.validation_filename is not None:
+        try:
+            with open(
+                parsed_args.validation_filename, "r", encoding="UTF-8"
+            ) as validation_file:
+                validation_data: pd.DataFrame = pd.read_csv(
+                    validation_file, header=0, index_col=0
+                )
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                f"Could not find validation file: {parsed_args.validation_filename}"
+            ) from None
+
+    validation_data["diffusivity"] = (
+        validation_data[ValidationColumns.DIFFUSE_PAR.value]
+        / validation_data[ValidationColumns.TOTAL_PAR.value]
+    )
+
+    # Parse out the section of the validation data which is relevant.
+    validation_data.index = pd.Index(
+        [
+            datetime.datetime.strptime(entry, "%m/%d/%y %H:%M")
+            for entry in validation_data.index
+        ]
+    )
+
+    dir_day_gnd_tot_val: pd.DataFrame = pd.merge(
+        direct_day_total_ground_irradiance_map,
+        validation_data,
+        left_index=True,
+        right_index=True,
+    )
+    dir_day_gnd_dif_val: pd.DataFrame = pd.merge(
+        direct_day_ground_diffuse_irradiance_map,
+        validation_data,
+        left_index=True,
+        right_index=True,
+    )
+
+    dif_day_gnd_tot_val: pd.DataFrame = pd.merge(
+        diffuse_day_total_ground_irradiance_map,
+        validation_data,
+        left_index=True,
+        right_index=True,
+    )
+
+    try:
+        sns.set_palette(["#648FFF", "#785EF0", "#DC267F", "#FE6100", "#FFB000"])
+    except UnboundLocalError:
+        import seaborn as sns
+        import matplotlib.pyplot as plt
+
+        sns.set_palette(["#648FFF", "#785EF0", "#DC267F", "#FE6100", "#FFB000"])
+
+    plt.figure(figsize=(180 * MM, 120 * MM))
+    sns.scatterplot(
+        x=dir_day_gnd_tot_val.index,
+        y=dir_day_gnd_tot_val[1050],
+        color="C3",
+        label="Direct-day prediction",
+        marker="h",
+        s=40,
+    )
+    axis_right = (axis_left := plt.gca()).twinx()
+    sns.scatterplot(
+        x=dir_day_gnd_tot_val.index,
+        y=dir_day_gnd_tot_val[ValidationColumns.DIRECT_PAR.value],
+        ax=axis_right,
+        color="C0",
+        label="Direct PAR",
+        marker="h",
+        s=40,
+    )
+    plt.show()
+
+    plt.figure(figsize=(180 * MM, 120 * MM))
+    sns.scatterplot(
+        x=dir_day_gnd_dif_val.index,
+        y=dir_day_gnd_dif_val[1050],
+        color="C2",
+        label="Direct-day prediction",
+        marker="h",
+        s=40,
+    )
+    sns.scatterplot(
+        x=dif_day_gnd_tot_val.index,
+        y=dif_day_gnd_tot_val[1050],
+        color="C4",
+        label="Diffuse-day prediction",
+        marker="h",
+        s=40,
+    )
+    axis_right = (axis_left := plt.gca()).twinx()
+    sns.scatterplot(
+        x=dir_day_gnd_dif_val.index,
+        y=dir_day_gnd_dif_val[ValidationColumns.DIFFUSE_PAR.value],
+        ax=axis_right,
+        color="C1",
+        label="Diffuse PAR",
+        marker="h",
+        s=40,
+    )
+    plt.show()
 
     import pdb
 
     pdb.set_trace()
+
+    sns.scatterplot(
+        x=dif_day_gnd_tot_val.index, y=dif_day_gnd_tot_val[1050], marker="h"
+    )
+    sns.scatterplot(
+        x=dif_day_gnd_tot_val.index,
+        y=dif_day_gnd_tot_val[ValidationColumns.DIFFUSE_PAR.value],
+        marker="h",
+    )
+
+    import pdb
+
+    pdb.set_trace()
+
+    # combined_frame = pd.merge()
 
     import matplotlib.pyplot as plt
     import matplotlib.animation as animation
@@ -880,7 +1076,7 @@ def main(args: list[Any]) -> None:
         interval=300,
         repeat=False,
     )
-    ani.save("16_may_24_control_direct.gif", writer="pillow", fps=15)
+    ani.save("16_may_24_control_diffuse_ground_t_0.5.gif", writer="pillow", fps=15)
 
     import matplotlib.pyplot as plt
     import matplotlib.animation as animation
