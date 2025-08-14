@@ -18,14 +18,15 @@ import argparse
 import datetime
 import enum
 import os
+import re
 import sys
 import time
 
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
-from math import pi
-from typing import Any, Callable, Generator
+from math import ceil, cos, floor, pi
+from typing import Any, Callable, Generator, Match, Pattern
 
 import json
 import matplotlib.pyplot as plt
@@ -72,10 +73,11 @@ warnings.filterwarnings(
 
 __all__ = ("compute_surface_grid", "main")
 
+__version__ = "1.0.0a1"
 
 # Plotting context
-rc("font", **{"family": "sans-serif", "sans-serif": ["Arial"], "size": 5})
-sns.set_context("paper", rc={"font.size": 5, "axes.titlesize": 5, "axes.labelsize": 5})
+rc("font", **{"family": "sans-serif", "sans-serif": ["Arial"], "size": 7})
+sns.set_context("paper", rc={"font.size": 7, "axes.titlesize": 7, "axes.labelsize": 7})
 sns.set_style("ticks")
 
 plt.rcParams["pdf.fonttype"] = 42
@@ -83,12 +85,16 @@ plt.rcParams["ps.fonttype"] = 42
 rcParams["pdf.fonttype"] = 42
 rcParams["ps.fonttype"] = 42
 
-plt.rcParams["font.size"] = 5
+plt.rcParams["font.size"] = 7
 
 
 # AUTO_GENERATED:
 #   Name for the auto generated--files directory.
 AUTO_GENERATED: str = "auto_generated"
+
+# BOLOMETER_ERROR:
+#   The error in the bolometer as a fraction.
+BOLOMETER_ERROR: float = 0.1
 
 # DONE:
 #   Snippet to print when code is succesffully executed.
@@ -114,6 +120,59 @@ MODULES: str = "modules"
 #   Conversion factor from mm to inches.
 MM = 1 / 25.4
 
+# POLYTUNNEL_HEADER_STRING:
+#   Header string for the polytunnel-PV code.
+POLYTUNNEL_HEADER_STRING: str = """
+                                   #         #        #
+                                   ###       ##     ###
+                            ##      ##################      #
+                             ####  #########################
+                                ##########################
+                          #######################################
+                              ##############################
+                              ##############################
+                                               #############
+                                                    ########
+                              ################           #
+                          #######           #####
+ ###   ###              #####     ########     #####
+ ##### ###             ###      #####  #######    ####
+ ### #####            ###          ########         #####
+ ###   ###           ###                   #################
+                     ##               #######             ####
+        ##            ###          #####         #######    #####
+        #####          ###       ####        ######      ###   ####
+         #######        ####    ###                #########      ####
+          #####           #######                ###                 ####
+          ## ####          #####                       #####################
+              ####           ###                   ######              #######
+                ####           ###             ######                        #####
+                  ###           ####         #####                             #####
+                   ####           ###       ###                                   ###
+                     ###           ####    ###                                     ####
+                      ####           ###  ##                                        ###
+                        ###           ######                                         ###
+                         ####           ###                                          ###
+                           ####
+                            ####
+                              ###
+                               ####
+                                 ####
+                                  ###
+
+{version_line}
+                              Polytunnel-Irradiance-Model
+    An open-source modelling framework for the simulation and optimisation of curved
+                      photovoltaic panels in agricultural contexts
+
+                             For more information, contact
+                  Benedict Winchester (benedict.winchester@gmail.com)
+"""
+
+# VERSION_REGEX:
+#   Regex used to extract the main version number.
+VERSION_REGEX: Pattern[str] = re.compile(r"(?P<number>\d\.\d\.\d)([\.](?P<post>.*))?")
+
 
 class ValidationColumns(enum.Enum):
     """
@@ -136,10 +195,13 @@ class ValidationColumns(enum.Enum):
 
     """
 
+    DIFFUSE_ERROR: str = "diffuse std"
     DIFFUSE_PAR: str = "diffuse illum umol  m2 -1 s -1"
-    DIRECT_PAR: str = "direct illum"
+    DIRECT_ERROR: str = "direct std"
+    DIRECT_PAR: str = "direct illum umol  m2 -1 s -1"
     LABEL: str = "Label"
     SECTION: str = "Section"
+    TOTAL_ERROR: str = "total std"
     TOTAL_PAR: str = "total illum umol m2 -1 s -1"
 
 
@@ -152,7 +214,7 @@ def code_print(string_to_print: str, end: str = "") -> None:
 
     """
 
-    print(string_to_print + "." * (54 - len(string_to_print)), end="")
+    print(string_to_print + "." * (64 - len(string_to_print)), end="")
 
 
 def _yield_time(
@@ -243,6 +305,13 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
         type=str,
         default=None,
         help="The name of the validation file to use.",
+    )
+    simulation_arguments.add_argument(
+        "--validation-index",
+        "-vi",
+        type=int,
+        default=None,
+        help="The validation element to use.",
     )
 
     # Polytunnel arguments
@@ -344,6 +413,24 @@ def main(args: list[Any]) -> None:
         The unparsed command-line arguments.
 
     """
+
+    # Snippet taken with permission from CLOVER-energy/CLOVER
+    # >>>
+    version_match: Match[str] | None = VERSION_REGEX.match(__version__)
+    version_number: str = (
+        version_match.group("number") if version_match is not None else __version__
+    )
+    version_string = f"Version {version_number}"
+    print(
+        POLYTUNNEL_HEADER_STRING.format(
+            version_line=(
+                " " * (44 - ceil(len(version_string) / 2))
+                + version_string
+                + " " * (44 - floor(len(version_string) / 2))
+            )
+        )
+    )
+    # <<< end of reproduced snippted
 
     # Parse the command-line arguments.
     parsed_args = parse_args(args)
@@ -831,7 +918,7 @@ def main(args: list[Any]) -> None:
                 for ground_index, _ in tqdm(
                     enumerate(polytunnel.ground_mesh),
                     desc="Ground diffuse-irradiance calculation",
-                    leave=True,
+                    leave=False,
                     total=len(polytunnel.ground_mesh),
                 )
             }
@@ -852,7 +939,7 @@ def main(args: list[Any]) -> None:
                 for ground_index, _ in tqdm(
                     enumerate(polytunnel.ground_mesh),
                     desc="Diffuse day ground-irradiance calculation",
-                    leave=True,
+                    leave=False,
                     total=len(polytunnel.ground_mesh),
                 )
             }
@@ -871,13 +958,23 @@ def main(args: list[Any]) -> None:
                 for ground_index, _ in tqdm(
                     enumerate(polytunnel.ground_mesh),
                     desc="Direct day ground-irradiance calculation",
-                    leave=True,
+                    leave=False,
                     total=len(polytunnel.ground_mesh),
                 )
             }
         )
 
         # TODO: Implement diffuse light from the ends of the polytunnel.
+
+    # Readjust the direct day to compute a direct-beam irradiance.
+    direct_day_ground_direct_beam_irradiance: pd.DataFrame = pd.DataFrame(
+        direct_day_ground_direct_irradiance.values
+        / pd.DataFrame(
+            [cos(position.theta_spherical) for position in solar_positions]
+        ).values,
+        index=direct_day_ground_direct_irradiance.index,
+        columns=direct_day_ground_direct_irradiance.columns,
+    )
 
     # Compute the total on-the-ground irradiance map
     with time_execution("Global on-the-ground calculation"):
@@ -894,142 +991,671 @@ def main(args: list[Any]) -> None:
             + direct_day_ground_direct_irradiance.reset_index(drop=True)
         )
 
+        direct_day_total_ground_with_beam_irradiance_map: pd.DataFrame = (
+            direct_day_ground_diffuse_irradiance_map.reset_index(drop=True)
+            + direct_day_ground_direct_beam_irradiance.reset_index(drop=True)
+        )
+
         diffuse_day_total_ground_irradiance_map: pd.DataFrame = (
             diffuse_day_ground_diffuse_irradiance_map.reset_index(drop=True)
         )
 
+    # Reset missing indices
     clearsky_total_ground_irradiance_map.index = hadlow_dni_slice.index
     clearsky_ground_direct_irradiance_map.index = hadlow_dni_slice.index
     clearsky_ground_diffuse_irradiance_map.index = hadlow_dni_slice.index
 
     direct_day_ground_diffuse_irradiance_map.index = hadlow_dni_slice.index
     direct_day_ground_direct_irradiance.index = hadlow_dni_slice.index
+    direct_day_ground_direct_beam_irradiance.index = hadlow_dni_slice.index
     direct_day_total_ground_irradiance_map.index = hadlow_dni_slice.index
+    direct_day_total_ground_with_beam_irradiance_map.index = hadlow_dni_slice.index
 
     diffuse_day_ground_diffuse_irradiance_map.index = hadlow_dni_slice.index
     diffuse_day_total_ground_irradiance_map.index = hadlow_dni_slice.index
 
     # Parse the validation data if provided to compare against.
     if parsed_args.validation_filename is not None:
-        try:
-            with open(
-                parsed_args.validation_filename, "r", encoding="UTF-8"
-            ) as validation_file:
-                validation_data: pd.DataFrame = pd.read_csv(
-                    validation_file, header=0, index_col=0
+        with time_execution("Generating validation plots"):
+            try:
+                with open(
+                    parsed_args.validation_filename, "r", encoding="UTF-8"
+                ) as validation_file:
+                    validation_data: pd.DataFrame = pd.read_csv(
+                        validation_file, header=0, index_col=0
+                    )
+            except FileNotFoundError:
+                raise FileNotFoundError(
+                    f"Could not find validation file: {parsed_args.validation_filename}"
+                ) from None
+
+            if parsed_args.validation_index is None:
+                raise Exception(
+                    "Must specify validation index if carrying out a validation."
                 )
-        except FileNotFoundError:
-            raise FileNotFoundError(
-                f"Could not find validation file: {parsed_args.validation_filename}"
-            ) from None
 
-    validation_data["diffusivity"] = (
-        validation_data[ValidationColumns.DIFFUSE_PAR.value]
-        / validation_data[ValidationColumns.TOTAL_PAR.value]
-    )
+            # Parse out the section of the validation data which is relevant.
+            validation_data.index = pd.Index(
+                [
+                    datetime.datetime.strptime(entry, "%m/%d/%y %H:%M")
+                    for entry in validation_data.index
+                ]
+            )
+            validation_data[ValidationColumns.DIFFUSE_ERROR.value] = (
+                0.1 * validation_data[ValidationColumns.DIFFUSE_PAR.value]
+            )
+            validation_data[ValidationColumns.DIRECT_ERROR.value] = (
+                0.1 * validation_data[ValidationColumns.DIRECT_PAR.value]
+            )
+            validation_data[ValidationColumns.TOTAL_ERROR.value] = (
+                0.1 * validation_data[ValidationColumns.TOTAL_PAR.value]
+            )
 
-    # Parse out the section of the validation data which is relevant.
-    validation_data.index = pd.Index(
-        [
-            datetime.datetime.strptime(entry, "%m/%d/%y %H:%M")
-            for entry in validation_data.index
-        ]
-    )
+            dir_day_gnd_tot_val: pd.DataFrame = pd.merge(
+                direct_day_total_ground_with_beam_irradiance_map,
+                validation_data,
+                left_index=True,
+                right_index=True,
+            )
+            dir_day_gnd_dir_val: pd.DataFrame = pd.merge(
+                direct_day_ground_direct_beam_irradiance,
+                validation_data,
+                left_index=True,
+                right_index=True,
+            )
+            dir_day_gnd_dif_val: pd.DataFrame = pd.merge(
+                direct_day_ground_diffuse_irradiance_map,
+                validation_data,
+                left_index=True,
+                right_index=True,
+            )
 
-    dir_day_gnd_tot_val: pd.DataFrame = pd.merge(
-        direct_day_total_ground_irradiance_map,
-        validation_data,
-        left_index=True,
-        right_index=True,
-    )
-    dir_day_gnd_dif_val: pd.DataFrame = pd.merge(
-        direct_day_ground_diffuse_irradiance_map,
-        validation_data,
-        left_index=True,
-        right_index=True,
-    )
+            dif_day_gnd_tot_val: pd.DataFrame = pd.merge(
+                diffuse_day_total_ground_irradiance_map,
+                validation_data,
+                left_index=True,
+                right_index=True,
+            )
 
-    dif_day_gnd_tot_val: pd.DataFrame = pd.merge(
-        diffuse_day_total_ground_irradiance_map,
-        validation_data,
-        left_index=True,
-        right_index=True,
-    )
+            try:
+                sns.set_palette(
+                    # ["#648FFF", "#785EF0", "#DC267F", "#FE6100", "#FFB000", "#0041C8"]
+                    ["#423252", "#4A688B", "#779FB1", "#36C7B8", "#FBC412"],
+                )
+            except UnboundLocalError:
+                import seaborn as sns
+                import matplotlib.pyplot as plt
 
-    try:
-        sns.set_palette(["#648FFF", "#785EF0", "#DC267F", "#FE6100", "#FFB000"])
-    except UnboundLocalError:
-        import seaborn as sns
-        import matplotlib.pyplot as plt
+                sns.set_palette(
+                    # ["#648FFF", "#785EF0", "#DC267F", "#FE6100", "#FFB000", "#0041C8"]
+                    ["#423252", "#4A688B", "#779FB1", "#36C7B8", "#FBC412"],
+                )
 
-        sns.set_palette(["#648FFF", "#785EF0", "#DC267F", "#FE6100", "#FFB000"])
+            #######################
+            # Plotting code No. 1 #
+            #######################
 
-    plt.figure(figsize=(180 * MM, 120 * MM))
-    sns.scatterplot(
-        x=dir_day_gnd_tot_val.index,
-        y=dir_day_gnd_tot_val[1050],
-        color="C3",
-        label="Direct-day prediction",
-        marker="h",
-        s=40,
-    )
-    axis_right = (axis_left := plt.gca()).twinx()
-    sns.scatterplot(
-        x=dir_day_gnd_tot_val.index,
-        y=dir_day_gnd_tot_val[ValidationColumns.DIRECT_PAR.value],
-        ax=axis_right,
-        color="C0",
-        label="Direct PAR",
-        marker="h",
-        s=40,
-    )
-    plt.show()
+            # import matplotlib.pyplot as plt
+            # import matplotlib.animation as animation
+            # import seaborn as sns
+            # import numpy as np
 
-    plt.figure(figsize=(180 * MM, 120 * MM))
-    sns.scatterplot(
-        x=dir_day_gnd_dif_val.index,
-        y=dir_day_gnd_dif_val[1050],
-        color="C2",
-        label="Direct-day prediction",
-        marker="h",
-        s=40,
-    )
+            # fig, ax = plt.subplots(figsize=(180*MM, 120*MM))
+
+            # # Create initial heatmap with dummy data
+            # initial_data = np.reshape(
+            #     diffuse_day_total_ground_irradiance_map.iloc[0],
+            #     (
+            #         _dim_x := polytunnel.meshgrid_resolution,
+            #         _dim_y := polytunnel.length_wise_meshgrid_resolution,
+            #     ),
+            # )
+            # vmin = 0
+            # vmax = max(diffuse_day_total_ground_irradiance_map.max(axis=0))
+            # heatmap = sns.heatmap(
+            #     initial_data, vmin=vmin, vmax=vmax, cmap="viridis", cbar=True, ax=ax
+            # )
+
+            # _ten_minutes: int = int(
+            #     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
+            # )
+
+            # def update(time_index: int):
+            #     ax.clear()  # clear previous heatmap
+            #     data = np.reshape(
+            #         diffuse_day_total_ground_irradiance_map.iloc[time_index], (_dim_x, _dim_y)
+            #     )
+            #     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
+            #     ax.set_title(
+            #         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
+            #     )
+
+            # # Create the animation
+            # ani = animation.FuncAnimation(
+            #     fig,
+            #     update,
+            #     frames=len(diffuse_day_total_ground_irradiance_map),
+            #     interval=300,
+            #     repeat=False,
+            # )
+            # ani.save("diffuse_day_total_ground_irradiance_map_2.gif", writer="pillow", fps=15)
+            # plt.show()
+
+            #######################
+            # Plotting code No. 3 #
+            #######################
+
+            plt.figure(figsize=(180 * MM, 120 * MM))
+            sns.scatterplot(
+                x=dir_day_gnd_tot_val.index,
+                y=dir_day_gnd_tot_val[parsed_args.validation_index],
+                color="C4",
+                label="Direct-day total prediction",
+                marker="h",
+                s=40,
+            )
+            plt.plot(
+                dir_day_gnd_tot_val.index,
+                dir_day_gnd_tot_val[parsed_args.validation_index],
+                color="C4",
+            )
+            sns.scatterplot(
+                x=dif_day_gnd_tot_val.index,
+                y=dif_day_gnd_tot_val[parsed_args.validation_index],
+                color="C3",
+                label="Diffuse-day total prediction",
+                marker="h",
+                s=40,
+            )
+            plt.plot(
+                dif_day_gnd_tot_val.index,
+                dif_day_gnd_tot_val[parsed_args.validation_index],
+                color="C3",
+            )
+            sns.scatterplot(
+                x=dir_day_gnd_tot_val.index,
+                y=dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] / 2.1,
+                color="C0",
+                label="Total PAR",
+                marker="h",
+                s=40,
+            )
+            plt.plot(
+                dir_day_gnd_tot_val.index,
+                dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] / 2.1,
+                color="C0",
+            )
+            plt.errorbar(
+                dir_day_gnd_dir_val.index,
+                dir_day_gnd_dir_val[ValidationColumns.TOTAL_PAR.value] / 2.1,
+                yerr=dir_day_gnd_dir_val[ValidationColumns.TOTAL_ERROR.value] / 2.1,
+                ls="none",
+                color="C0",
+            )
+            plt.xlabel("Date and time")
+            plt.ylabel("Irradiance / W/m$^2$")
+
+            axis_right = (axis_left := plt.gca()).twinx()
+            axis_left.tick_params(axis="both", which="major", labelsize=7)
+            axis_right.tick_params(axis="both", which="major", labelsize=7)
+            sns.scatterplot(
+                x=dir_day_gnd_tot_val.index,
+                y=dir_day_gnd_tot_val["diffusivity"],
+                alpha=0.7,
+                color="C1",
+                label="Diffusivity",
+                marker="D",
+                s=40,
+            )
+            left_handles, left_labels = axis_left.get_legend_handles_labels()
+            axis_left.legend().remove()
+            right_handles, right_labels = axis_right.get_legend_handles_labels()
+            axis_right.legend().remove()
+
+            plt.legend(
+                left_handles + right_handles, left_labels + right_labels, loc="upper right"
+            )
+            axis_right.set_ylim(-0.05, 1.05)
+            axis_left.set_ylim(-25, 825)
+
+            plt.savefig(
+                f"validation_{parsed_args.validation_index}_total_"
+                f"{diffusivity}_{polytunnel.name}_"
+                f"{parsed_args.start_time.replace(':','_')}_"
+                f"{parsed_args.end_time.replace(':','_')}.pdf",
+                format="pdf",
+                bbox_inches="tight",
+                pad_inches=0.05,
+            )
+
+            #######################
+            # Plotting code No. 4 #
+            #######################
+
+            plt.figure(figsize=(180 * MM, 120 * MM))
+            sns.scatterplot(
+                x=dir_day_gnd_dir_val.index,
+                y=dir_day_gnd_dir_val[parsed_args.validation_index],
+                color="C4",
+                label="Direct-day direct prediction",
+                marker="h",
+                s=40,
+            )
+            plt.plot(
+                dir_day_gnd_dir_val.index,
+                dir_day_gnd_dir_val[parsed_args.validation_index],
+                color="C4",
+            )
+            sns.scatterplot(
+                x=dir_day_gnd_dir_val.index,
+                y=dir_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value] / 2.1,
+                color="C1",
+                label="Direct PAR",
+                marker="h",
+                s=40,
+            )
+            plt.plot(
+                dir_day_gnd_dir_val.index,
+                dir_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value] / 2.1,
+                color="C1",
+            )
+            plt.errorbar(
+                dir_day_gnd_dir_val.index,
+                dir_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value] / 2.1,
+                yerr=dir_day_gnd_dir_val[ValidationColumns.DIRECT_ERROR.value] / 2.1,
+                ls="none",
+                color="C1",
+            )
+
+            plt.xlabel("Date and time")
+            plt.ylabel("Irradiance / W/m$^2$")
+
+            axis_right = (axis_left := plt.gca()).twinx()
+            axis_left.tick_params(axis="both", which="major", labelsize=7)
+            axis_right.tick_params(axis="both", which="major", labelsize=7)
+            sns.scatterplot(
+                x=dir_day_gnd_tot_val.index,
+                y=dir_day_gnd_tot_val["diffusivity"],
+                alpha=0.7,
+                color="C2",
+                label="Diffusivity",
+                marker="D",
+                s=40,
+            )
+            left_handles, left_labels = axis_left.get_legend_handles_labels()
+            axis_left.legend().remove()
+            right_handles, right_labels = axis_right.get_legend_handles_labels()
+            axis_right.legend().remove()
+
+            plt.legend(
+                left_handles + right_handles, left_labels + right_labels, loc="upper right"
+            )
+            axis_right.set_ylim(-0.05, 1.05)
+            axis_left.set_ylim(-25, 825)
+            plt.savefig(
+                f"validation_{parsed_args.validation_index}_direct_diff_"
+                f"{diffusivity}_{polytunnel.name}_"
+                f"{parsed_args.start_time.replace(':','_')}_{parsed_args.end_time.replace(':','_')}.pdf",
+                format="pdf",
+                bbox_inches="tight",
+                pad_inches=0.05,
+            )
+
+            #######################
+            # Plotting code No. 5 #
+            #######################
+
+            plt.figure(figsize=(180 * MM, 120 * MM))
+            sns.scatterplot(
+                x=dir_day_gnd_dif_val.index,
+                y=dir_day_gnd_dif_val[parsed_args.validation_index],
+                color="C4",
+                label="Direct-day prediction",
+                marker="h",
+                s=40,
+            )
+            plt.plot(
+                dir_day_gnd_dif_val.index,
+                dir_day_gnd_dif_val[parsed_args.validation_index],
+                color="C4",
+            )
+            sns.scatterplot(
+                x=dif_day_gnd_tot_val.index,
+                y=dif_day_gnd_tot_val[parsed_args.validation_index],
+                color="C3",
+                label="Diffuse-day prediction",
+                marker="h",
+                s=40,
+            )
+            plt.plot(
+                dif_day_gnd_tot_val.index,
+                dif_day_gnd_tot_val[parsed_args.validation_index],
+                color="C3",
+            )
+            sns.scatterplot(
+                x=dir_day_gnd_dif_val.index,
+                y=dir_day_gnd_dif_val[ValidationColumns.DIFFUSE_PAR.value] / 2.1,
+                color="C1",
+                label="Diffuse PAR",
+                marker="h",
+                s=40,
+            )
+            plt.plot(
+                dir_day_gnd_dif_val.index,
+                dir_day_gnd_dif_val[ValidationColumns.DIFFUSE_PAR.value] / 2.1,
+                color="C1",
+            )
+            plt.errorbar(
+                dir_day_gnd_dir_val.index,
+                dir_day_gnd_dir_val[ValidationColumns.DIFFUSE_PAR.value] / 2.1,
+                yerr=dir_day_gnd_dir_val[ValidationColumns.DIFFUSE_ERROR.value] / 2.1,
+                ls="none",
+                color="C1",
+            )
+            plt.xlabel("Date and time")
+            plt.ylabel("Irradiance / W/m$^2$")
+
+            plt.legend()
+
+            axis_right = (axis_left := plt.gca()).twinx()
+            axis_left.tick_params(axis="both", which="major", labelsize=7)
+            axis_right.tick_params(axis="both", which="major", labelsize=7)
+            sns.scatterplot(
+                x=dir_day_gnd_tot_val.index,
+                y=dir_day_gnd_tot_val["diffusivity"],
+                alpha=0.7,
+                color="C2",
+                label="Diffusivity",
+                marker="D",
+                s=40,
+            )
+            left_handles, left_labels = axis_left.get_legend_handles_labels()
+            axis_left.legend().remove()
+            right_handles, right_labels = axis_right.get_legend_handles_labels()
+            axis_right.legend().remove()
+
+            plt.legend(
+                left_handles + right_handles, left_labels + right_labels, loc="upper right"
+            )
+            axis_right.set_ylim(-0.05, 1.05)
+            axis_left.set_ylim(-25, 825)
+            plt.savefig(
+                f"validation_{parsed_args.validation_index}_diffuse_diff_"
+                f"{diffusivity}_{polytunnel.name}_"
+                f"{parsed_args.start_time.replace(':','_')}_"
+                f"{parsed_args.end_time.replace(':','_')}.pdf",
+                format="pdf",
+                bbox_inches="tight",
+                pad_inches=0.05,
+            )
+
+            #######################
+            # Plotting code No. 6 #
+            #######################
+
+            plt.figure(figsize=(180 * MM, 120 * MM))
+            sns.boxplot(
+                dif_day_gnd_tot_val.reset_index(drop=True).transpose()[:-13],
+                boxprops=dict(alpha=0.75),
+                color="C3",
+                label="Diffuse-day prediction",
+                saturation=1,
+                # linecolor="C3",
+                zorder=0,
+            )
+            sns.boxplot(
+                dir_day_gnd_tot_val.reset_index(drop=True).transpose()[:-13],
+                boxprops=dict(alpha=0.75),
+                color="C4",
+                label="Direct-day prediction",
+                # linecolor="C4",
+                saturation=1,
+                zorder=0,
+            )
+            sns.scatterplot(
+                x=range(len(dir_day_gnd_tot_val)),
+                y=dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] / 2.1,
+                color="C0",
+                label="Total PAR",
+                marker="h",
+                s=60,
+                zorder=1,
+            )
+            plt.plot(
+                range(len(dir_day_gnd_tot_val)),
+                dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] / 2.1,
+                color="C0",
+                zorder=1,
+            )
+            plt.errorbar(
+                x=range(len(dir_day_gnd_tot_val)),
+                y=dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] / 2.1,
+                yerr=dir_day_gnd_dir_val[ValidationColumns.TOTAL_ERROR.value] / 2.1,
+                ls="none",
+                color="C0",
+                zorder=1,
+            )
+            plt.xlabel("Date and time")
+            plt.ylabel("Irradiance / W/m$^2$")
+
+            axis_right = (axis_left := plt.gca()).twinx()
+            axis_left.tick_params(axis="both", which="major", labelsize=7)
+            axis_right.tick_params(axis="both", which="major", labelsize=7)
+            sns.scatterplot(
+                x=range(len(dir_day_gnd_tot_val)),
+                y=dir_day_gnd_tot_val["diffusivity"],
+                alpha=0.7,
+                color="C1",
+                label="Diffusivity",
+                marker="D",
+                s=40,
+                zorder=1,
+            )
+            left_handles, left_labels = axis_left.get_legend_handles_labels()
+            axis_left.legend().remove()
+            right_handles, right_labels = axis_right.get_legend_handles_labels()
+            axis_right.legend().remove()
+
+            plt.legend(
+                left_handles + right_handles, left_labels + right_labels, loc="upper right"
+            )
+            axis_right.set_ylim(-0.05, 1.05)
+            axis_left.set_ylim(-25, 825)
+
+            plt.savefig(
+                "validation_total_map_boxplot_"
+                f"{diffusivity}_{polytunnel.name}_"
+                f"{parsed_args.start_time.replace(':','_')}_"
+                f"{parsed_args.end_time.replace(':','_')}.pdf",
+                format="pdf",
+                bbox_inches="tight",
+                pad_inches=0.05,
+            )
+
+            #######################
+            # Plotting code No. 7 #
+            #######################
+
+            plt.figure(figsize=(180 * MM, 120 * MM))
+            sns.boxplot(
+                dif_day_gnd_tot_val.reset_index(drop=True).transpose()[:-13],
+                boxprops=dict(alpha=0.75),
+                color="C3",
+                label="Diffuse-day prediction",
+                saturation=1,
+                # linecolor="C3",
+                zorder=0,
+            )
+            sns.boxplot(
+                dir_day_gnd_dif_val.reset_index(drop=True).transpose()[:-13],
+                boxprops=dict(alpha=0.75),
+                color="C4",
+                label="Direct-day prediction",
+                # linecolor="C4",
+                saturation=1,
+                zorder=0,
+            )
+            sns.scatterplot(
+                x=range(len(dir_day_gnd_dir_val)),
+                y=dir_day_gnd_dir_val[ValidationColumns.DIFFUSE_PAR.value] / 2.1,
+                color="C1",
+                label="Diffuse PAR",
+                marker="h",
+                s=60,
+                zorder=1,
+            )
+            plt.plot(
+                range(len(dir_day_gnd_dir_val)),
+                dir_day_gnd_dir_val[ValidationColumns.DIFFUSE_PAR.value] / 2.1,
+                color="C1",
+                zorder=1,
+            )
+            plt.errorbar(
+                x=range(len(dir_day_gnd_dir_val)),
+                y=dir_day_gnd_dir_val[ValidationColumns.DIFFUSE_PAR.value] / 2.1,
+                yerr=dir_day_gnd_dir_val[ValidationColumns.DIFFUSE_ERROR.value] / 2.1,
+                ls="none",
+                color="C1",
+                zorder=1,
+            )
+            plt.xlabel("Date and time")
+            plt.ylabel("Irradiance / W/m$^2$")
+
+            axis_right = (axis_left := plt.gca()).twinx()
+            axis_left.tick_params(axis="both", which="major", labelsize=7)
+            axis_right.tick_params(axis="both", which="major", labelsize=7)
+            sns.scatterplot(
+                x=range(len(dir_day_gnd_dir_val)),
+                y=dir_day_gnd_dir_val["diffusivity"],
+                alpha=0.7,
+                color="C1",
+                label="Diffusivity",
+                marker="D",
+                s=40,
+                zorder=1,
+            )
+            left_handles, left_labels = axis_left.get_legend_handles_labels()
+            axis_left.legend().remove()
+            right_handles, right_labels = axis_right.get_legend_handles_labels()
+            axis_right.legend().remove()
+
+            plt.legend(
+                left_handles + right_handles, left_labels + right_labels, loc="upper right"
+            )
+            axis_right.set_ylim(-0.05, 1.05)
+            axis_left.set_ylim(-25, 825)
+
+            plt.savefig(
+                "validation_diffuse_map_boxplot_"
+                f"{diffusivity}_{polytunnel.name}_"
+                f"{parsed_args.start_time.replace(':','_')}_"
+                f"{parsed_args.end_time.replace(':','_')}.pdf",
+                format="pdf",
+                bbox_inches="tight",
+                pad_inches=0.05,
+            )
+
+            #######################
+            # Plotting code No. 8 #
+            #######################
+
+            plt.figure(figsize=(180 * MM, 120 * MM))
+            sns.scatterplot(
+                x=range(len(dir_day_gnd_dir_val)),
+                y=dir_day_gnd_dir_val.reset_index(drop=True).transpose()[:-13].mean(axis=0),
+                # boxprops=dict(alpha=0.75),
+                color="C4",
+                label="Direct-day prediction",
+                # linecolor="C4",
+                marker="h",
+                s=60,
+                # saturation=1,
+                zorder=0,
+            )
+            plt.plot(
+                range(len(dir_day_gnd_dir_val)),
+                dir_day_gnd_dir_val.reset_index(drop=True).transpose()[:-13].mean(axis=0),
+                color="C4",
+                zorder=0,
+            )
+            sns.scatterplot(
+                x=range(len(dir_day_gnd_dir_val)),
+                y=dir_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value] / 2.1,
+                color="C1",
+                label="Direct PAR",
+                marker="h",
+                s=60,
+                zorder=1,
+            )
+            plt.plot(
+                range(len(dir_day_gnd_dir_val)),
+                dir_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value] / 2.1,
+                color="C1",
+                zorder=1,
+            )
+            plt.errorbar(
+                x=range(len(dir_day_gnd_dir_val)),
+                y=dir_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value] / 2.1,
+                yerr=dir_day_gnd_dir_val[ValidationColumns.DIRECT_ERROR.value] / 2.1,
+                ls="none",
+                color="C1",
+                zorder=1,
+            )
+            plt.xlabel("Date and time")
+            plt.ylabel("Irradiance / W/m$^2$")
+
+            axis_right = (axis_left := plt.gca()).twinx()
+            axis_left.tick_params(axis="both", which="major", labelsize=7)
+            axis_right.tick_params(axis="both", which="major", labelsize=7)
+            sns.scatterplot(
+                x=range(len(dir_day_gnd_dir_val)),
+                y=dir_day_gnd_dir_val["diffusivity"],
+                alpha=0.7,
+                color="C1",
+                label="Diffusivity",
+                marker="D",
+                s=40,
+                zorder=1,
+            )
+            left_handles, left_labels = axis_left.get_legend_handles_labels()
+            axis_left.legend().remove()
+            right_handles, right_labels = axis_right.get_legend_handles_labels()
+            axis_right.legend().remove()
+
+            plt.legend(
+                left_handles + right_handles, left_labels + right_labels, loc="upper right"
+            )
+            axis_right.set_ylim(-0.05, 1.05)
+            axis_left.set_ylim(-25, 825)
+
+            plt.savefig(
+                "validation_direct_map_boxplot_"
+                f"{diffusivity}_{polytunnel.name}_"
+                f"{parsed_args.start_time.replace(':','_')}_"
+                f"{parsed_args.end_time.replace(':','_')}.pdf",
+                format="pdf",
+                bbox_inches="tight",
+                pad_inches=0.05,
+            )
+
+            # plt.show()
+
+    # import pdb
+
+    # pdb.set_trace()
+
+    return
+
     sns.scatterplot(
         x=dif_day_gnd_tot_val.index,
-        y=dif_day_gnd_tot_val[1050],
-        color="C4",
-        label="Diffuse-day prediction",
+        y=dif_day_gnd_tot_val[parsed_args.validation_index],
         marker="h",
-        s=40,
-    )
-    axis_right = (axis_left := plt.gca()).twinx()
-    sns.scatterplot(
-        x=dir_day_gnd_dif_val.index,
-        y=dir_day_gnd_dif_val[ValidationColumns.DIFFUSE_PAR.value],
-        ax=axis_right,
-        color="C1",
-        label="Diffuse PAR",
-        marker="h",
-        s=40,
-    )
-    plt.show()
-
-    import pdb
-
-    pdb.set_trace()
-
-    sns.scatterplot(
-        x=dif_day_gnd_tot_val.index, y=dif_day_gnd_tot_val[1050], marker="h"
     )
     sns.scatterplot(
         x=dif_day_gnd_tot_val.index,
         y=dif_day_gnd_tot_val[ValidationColumns.DIFFUSE_PAR.value],
         marker="h",
     )
-
-    import pdb
-
-    pdb.set_trace()
 
     # combined_frame = pd.merge()
 
