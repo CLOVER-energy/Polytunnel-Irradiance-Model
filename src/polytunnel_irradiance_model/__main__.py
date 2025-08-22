@@ -804,7 +804,7 @@ def main(args: list[Any]) -> None:
         clearsky_total_diffuse_surface_irradiance = (
             diffuse_surface_irradiance.reset_index(drop=True)
             + (
-                diffusivity := (
+                polytunnel_diffusivity := (
                     parsed_args.diffusivity
                     if parsed_args.diffusivity is not None
                     else polytunnel.diffusivity
@@ -838,7 +838,7 @@ def main(args: list[Any]) -> None:
                     (
                         surface_shaded_map.loc[time_index]
                         * clearsky_irradiance["dni"].iloc[time_index]
-                        * (1 - diffusivity)
+                        * (1 - polytunnel_diffusivity)
                     ).reset_index(drop=True)
                     * polytunnel_surface_pv_uncovered_fraction_mask.iloc[time_index],
                     solar_position,
@@ -1017,7 +1017,7 @@ def main(args: list[Any]) -> None:
     # Parse the validation data if provided to compare against.
     if parsed_args.validation_filename is not None:
         with time_execution("Generating validation plots"):
-            with tqdm(desc="Generating validation plots", leave=False, total=6) as pbar:
+            with tqdm(desc="Generating validation plots", leave=False, total=7) as pbar:
                 try:
                     with open(
                         parsed_args.validation_filename, "r", encoding="UTF-8"
@@ -1045,11 +1045,12 @@ def main(args: list[Any]) -> None:
                 validation_data[ValidationColumns.DIFFUSE_ERROR.value] = (
                     0.1 * validation_data[ValidationColumns.DIFFUSE_PAR.value]
                 )
-                validation_data[ValidationColumns.DIRECT_ERROR.value] = (
-                    0.1 * validation_data[ValidationColumns.DIRECT_PAR.value]
-                )
                 validation_data[ValidationColumns.TOTAL_ERROR.value] = (
                     0.1 * validation_data[ValidationColumns.TOTAL_PAR.value]
+                )
+                validation_data[ValidationColumns.DIRECT_ERROR.value] = (
+                    validation_data[ValidationColumns.DIFFUSE_ERROR.value]
+                    + validation_data[ValidationColumns.TOTAL_ERROR.value]
                 )
 
                 dir_day_gnd_tot_val: pd.DataFrame = pd.merge(
@@ -1081,7 +1082,14 @@ def main(args: list[Any]) -> None:
                 try:
                     sns.set_palette(
                         # ["#648FFF", "#785EF0", "#DC267F", "#FE6100", "#FFB000", "#0041C8"]
-                        ["#423252", "#4A688B", "#779FB1", "#36C7B8", "#FBC412"],
+                        [
+                            "#423252",
+                            "#4A688B",
+                            "#779FB1",
+                            "#36C7B8",
+                            "#FBC412",
+                            "#e04606",
+                        ],
                     )
                 except UnboundLocalError:
                     import seaborn as sns
@@ -1089,7 +1097,14 @@ def main(args: list[Any]) -> None:
 
                     sns.set_palette(
                         # ["#648FFF", "#785EF0", "#DC267F", "#FE6100", "#FFB000", "#0041C8"]
-                        ["#423252", "#4A688B", "#779FB1", "#36C7B8", "#FBC412"],
+                        [
+                            "#423252",
+                            "#4A688B",
+                            "#779FB1",
+                            "#36C7B8",
+                            "#FBC412",
+                            "#e04606",
+                        ],
                     )
 
                 #######################
@@ -1175,7 +1190,7 @@ def main(args: list[Any]) -> None:
                 )
                 sns.scatterplot(
                     x=dir_day_gnd_tot_val.index,
-                    y=dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] / 2.1,
+                    y=dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] * 0.48,
                     color="C0",
                     label="Total PAR",
                     marker="h",
@@ -1183,13 +1198,14 @@ def main(args: list[Any]) -> None:
                 )
                 plt.plot(
                     dir_day_gnd_tot_val.index,
-                    dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] / 2.1,
+                    dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] * 0.48,
                     color="C0",
                 )
                 plt.errorbar(
                     dir_day_gnd_dir_val.index,
-                    dir_day_gnd_dir_val[ValidationColumns.TOTAL_PAR.value] / 2.1,
-                    yerr=dir_day_gnd_dir_val[ValidationColumns.TOTAL_ERROR.value] / 2.1,
+                    dir_day_gnd_dir_val[ValidationColumns.TOTAL_PAR.value] * 0.48,
+                    yerr=dir_day_gnd_dir_val[ValidationColumns.TOTAL_ERROR.value]
+                    * 0.48,
                     ls="none",
                     color="C0",
                 )
@@ -1223,7 +1239,7 @@ def main(args: list[Any]) -> None:
 
                 plt.savefig(
                     f"validation_{parsed_args.validation_index}_total_"
-                    f"{diffusivity}_{polytunnel.name}_"
+                    f"{polytunnel_diffusivity}_{polytunnel.name}_"
                     f"{parsed_args.start_time.replace(':','_')}_"
                     f"{parsed_args.end_time.replace(':','_')}.pdf",
                     format="pdf",
@@ -1252,7 +1268,7 @@ def main(args: list[Any]) -> None:
                 )
                 sns.scatterplot(
                     x=dir_day_gnd_dir_val.index,
-                    y=dir_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value] / 2.1,
+                    y=dir_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value] * 0.48,
                     color="C1",
                     label="Direct PAR",
                     marker="h",
@@ -1260,14 +1276,14 @@ def main(args: list[Any]) -> None:
                 )
                 plt.plot(
                     dir_day_gnd_dir_val.index,
-                    dir_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value] / 2.1,
+                    dir_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value] * 0.48,
                     color="C1",
                 )
                 plt.errorbar(
                     dir_day_gnd_dir_val.index,
-                    dir_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value] / 2.1,
+                    dir_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value] * 0.48,
                     yerr=dir_day_gnd_dir_val[ValidationColumns.DIRECT_ERROR.value]
-                    / 2.1,
+                    * 0.48,
                     ls="none",
                     color="C1",
                 )
@@ -1301,7 +1317,7 @@ def main(args: list[Any]) -> None:
                 axis_left.set_ylim(-25, 825)
                 plt.savefig(
                     f"validation_{parsed_args.validation_index}_direct_diff_"
-                    f"{diffusivity}_{polytunnel.name}_"
+                    f"{polytunnel_diffusivity}_{polytunnel.name}_"
                     f"{parsed_args.start_time.replace(':','_')}_{parsed_args.end_time.replace(':','_')}.pdf",
                     format="pdf",
                     bbox_inches="tight",
@@ -1342,7 +1358,7 @@ def main(args: list[Any]) -> None:
                 )
                 sns.scatterplot(
                     x=dir_day_gnd_dif_val.index,
-                    y=dir_day_gnd_dif_val[ValidationColumns.DIFFUSE_PAR.value] / 2.1,
+                    y=dir_day_gnd_dif_val[ValidationColumns.DIFFUSE_PAR.value] * 0.48,
                     color="C1",
                     label="Diffuse PAR",
                     marker="h",
@@ -1350,14 +1366,14 @@ def main(args: list[Any]) -> None:
                 )
                 plt.plot(
                     dir_day_gnd_dif_val.index,
-                    dir_day_gnd_dif_val[ValidationColumns.DIFFUSE_PAR.value] / 2.1,
+                    dir_day_gnd_dif_val[ValidationColumns.DIFFUSE_PAR.value] * 0.48,
                     color="C1",
                 )
                 plt.errorbar(
                     dir_day_gnd_dir_val.index,
-                    dir_day_gnd_dir_val[ValidationColumns.DIFFUSE_PAR.value] / 2.1,
+                    dir_day_gnd_dir_val[ValidationColumns.DIFFUSE_PAR.value] * 0.48,
                     yerr=dir_day_gnd_dir_val[ValidationColumns.DIFFUSE_ERROR.value]
-                    / 2.1,
+                    * 0.48,
                     ls="none",
                     color="C1",
                 )
@@ -1392,7 +1408,7 @@ def main(args: list[Any]) -> None:
                 axis_left.set_ylim(-25, 825)
                 plt.savefig(
                     f"validation_{parsed_args.validation_index}_diffuse_diff_"
-                    f"{diffusivity}_{polytunnel.name}_"
+                    f"{polytunnel_diffusivity}_{polytunnel.name}_"
                     f"{parsed_args.start_time.replace(':','_')}_"
                     f"{parsed_args.end_time.replace(':','_')}.pdf",
                     format="pdf",
@@ -1426,7 +1442,7 @@ def main(args: list[Any]) -> None:
                 )
                 sns.scatterplot(
                     x=range(len(dir_day_gnd_tot_val)),
-                    y=dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] / 2.1,
+                    y=dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] * 0.48,
                     color="C0",
                     label="Total PAR",
                     marker="h",
@@ -1435,14 +1451,15 @@ def main(args: list[Any]) -> None:
                 )
                 plt.plot(
                     range(len(dir_day_gnd_tot_val)),
-                    dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] / 2.1,
+                    dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] * 0.48,
                     color="C0",
                     zorder=1,
                 )
                 plt.errorbar(
                     x=range(len(dir_day_gnd_tot_val)),
-                    y=dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] / 2.1,
-                    yerr=dir_day_gnd_dir_val[ValidationColumns.TOTAL_ERROR.value] / 2.1,
+                    y=dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] * 0.48,
+                    yerr=dir_day_gnd_dir_val[ValidationColumns.TOTAL_ERROR.value]
+                    * 0.48,
                     ls="none",
                     color="C0",
                     zorder=1,
@@ -1485,7 +1502,7 @@ def main(args: list[Any]) -> None:
 
                 plt.savefig(
                     "validation_total_map_boxplot_"
-                    f"{diffusivity}_{polytunnel.name}_"
+                    f"{polytunnel_diffusivity}_{polytunnel.name}_"
                     f"{parsed_args.start_time.replace(':','_')}_"
                     f"{parsed_args.end_time.replace(':','_')}.pdf",
                     format="pdf",
@@ -1519,7 +1536,7 @@ def main(args: list[Any]) -> None:
                 )
                 sns.scatterplot(
                     x=range(len(dir_day_gnd_dir_val)),
-                    y=dir_day_gnd_dir_val[ValidationColumns.DIFFUSE_PAR.value] / 2.1,
+                    y=dir_day_gnd_dir_val[ValidationColumns.DIFFUSE_PAR.value] * 0.48,
                     color="C1",
                     label="Diffuse PAR",
                     marker="h",
@@ -1528,15 +1545,15 @@ def main(args: list[Any]) -> None:
                 )
                 plt.plot(
                     range(len(dir_day_gnd_dir_val)),
-                    dir_day_gnd_dir_val[ValidationColumns.DIFFUSE_PAR.value] / 2.1,
+                    dir_day_gnd_dir_val[ValidationColumns.DIFFUSE_PAR.value] * 0.48,
                     color="C1",
                     zorder=1,
                 )
                 plt.errorbar(
                     x=range(len(dir_day_gnd_dir_val)),
-                    y=dir_day_gnd_dir_val[ValidationColumns.DIFFUSE_PAR.value] / 2.1,
+                    y=dir_day_gnd_dir_val[ValidationColumns.DIFFUSE_PAR.value] * 0.48,
                     yerr=dir_day_gnd_dir_val[ValidationColumns.DIFFUSE_ERROR.value]
-                    / 2.1,
+                    * 0.48,
                     ls="none",
                     color="C1",
                     zorder=1,
@@ -1579,7 +1596,7 @@ def main(args: list[Any]) -> None:
 
                 plt.savefig(
                     "validation_diffuse_map_boxplot_"
-                    f"{diffusivity}_{polytunnel.name}_"
+                    f"{polytunnel_diffusivity}_{polytunnel.name}_"
                     f"{parsed_args.start_time.replace(':','_')}_"
                     f"{parsed_args.end_time.replace(':','_')}.pdf",
                     format="pdf",
@@ -1617,7 +1634,7 @@ def main(args: list[Any]) -> None:
                 )
                 sns.scatterplot(
                     x=range(len(dir_day_gnd_dir_val)),
-                    y=dir_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value] / 2.1,
+                    y=dir_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value] * 0.48,
                     color="C1",
                     label="Direct PAR",
                     marker="h",
@@ -1626,15 +1643,15 @@ def main(args: list[Any]) -> None:
                 )
                 plt.plot(
                     range(len(dir_day_gnd_dir_val)),
-                    dir_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value] / 2.1,
+                    dir_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value] * 0.48,
                     color="C1",
                     zorder=1,
                 )
                 plt.errorbar(
                     x=range(len(dir_day_gnd_dir_val)),
-                    y=dir_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value] / 2.1,
+                    y=dir_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value] * 0.48,
                     yerr=dir_day_gnd_dir_val[ValidationColumns.DIRECT_ERROR.value]
-                    / 2.1,
+                    * 0.48,
                     ls="none",
                     color="C1",
                     zorder=1,
@@ -1677,7 +1694,129 @@ def main(args: list[Any]) -> None:
 
                 plt.savefig(
                     "validation_direct_map_boxplot_"
-                    f"{diffusivity}_{polytunnel.name}_"
+                    f"{polytunnel_diffusivity}_{polytunnel.name}_"
+                    f"{parsed_args.start_time.replace(':','_')}_"
+                    f"{parsed_args.end_time.replace(':','_')}.pdf",
+                    format="pdf",
+                    bbox_inches="tight",
+                    pad_inches=0.05,
+                )
+                pbar.update(1)
+
+                #######################
+                # Plotting code No. 9 #
+                #######################
+
+                # Compute the cloudiness based on the on-the-ground PAR seen.
+                diffusivity: pd.Series = (
+                    dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] * 0.48
+                    - dir_day_gnd_tot_val[parsed_args.validation_index]
+                ) / (
+                    dif_day_gnd_tot_val[parsed_args.validation_index]
+                    - dir_day_gnd_tot_val[parsed_args.validation_index]
+                )
+
+                diffusivity_error = abs(diffusivity * 0.1)
+
+                plt.figure(figsize=(180 * MM, 120 * MM))
+                axis_right = (axis_left := plt.gca()).twinx()
+
+                sns.scatterplot(
+                    x=range(len(dir_day_gnd_tot_val)),
+                    y=dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] * 0.48,
+                    ax=axis_left,
+                    color="C0",
+                    label="Total PAR",
+                    marker="h",
+                    s=60,
+                    zorder=1,
+                )
+                axis_left.plot(
+                    range(len(dir_day_gnd_tot_val)),
+                    dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] * 0.48,
+                    color="C0",
+                    zorder=1,
+                )
+                axis_left.errorbar(
+                    x=range(len(dir_day_gnd_tot_val)),
+                    y=dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] * 0.48,
+                    yerr=dir_day_gnd_dir_val[ValidationColumns.TOTAL_ERROR.value]
+                    * 0.48,
+                    ls="none",
+                    color="C0",
+                    zorder=1,
+                )
+                plt.xlabel("Date and time")
+                plt.ylabel("Irradiance / W/m$^2$")
+
+                sns.scatterplot(
+                    x=range(len(diffusivity)),
+                    y=diffusivity,
+                    alpha=0.7,
+                    ax=axis_right,
+                    color="C2",
+                    label="Predicted weather diffusivity",
+                    marker="X",
+                    s=40,
+                    zorder=1,
+                )
+                axis_right.errorbar(
+                    x=(x_range := range(len(dir_day_gnd_dir_val))),
+                    y=diffusivity,
+                    yerr=diffusivity_error,
+                    ls="none",
+                    color="C2",
+                    zorder=1,
+                )
+                axis_right.set_xlabel("Date and time")
+                axis_left.set_ylabel("Irradiance / W/m$^2$")
+                axis_right.set_ylabel("Diffusivity")
+
+                plt.xticks(
+                    list(range(len(dir_day_gnd_dir_val.index)))[::4],
+                    [entry.strftime("%d-%m %H") for entry in dir_day_gnd_dir_val.index][
+                        ::4
+                    ],
+                )
+
+                lower_ylim: float = -0.75
+                upper_ylim: float = 4.75
+                axis_right.fill_between(
+                    x_range,
+                    [lower_ylim] * len(x_range),
+                    [0] * len(x_range),
+                    alpha=0.3,
+                    color="grey",
+                    hatch="//",
+                    zorder=0,
+                    label="Out-of-bounds result",
+                )
+                axis_right.fill_between(
+                    x_range,
+                    [1] * len(x_range),
+                    [upper_ylim] * len(x_range),
+                    alpha=0.3,
+                    color="grey",
+                    hatch="//",
+                    zorder=0,
+                )
+
+                axis_left.set_ylim(-25, 825)
+                axis_right.set_ylim(lower_ylim, upper_ylim)
+
+                handles_l, labels_l = axis_left.get_legend_handles_labels()
+                handles_r, labels_r = axis_right.get_legend_handles_labels()
+
+                axis_left.tick_params(axis="both", which="major", labelsize=7)
+                axis_right.tick_params(axis="both", which="major", labelsize=7)
+
+                axis_left.legend().remove()
+                axis_right.legend().remove()
+                axis_right.legend(handles_l + handles_r, labels_l + labels_r)
+
+                plt.savefig(
+                    "validation_diffusivity_prediction_"
+                    f"{polytunnel_diffusivity}_{polytunnel.name}_"
                     f"{parsed_args.start_time.replace(':','_')}_"
                     f"{parsed_args.end_time.replace(':','_')}.pdf",
                     format="pdf",
