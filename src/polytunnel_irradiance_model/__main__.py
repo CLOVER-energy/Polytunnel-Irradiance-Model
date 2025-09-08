@@ -112,6 +112,14 @@ HADLOW_WEATHER_FILENAME: str = "hadlow_combined.csv"
 #   Keyword for parsing Hadlow's incoming shortwave information.
 INCOMING_SHORTWAVE: str = "SWIN_LEVEL3"
 
+# INCOMING_SHORTWAVE_DIFFUSE:
+#   Keyword for diffuse component of incoming light.
+INCOMING_SHORTWAVE_DIFFUSE: str = "SWIN_LEVEL3_DIFFUSE"
+
+# INCOMING_SHORTWAVE_DIRECT:
+#   Keyword for direct component of incoming light.
+INCOMING_SHORTWAVE_DIRECT: str = "SWIN_LEVEL3_DIRECT"
+
 # MODULES:
 #   Keyword for parsing PV-module information.
 MODULES: str = "modules"
@@ -293,7 +301,7 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
     )
     simulation_arguments.add_argument(
         "--modelling-temporal-resolution",
-        "-rtm",
+        "-mtr",
         type=float,
         default=30,
         help="The temporal resolution, in minutes, to use when simulating throughout "
@@ -366,6 +374,33 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
         default=10,
         help="The resolution of the mesh grid in terms of the number of points along "
         "each dimension of the polytunnel to use; default of 10.",
+    )
+    parser.add_argument(
+        "--weather-file",
+        "-wf",
+        type=str,
+        default=HADLOW_WEATHER_FILENAME,
+        help="The name of the weather-data file to use.",
+    )
+    parser.add_argument(
+        "--weather-file-error",
+        "-wfer",
+        type=float,
+        default=0.38,
+        help="The fractional error of the data contained in the weather-data file.",
+    )
+
+    parser.add_argument(
+        "--regenerate",
+        action="store_true",
+        default=False,
+        help="Regenerate surface-irradiance plots.",
+    )
+    parser.add_argument(
+        "--regenerate-mesh",
+        action="store_true",
+        default=False,
+        help="Regenerate the polytunnel-to-ground mesh.",
     )
 
     return parser.parse_args(args)
@@ -525,12 +560,19 @@ def main(args: list[Any]) -> None:
     # Compute weather-realted parameters
     with time_execution("Weather calculation"):
         # Read the Hadlow weather data if available.
-        with open(
-            os.path.join(HADLOW_WEATHER_FILENAME), "r", encoding="UTF-8"
-        ) as hadlow_weather_file:
-            hadlow_weather_data: pd.DataFrame = (
-                pd.read_csv(hadlow_weather_file).drop([0, 1]).set_index("parameter-id")
-            )
+        try:
+            with open(
+                os.path.join(HADLOW_WEATHER_FILENAME), "r", encoding="UTF-8"
+            ) as hadlow_weather_file:
+                hadlow_weather_data: pd.DataFrame = (
+                    pd.read_csv(hadlow_weather_file)
+                    .drop([0, 1])
+                    .set_index("parameter-id")
+                )
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                f"Could not find weather file: {HADLOW_WEATHER_FILENAME}"
+            ) from None
 
         hadlow_weather_data.index = pd.DatetimeIndex(hadlow_weather_data.index)
 
@@ -541,37 +583,112 @@ def main(args: list[Any]) -> None:
             .replace("Z", "")
         ][INCOMING_SHORTWAVE].astype(float)
 
-        dhi_to_hadlow_adjustment_factor: pd.DataFrame = pd.concat(
-            [
-                (hadlow_dni_slice / clearsky_irradiance["dhi"])
-                .clip(0, None)
-                .replace([inf, -inf], 0)
-            ]
-            * len(polytunnel.surface_mesh),
-            axis=1,
-        )
-        dni_to_hadlow_adjustment_factor: pd.DataFrame = pd.concat(
-            [
-                (hadlow_dni_slice / clearsky_irradiance["dni"])
-                .clip(0, None)
-                .replace([inf, -inf], 0)
-            ]
-            * len(polytunnel.surface_mesh),
-            axis=1,
-        )
+        # If the CLI has been used to specify an additional weather file, use this in
+        # addition to locally-obtained data.
+        if parsed_args.weather_file != HADLOW_WEATHER_FILENAME:
+            try:
+                with open(
+                    os.path.join(parsed_args.weather_file), "r", encoding="UTF-8"
+                ) as weather_file:
+                    alternative_weather_data: pd.DataFrame | None = (
+                        pd.read_csv(weather_file).drop([0, 1]).set_index("utc_time")
+                    )
+            except FileNotFoundError:
+                raise FileNotFoundError(
+                    f"Could not find weather file: {parsed_args.weather_file}"
+                ) from None
+
+            alternative_weather_data.index = pd.DatetimeIndex(
+                alternative_weather_data.index
+            )
+            alternative_weather_slice = alternative_weather_data[
+                parsed_args.start_time.replace("T", " ")
+                .replace("Z", "") : parsed_args.end_time.replace("T", " ")
+                .replace("Z", "")
+            ].astype(float)
+
+            dhi_to_weather_adjustment_factor: pd.DataFrame = pd.concat(
+                [
+                    (
+                        alternative_weather_slice.reset_index(drop=True)[
+                            INCOMING_SHORTWAVE_DIRECT
+                        ]
+                        / (
+                            _merged_frame := (
+                                pd.merge(
+                                    alternative_weather_slice,
+                                    clearsky_irradiance,
+                                    left_index=True,
+                                    right_index=True,
+                                ).reset_index(drop=True)
+                            )
+                        )["dhi"]
+                    )
+                    .clip(0, None)
+                    .replace([inf, -inf], 0)
+                ]
+                * len(polytunnel.surface_mesh),
+                axis=1,
+            )
+            dhi_to_weather_adjustment_factor.index = alternative_weather_slice.index
+
+            dni_to_weather_adjustment_factor: pd.DataFrame = pd.concat(
+                [
+                    (
+                        alternative_weather_slice.reset_index(drop=True)[
+                            INCOMING_SHORTWAVE_DIFFUSE
+                        ]
+                        / _merged_frame["dni"]
+                    )
+                    .clip(0, None)
+                    .replace([inf, -inf], 0)
+                ]
+                * len(polytunnel.surface_mesh),
+                axis=1,
+            )
+            dni_to_weather_adjustment_factor.index = alternative_weather_slice.index
+
+            # Create a label used for distinguishing that alternative weather data has
+            # been used.
+            alt_weather: str = "alt_weather_"
+
+        else:
+            alternative_weather_data = None
+            dhi_to_weather_adjustment_factor: pd.DataFrame = pd.concat(
+                [
+                    (hadlow_dni_slice / clearsky_irradiance["dhi"])
+                    .clip(0, None)
+                    .replace([inf, -inf], 0)
+                ]
+                * len(polytunnel.surface_mesh),
+                axis=1,
+            )
+            dni_to_weather_adjustment_factor: pd.DataFrame = pd.concat(
+                [
+                    (hadlow_dni_slice / clearsky_irradiance["dni"])
+                    .clip(0, None)
+                    .replace([inf, -inf], 0)
+                ]
+                * len(polytunnel.surface_mesh),
+                axis=1,
+            )
+            alt_weather: str = ""
 
     # Make the auto-generated directory.
     os.makedirs(AUTO_GENERATED, exist_ok=True)
     os.makedirs(os.path.join(AUTO_GENERATED, polytunnel.name), exist_ok=True)
 
-    if not os.path.isfile(
-        surface_shaded_map_filename := os.path.join(
-            AUTO_GENERATED,
-            polytunnel.name,
-            f"{polytunnel.name}_surface_shaded_map_"
-            f"{parsed_args.start_time.replace(":","_")}_"
-            f"{parsed_args.end_time.replace(":","_")}.csv",
+    if (
+        not os.path.isfile(
+            surface_shaded_map_filename := os.path.join(
+                AUTO_GENERATED,
+                polytunnel.name,
+                f"{polytunnel.name}_surface_shaded_map_"
+                f"{parsed_args.start_time.replace(":","_")}_"
+                f"{parsed_args.end_time.replace(":","_")}.csv",
+            )
         )
+        or parsed_args.regenerate
     ):
         with time_execution("Surface shading calculation"):
             # Determine whether any of the modules are shaded by neighbouring polytunnels,
@@ -615,14 +732,17 @@ def main(args: list[Any]) -> None:
             )
 
     # Carry out a calculation if the outputs have not already been saved.
-    if not os.path.isfile(
-        diffuse_surface_filename := os.path.join(
-            AUTO_GENERATED,
-            polytunnel.name,
-            f"{polytunnel.name}_diffuse_surface_irradiance_"
-            f"{parsed_args.start_time.replace(":","_")}_"
-            f"{parsed_args.end_time.replace(":","_")}.csv",
+    if (
+        not os.path.isfile(
+            diffuse_surface_filename := os.path.join(
+                AUTO_GENERATED,
+                polytunnel.name,
+                f"{polytunnel.name}_diffuse_surface_irradiance_"
+                f"{parsed_args.start_time.replace(":","_")}_"
+                f"{parsed_args.end_time.replace(":","_")}.csv",
+            )
         )
+        or parsed_args.regenerate
     ):
 
         # Determine the intercept lines with neighbouring polytunnels.
@@ -738,16 +858,19 @@ def main(args: list[Any]) -> None:
                 [int(entry) for entry in direct_surface_irradiance.columns]
             )
 
-    diffuse_surface_irradiance.index = hadlow_dni_slice.index
-    direct_surface_irradiance.index = hadlow_dni_slice.index
+    diffuse_surface_irradiance.index = dni_to_weather_adjustment_factor.index
+    direct_surface_irradiance.index = dni_to_weather_adjustment_factor.index
 
-    if not os.path.isfile(
-        mesh_mesh_filename := os.path.join(
-            AUTO_GENERATED,
-            polytunnel.name,
-            f"{polytunnel.name}_{polytunnel.meshgrid_resolution}_by_"
-            f"{polytunnel.length_wise_meshgrid_resolution}_mesh_mesh_distance.json",
+    if (
+        not os.path.isfile(
+            mesh_mesh_filename := os.path.join(
+                AUTO_GENERATED,
+                polytunnel.name,
+                f"{polytunnel.name}_{polytunnel.meshgrid_resolution}_by_"
+                f"{polytunnel.length_wise_meshgrid_resolution}_mesh_mesh_distance.json",
+            )
         )
+        or parsed_args.regenerate_mesh
     ):
         with time_execution("Mesh-mesh distance calculation"):
             # Consider each point on the surface as imparting diffuse light on the ground.
@@ -814,16 +937,22 @@ def main(args: list[Any]) -> None:
         )
 
         diffuse_day_total_diffuse_surface_irradiance = (
-            diffuse_surface_irradiance * dhi_to_hadlow_adjustment_factor
+            diffuse_surface_irradiance * dhi_to_weather_adjustment_factor
         )
         direct_day_total_diffuse_surface_irradiance = (
             clearsky_total_diffuse_surface_irradiance
-            * dni_to_hadlow_adjustment_factor.reset_index(drop=True)
+            * dni_to_weather_adjustment_factor.reset_index(drop=True)
         )
 
-    clearsky_total_diffuse_surface_irradiance.index = hadlow_dni_slice.index
-    diffuse_day_total_diffuse_surface_irradiance.index = hadlow_dni_slice.index
-    direct_day_total_diffuse_surface_irradiance.index = hadlow_dni_slice.index
+    clearsky_total_diffuse_surface_irradiance.index = (
+        dni_to_weather_adjustment_factor.index
+    )
+    diffuse_day_total_diffuse_surface_irradiance.index = (
+        dni_to_weather_adjustment_factor.index
+    )
+    direct_day_total_diffuse_surface_irradiance.index = (
+        dni_to_weather_adjustment_factor.index
+    )
 
     # Calculate the amount of polytunnel surface sunlight which will reach the ground,
     # both as diffuse and direct components.
@@ -899,7 +1028,7 @@ def main(args: list[Any]) -> None:
 
         direct_day_ground_direct_irradiance = (
             clearsky_ground_direct_irradiance_map
-            * dni_to_hadlow_adjustment_factor.reset_index(drop=True)
+            * dni_to_weather_adjustment_factor.reset_index(drop=True)
         )
 
     # Compute the amount of diffuse light reaching the ground.
@@ -1001,23 +1130,41 @@ def main(args: list[Any]) -> None:
         )
 
     # Reset missing indices
-    clearsky_total_ground_irradiance_map.index = hadlow_dni_slice.index
-    clearsky_ground_direct_irradiance_map.index = hadlow_dni_slice.index
-    clearsky_ground_diffuse_irradiance_map.index = hadlow_dni_slice.index
+    clearsky_total_ground_irradiance_map.index = dni_to_weather_adjustment_factor.index
+    clearsky_ground_direct_irradiance_map.index = dni_to_weather_adjustment_factor.index
+    clearsky_ground_diffuse_irradiance_map.index = (
+        dni_to_weather_adjustment_factor.index
+    )
 
-    direct_day_ground_diffuse_irradiance_map.index = hadlow_dni_slice.index
-    direct_day_ground_direct_irradiance.index = hadlow_dni_slice.index
-    direct_day_ground_direct_beam_irradiance.index = hadlow_dni_slice.index
-    direct_day_total_ground_irradiance_map.index = hadlow_dni_slice.index
-    direct_day_total_ground_with_beam_irradiance_map.index = hadlow_dni_slice.index
+    direct_day_ground_diffuse_irradiance_map.index = (
+        dni_to_weather_adjustment_factor.index
+    )
+    direct_day_ground_direct_irradiance.index = dni_to_weather_adjustment_factor.index
+    direct_day_ground_direct_beam_irradiance.index = (
+        dni_to_weather_adjustment_factor.index
+    )
+    direct_day_total_ground_irradiance_map.index = (
+        dni_to_weather_adjustment_factor.index
+    )
+    direct_day_total_ground_with_beam_irradiance_map.index = (
+        dni_to_weather_adjustment_factor.index
+    )
 
-    diffuse_day_ground_diffuse_irradiance_map.index = hadlow_dni_slice.index
-    diffuse_day_total_ground_irradiance_map.index = hadlow_dni_slice.index
+    diffuse_day_ground_diffuse_irradiance_map.index = (
+        dni_to_weather_adjustment_factor.index
+    )
+    diffuse_day_total_ground_irradiance_map.index = (
+        dni_to_weather_adjustment_factor.index
+    )
 
     # Parse the validation data if provided to compare against.
     if parsed_args.validation_filename is not None:
         with time_execution("Generating validation plots"):
-            with tqdm(desc="Generating validation plots", leave=False, total=7) as pbar:
+            with tqdm(
+                desc="Generating validation plots",
+                leave=False,
+                total=7 + 3 * (alternative_weather_data is not None),
+            ) as pbar:
                 try:
                     with open(
                         parsed_args.validation_filename, "r", encoding="UTF-8"
@@ -1193,7 +1340,7 @@ def main(args: list[Any]) -> None:
                     y=dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] * 0.48,
                     color="C0",
                     label="Total PAR",
-                    marker="h",
+                    marker="H",
                     s=40,
                 )
                 plt.plot(
@@ -1238,7 +1385,7 @@ def main(args: list[Any]) -> None:
                 axis_left.set_ylim(-25, 825)
 
                 plt.savefig(
-                    f"validation_{parsed_args.validation_index}_total_"
+                    f"validation_{parsed_args.validation_index}_{alt_weather}total_"
                     f"{polytunnel_diffusivity}_{polytunnel.name}_"
                     f"{parsed_args.start_time.replace(':','_')}_"
                     f"{parsed_args.end_time.replace(':','_')}.pdf",
@@ -1271,7 +1418,7 @@ def main(args: list[Any]) -> None:
                     y=dir_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value] * 0.48,
                     color="C1",
                     label="Direct PAR",
-                    marker="h",
+                    marker="H",
                     s=40,
                 )
                 plt.plot(
@@ -1316,7 +1463,7 @@ def main(args: list[Any]) -> None:
                 axis_right.set_ylim(-0.05, 1.05)
                 axis_left.set_ylim(-25, 825)
                 plt.savefig(
-                    f"validation_{parsed_args.validation_index}_direct_diff_"
+                    f"validation_{parsed_args.validation_index}_{alt_weather}direct_diff_"
                     f"{polytunnel_diffusivity}_{polytunnel.name}_"
                     f"{parsed_args.start_time.replace(':','_')}_{parsed_args.end_time.replace(':','_')}.pdf",
                     format="pdf",
@@ -1361,7 +1508,7 @@ def main(args: list[Any]) -> None:
                     y=dir_day_gnd_dif_val[ValidationColumns.DIFFUSE_PAR.value] * 0.48,
                     color="C1",
                     label="Diffuse PAR",
-                    marker="h",
+                    marker="H",
                     s=40,
                 )
                 plt.plot(
@@ -1407,7 +1554,7 @@ def main(args: list[Any]) -> None:
                 axis_right.set_ylim(-0.05, 1.05)
                 axis_left.set_ylim(-25, 825)
                 plt.savefig(
-                    f"validation_{parsed_args.validation_index}_diffuse_diff_"
+                    f"validation_{parsed_args.validation_index}_{alt_weather}diffuse_diff_"
                     f"{polytunnel_diffusivity}_{polytunnel.name}_"
                     f"{parsed_args.start_time.replace(':','_')}_"
                     f"{parsed_args.end_time.replace(':','_')}.pdf",
@@ -1445,7 +1592,7 @@ def main(args: list[Any]) -> None:
                     y=dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] * 0.48,
                     color="C0",
                     label="Total PAR",
-                    marker="h",
+                    marker="H",
                     s=60,
                     zorder=1,
                 )
@@ -1502,7 +1649,7 @@ def main(args: list[Any]) -> None:
 
                 plt.savefig(
                     "validation_total_map_boxplot_"
-                    f"{polytunnel_diffusivity}_{polytunnel.name}_"
+                    f"{polytunnel_diffusivity}_{polytunnel.name}_{alt_weather}"
                     f"{parsed_args.start_time.replace(':','_')}_"
                     f"{parsed_args.end_time.replace(':','_')}.pdf",
                     format="pdf",
@@ -1539,7 +1686,7 @@ def main(args: list[Any]) -> None:
                     y=dir_day_gnd_dir_val[ValidationColumns.DIFFUSE_PAR.value] * 0.48,
                     color="C1",
                     label="Diffuse PAR",
-                    marker="h",
+                    marker="H",
                     s=60,
                     zorder=1,
                 )
@@ -1596,7 +1743,7 @@ def main(args: list[Any]) -> None:
 
                 plt.savefig(
                     "validation_diffuse_map_boxplot_"
-                    f"{polytunnel_diffusivity}_{polytunnel.name}_"
+                    f"{polytunnel_diffusivity}_{polytunnel.name}_{alt_weather}"
                     f"{parsed_args.start_time.replace(':','_')}_"
                     f"{parsed_args.end_time.replace(':','_')}.pdf",
                     format="pdf",
@@ -1637,7 +1784,7 @@ def main(args: list[Any]) -> None:
                     y=dir_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value] * 0.48,
                     color="C1",
                     label="Direct PAR",
-                    marker="h",
+                    marker="H",
                     s=60,
                     zorder=1,
                 )
@@ -1694,7 +1841,7 @@ def main(args: list[Any]) -> None:
 
                 plt.savefig(
                     "validation_direct_map_boxplot_"
-                    f"{polytunnel_diffusivity}_{polytunnel.name}_"
+                    f"{polytunnel_diffusivity}_{polytunnel.name}_{alt_weather}"
                     f"{parsed_args.start_time.replace(':','_')}_"
                     f"{parsed_args.end_time.replace(':','_')}.pdf",
                     format="pdf",
@@ -1727,7 +1874,7 @@ def main(args: list[Any]) -> None:
                     ax=axis_left,
                     color="C0",
                     label="Total PAR",
-                    marker="h",
+                    marker="H",
                     s=60,
                     zorder=1,
                 )
@@ -1816,7 +1963,7 @@ def main(args: list[Any]) -> None:
 
                 plt.savefig(
                     "validation_diffusivity_prediction_"
-                    f"{polytunnel_diffusivity}_{polytunnel.name}_"
+                    f"{polytunnel_diffusivity}_{polytunnel.name}_{alt_weather}"
                     f"{parsed_args.start_time.replace(':','_')}_"
                     f"{parsed_args.end_time.replace(':','_')}.pdf",
                     format="pdf",
@@ -1824,6 +1971,322 @@ def main(args: list[Any]) -> None:
                     pad_inches=0.05,
                 )
                 pbar.update(1)
+
+                # If weather data contained the diffusivity information, then use this to
+                # compute the on-the-ground diffuse irradiance.
+                if alternative_weather_data is None:
+                    pbar.update(3)
+
+                else:
+                    # Compute what the on-the-ground irradiance looks like based on the
+                    # diffuse and direct irradiance supplied using the weather-data file
+                    # provided.
+                    predicted_day_gnd_dif_val: pd.DataFrame = pd.merge(
+                        diffuse_day_total_ground_irradiance_map
+                        + direct_day_ground_diffuse_irradiance_map,
+                        validation_data,
+                        left_index=True,
+                        right_index=True,
+                    )
+                    predicted_day_gnd_dir_val: pd.DataFrame = pd.merge(
+                        direct_day_ground_direct_beam_irradiance,
+                        validation_data,
+                        left_index=True,
+                        right_index=True,
+                    )
+                    predicted_day_gnd_tot_val: pd.DataFrame = pd.merge(
+                        diffuse_day_total_ground_irradiance_map
+                        + direct_day_ground_diffuse_irradiance_map,
+                        validation_data,
+                        left_index=True,
+                        right_index=True,
+                    )
+
+                    # Check that the weather-data file has the correct columns.
+                    if (
+                        INCOMING_SHORTWAVE_DIFFUSE
+                        not in alternative_weather_data.columns
+                        or INCOMING_SHORTWAVE_DIRECT
+                        not in alternative_weather_data.columns
+                    ):
+                        raise Exception(
+                            f"Alternative weather-data file does not have required columns: {INCOMING_SHORTWAVE_DIRECT} and {INCOMING_SHORTWAVE_DIFFUSE}."
+                        )
+
+                    diffusivity_series = alternative_weather_data[
+                        INCOMING_SHORTWAVE_DIFFUSE
+                    ] / (
+                        alternative_weather_data[INCOMING_SHORTWAVE_DIFFUSE]
+                        + alternative_weather_data[INCOMING_SHORTWAVE_DIRECT]
+                    )
+
+                    # Compute the direct and diffuse irradiance predictions on the
+                    # ground.
+                    plt.figure(figsize=(180 * MM, 120 * MM))
+                    sns.scatterplot(
+                        x=predicted_day_gnd_tot_val.index,
+                        y=predicted_day_gnd_tot_val[parsed_args.validation_index],
+                        color="C1",
+                        label="Predicted total PAR",
+                        marker="h",
+                        s=40,
+                    )
+                    plt.plot(
+                        predicted_day_gnd_tot_val.index,
+                        predicted_day_gnd_tot_val[parsed_args.validation_index],
+                        color="C1",
+                    )
+                    plt.errorbar(
+                        predicted_day_gnd_tot_val.index,
+                        predicted_day_gnd_tot_val[parsed_args.validation_index],
+                        yerr=predicted_day_gnd_tot_val[parsed_args.validation_index]
+                        * parsed_args.weather_file_error,
+                        ls="none",
+                        color="C1",
+                    )
+
+                    sns.scatterplot(
+                        x=predicted_day_gnd_tot_val.index,
+                        y=predicted_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value]
+                        * 0.48,
+                        color="C0",
+                        label="Measured total PAR",
+                        marker="H",
+                        s=40,
+                    )
+                    plt.plot(
+                        predicted_day_gnd_tot_val.index,
+                        predicted_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value]
+                        * 0.48,
+                        color="C0",
+                    )
+                    plt.errorbar(
+                        predicted_day_gnd_tot_val.index,
+                        predicted_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value]
+                        * 0.48,
+                        yerr=predicted_day_gnd_tot_val[
+                            ValidationColumns.TOTAL_ERROR.value
+                        ]
+                        * 0.48,
+                        ls="none",
+                        color="C0",
+                    )
+                    plt.xlabel("Date and time")
+                    plt.ylabel("Irradiance / W/m$^2$")
+
+                    axis_right = (axis_left := plt.gca()).twinx()
+                    axis_left.tick_params(axis="both", which="major", labelsize=7)
+                    axis_right.tick_params(axis="both", which="major", labelsize=7)
+                    sns.scatterplot(
+                        x=dir_day_gnd_tot_val.index,
+                        y=diffusivity_series,
+                        alpha=0.7,
+                        color="C1",
+                        label="Diffusivity",
+                        marker="D",
+                        s=40,
+                    )
+                    left_handles, left_labels = axis_left.get_legend_handles_labels()
+                    axis_left.legend().remove()
+                    right_handles, right_labels = axis_right.get_legend_handles_labels()
+                    axis_right.legend().remove()
+
+                    plt.legend(
+                        left_handles + right_handles,
+                        left_labels + right_labels,
+                        loc="upper right",
+                    )
+                    axis_right.set_ylim(-0.05, 1.05)
+                    axis_left.set_ylim(-25, 825)
+
+                    plt.savefig(
+                        f"validation_{parsed_args.validation_index}_{alt_weather}total_"
+                        f"{polytunnel_diffusivity}_{polytunnel.name}_"
+                        f"{parsed_args.start_time.replace(':','_')}_"
+                        f"{parsed_args.end_time.replace(':','_')}.pdf",
+                        format="pdf",
+                        bbox_inches="tight",
+                        pad_inches=0.05,
+                    )
+                    pbar.update(1)
+
+                    # Look at the direct irradiance on the ground
+                    plt.figure(figsize=(180 * MM, 120 * MM))
+                    sns.scatterplot(
+                        x=predicted_day_gnd_dir_val.index,
+                        y=predicted_day_gnd_dir_val[parsed_args.validation_index],
+                        color="C4",
+                        label="Predicted direct PAR",
+                        marker="h",
+                        s=40,
+                    )
+                    plt.plot(
+                        predicted_day_gnd_dir_val.index,
+                        predicted_day_gnd_dir_val[parsed_args.validation_index],
+                        color="C4",
+                    )
+                    plt.errorbar(
+                        predicted_day_gnd_dir_val.index,
+                        predicted_day_gnd_dir_val[parsed_args.validation_index],
+                        yerr=predicted_day_gnd_dir_val[parsed_args.validation_index]
+                        * parsed_args.weather_file_error,
+                        ls="none",
+                        color="C4",
+                    )
+
+                    sns.scatterplot(
+                        x=predicted_day_gnd_dir_val.index,
+                        y=predicted_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value]
+                        * 0.48,
+                        color="C0",
+                        label="Measured direct PAR",
+                        marker="H",
+                        s=40,
+                    )
+                    plt.plot(
+                        predicted_day_gnd_dir_val.index,
+                        predicted_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value]
+                        * 0.48,
+                        color="C0",
+                    )
+                    plt.errorbar(
+                        predicted_day_gnd_dir_val.index,
+                        predicted_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value]
+                        * 0.48,
+                        yerr=predicted_day_gnd_dir_val[
+                            ValidationColumns.DIRECT_ERROR.value
+                        ]
+                        * 0.48,
+                        ls="none",
+                        color="C0",
+                    )
+                    plt.xlabel("Date and time")
+                    plt.ylabel("Irradiance / W/m$^2$")
+
+                    axis_right = (axis_left := plt.gca()).twinx()
+                    axis_left.tick_params(axis="both", which="major", labelsize=7)
+                    axis_right.tick_params(axis="both", which="major", labelsize=7)
+                    sns.scatterplot(
+                        x=dir_day_gnd_tot_val.index,
+                        y=diffusivity_series,
+                        alpha=0.7,
+                        color="C1",
+                        label="Diffusivity",
+                        marker="D",
+                        s=40,
+                    )
+                    left_handles, left_labels = axis_left.get_legend_handles_labels()
+                    axis_left.legend().remove()
+                    right_handles, right_labels = axis_right.get_legend_handles_labels()
+                    axis_right.legend().remove()
+
+                    plt.legend(
+                        left_handles + right_handles,
+                        left_labels + right_labels,
+                        loc="upper right",
+                    )
+                    axis_right.set_ylim(-0.05, 1.05)
+                    axis_left.set_ylim(-25, 825)
+
+                    plt.savefig(
+                        f"validation_{parsed_args.validation_index}_{alt_weather}direct_"
+                        f"{polytunnel_diffusivity}_{polytunnel.name}_"
+                        f"{parsed_args.start_time.replace(':','_')}_"
+                        f"{parsed_args.end_time.replace(':','_')}.pdf",
+                        format="pdf",
+                        bbox_inches="tight",
+                        pad_inches=0.05,
+                    )
+                    pbar.update(1)
+
+                    # Look at the diffuse irradiance on the ground
+                    plt.figure(figsize=(180 * MM, 120 * MM))
+                    sns.scatterplot(
+                        x=predicted_day_gnd_dif_val.index,
+                        y=predicted_day_gnd_dif_val[parsed_args.validation_index],
+                        color="C3",
+                        label="Predicted diffuse PAR",
+                        marker="h",
+                        s=40,
+                    )
+                    plt.plot(
+                        predicted_day_gnd_dif_val.index,
+                        predicted_day_gnd_dif_val[parsed_args.validation_index],
+                        color="C3",
+                    )
+                    plt.errorbar(
+                        predicted_day_gnd_dif_val.index,
+                        predicted_day_gnd_dif_val[parsed_args.validation_index],
+                        yerr=predicted_day_gnd_dif_val[parsed_args.validation_index]
+                        * parsed_args.weather_file_error,
+                        ls="none",
+                        color="C3",
+                    )
+
+                    sns.scatterplot(
+                        x=predicted_day_gnd_dif_val.index,
+                        y=predicted_day_gnd_dif_val[ValidationColumns.DIFFUSE_PAR.value]
+                        * 0.48,
+                        color="C0",
+                        label="Measured diffuse PAR",
+                        marker="H",
+                        s=40,
+                    )
+                    plt.plot(
+                        predicted_day_gnd_dif_val.index,
+                        predicted_day_gnd_dif_val[ValidationColumns.DIFFUSE_PAR.value]
+                        * 0.48,
+                        color="C0",
+                    )
+                    plt.errorbar(
+                        predicted_day_gnd_dif_val.index,
+                        predicted_day_gnd_dif_val[ValidationColumns.DIFFUSE_PAR.value]
+                        * 0.48,
+                        yerr=predicted_day_gnd_dif_val[
+                            ValidationColumns.DIFFUSE_ERROR.value
+                        ]
+                        * 0.48,
+                        ls="none",
+                        color="C0",
+                    )
+                    plt.xlabel("Date and time")
+                    plt.ylabel("Irradiance / W/m$^2$")
+
+                    axis_right = (axis_left := plt.gca()).twinx()
+                    axis_left.tick_params(axis="both", which="major", labelsize=7)
+                    axis_right.tick_params(axis="both", which="major", labelsize=7)
+                    sns.scatterplot(
+                        x=dir_day_gnd_tot_val.index,
+                        y=diffusivity_series,
+                        alpha=0.7,
+                        color="C1",
+                        label="Diffusivity",
+                        marker="D",
+                        s=40,
+                    )
+                    left_handles, left_labels = axis_left.get_legend_handles_labels()
+                    axis_left.legend().remove()
+                    right_handles, right_labels = axis_right.get_legend_handles_labels()
+                    axis_right.legend().remove()
+
+                    plt.legend(
+                        left_handles + right_handles,
+                        left_labels + right_labels,
+                        loc="upper right",
+                    )
+                    axis_right.set_ylim(-0.05, 1.05)
+                    axis_left.set_ylim(-25, 825)
+
+                    plt.savefig(
+                        f"validation_{parsed_args.validation_index}_{alt_weather}diffuse_"
+                        f"{polytunnel_diffusivity}_{polytunnel.name}_"
+                        f"{parsed_args.start_time.replace(':','_')}_"
+                        f"{parsed_args.end_time.replace(':','_')}.pdf",
+                        format="pdf",
+                        bbox_inches="tight",
+                        pad_inches=0.05,
+                    )
+                    pbar.update(1)
 
             # plt.show()
 
