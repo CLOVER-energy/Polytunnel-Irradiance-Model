@@ -178,4 +178,5 @@ cython_debug/
 
 # Outputs
 *.pdf
+*.png
 *.gif
