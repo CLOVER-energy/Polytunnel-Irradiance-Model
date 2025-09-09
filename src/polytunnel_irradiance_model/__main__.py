@@ -1996,7 +1996,7 @@ def main(args: list[Any]) -> None:
                     )
                     predicted_day_gnd_tot_val: pd.DataFrame = pd.merge(
                         diffuse_day_total_ground_irradiance_map
-                        + direct_day_ground_diffuse_irradiance_map,
+                        + direct_day_total_ground_irradiance_map,
                         validation_data,
                         left_index=True,
                         right_index=True,
@@ -2079,7 +2079,7 @@ def main(args: list[Any]) -> None:
                     axis_right.tick_params(axis="both", which="major", labelsize=7)
                     sns.scatterplot(
                         x=dir_day_gnd_tot_val.index,
-                        y=diffusivity_series,
+                        y=diffusivity_series[dir_day_gnd_tot_val.index],
                         alpha=0.7,
                         color="C1",
                         label="Diffusivity",
@@ -2100,7 +2100,8 @@ def main(args: list[Any]) -> None:
                     axis_left.set_ylim(-25, 825)
 
                     plt.savefig(
-                        f"validation_{parsed_args.validation_index}_{alt_weather}total_"
+                        f"validation_{parsed_args.validation_index}_using_{alt_weather}"
+                        "total_"
                         f"{polytunnel_diffusivity}_{polytunnel.name}_"
                         f"{parsed_args.start_time.replace(':','_')}_"
                         f"{parsed_args.end_time.replace(':','_')}.pdf",
@@ -2168,7 +2169,7 @@ def main(args: list[Any]) -> None:
                     axis_right.tick_params(axis="both", which="major", labelsize=7)
                     sns.scatterplot(
                         x=dir_day_gnd_tot_val.index,
-                        y=diffusivity_series,
+                        y=diffusivity_series[dir_day_gnd_tot_val.index],
                         alpha=0.7,
                         color="C1",
                         label="Diffusivity",
@@ -2189,7 +2190,8 @@ def main(args: list[Any]) -> None:
                     axis_left.set_ylim(-25, 825)
 
                     plt.savefig(
-                        f"validation_{parsed_args.validation_index}_{alt_weather}direct_"
+                        f"validation_{parsed_args.validation_index}_using_{alt_weather}"
+                        "direct_"
                         f"{polytunnel_diffusivity}_{polytunnel.name}_"
                         f"{parsed_args.start_time.replace(':','_')}_"
                         f"{parsed_args.end_time.replace(':','_')}.pdf",
@@ -2257,7 +2259,7 @@ def main(args: list[Any]) -> None:
                     axis_right.tick_params(axis="both", which="major", labelsize=7)
                     sns.scatterplot(
                         x=dir_day_gnd_tot_val.index,
-                        y=diffusivity_series,
+                        y=diffusivity_series[dir_day_gnd_tot_val.index],
                         alpha=0.7,
                         color="C1",
                         label="Diffusivity",
@@ -2278,7 +2280,8 @@ def main(args: list[Any]) -> None:
                     axis_left.set_ylim(-25, 825)
 
                     plt.savefig(
-                        f"validation_{parsed_args.validation_index}_{alt_weather}diffuse_"
+                        f"validation_{parsed_args.validation_index}_using_{alt_weather}"
+                        "diffuse_"
                         f"{polytunnel_diffusivity}_{polytunnel.name}_"
                         f"{parsed_args.start_time.replace(':','_')}_"
                         f"{parsed_args.end_time.replace(':','_')}.pdf",
