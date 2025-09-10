@@ -25,7 +25,7 @@ import time
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
-from math import ceil, cos, floor, pi
+from math import ceil, cos, floor, pi, sqrt
 from typing import Any, Callable, Generator, Match, Pattern
 
 import json
@@ -95,6 +95,10 @@ AUTO_GENERATED: str = "auto_generated"
 # BOLOMETER_ERROR:
 #   The error in the bolometer as a fraction.
 BOLOMETER_ERROR: float = 0.1
+
+# DIFFUSE_PAR_ERROR:
+#   The fractional error in the diffuse PAR.
+DIFFUSE_PAR_ERROR: float = 0.12
 
 # DONE:
 #   Snippet to print when code is succesffully executed.
@@ -176,6 +180,10 @@ POLYTUNNEL_HEADER_STRING: str = """
                              For more information, contact
                   Benedict Winchester (benedict.winchester@gmail.com)
 """
+
+# TOTAL_PAR_ERROR:
+#   The fractional error in the total (global) PAR.
+TOTAL_PAR_ERROR: float = 0.12
 
 # VERSION_REGEX:
 #   Regex used to extract the main version number.
@@ -389,6 +397,13 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
         default=0.38,
         help="The fractional error of the data contained in the weather-data file.",
     )
+    parser.add_argument(
+        "--weather-as-diffusivity-only",
+        "-wado",
+        action="store_true",
+        default=False,
+        help="Use the alternative weather-data file for diffusivity data only.",
+    )
 
     parser.add_argument(
         "--regenerate",
@@ -583,6 +598,14 @@ def main(args: list[Any]) -> None:
             .replace("Z", "")
         ][INCOMING_SHORTWAVE].astype(float)
 
+        # Resample based on the modelling resolution provided.
+        hadlow_dni_slice = hadlow_dni_slice[
+            [
+                entry.minute % int(parsed_args.modelling_temporal_resolution) == 0
+                for entry in hadlow_dni_slice.index
+            ]
+        ]
+
         # If the CLI has been used to specify an additional weather file, use this in
         # addition to locally-obtained data.
         if parsed_args.weather_file != HADLOW_WEATHER_FILENAME:
@@ -607,6 +630,19 @@ def main(args: list[Any]) -> None:
                 .replace("Z", "")
             ].astype(float)
 
+            # Create a label used for distinguishing that alternative weather data has
+            # been used.
+            alt_weather: str = "alt_weather_"
+
+        else:
+            alternative_weather_data = None
+            alt_weather: str = ""
+
+        # If the weather data file is to be used only for diffusivity data, then
+        # use the Hadlow data for the real weather values. Otherwise, use these data
+        if (parsed_args.weather_file != HADLOW_WEATHER_FILENAME) and (
+            not parsed_args.weather_as_diffusivity_only
+        ):
             dhi_to_weather_adjustment_factor: pd.DataFrame = pd.concat(
                 [
                     (
@@ -648,12 +684,7 @@ def main(args: list[Any]) -> None:
             )
             dni_to_weather_adjustment_factor.index = alternative_weather_slice.index
 
-            # Create a label used for distinguishing that alternative weather data has
-            # been used.
-            alt_weather: str = "alt_weather_"
-
         else:
-            alternative_weather_data = None
             dhi_to_weather_adjustment_factor: pd.DataFrame = pd.concat(
                 [
                     (hadlow_dni_slice / clearsky_irradiance["dhi"])
@@ -672,7 +703,6 @@ def main(args: list[Any]) -> None:
                 * len(polytunnel.surface_mesh),
                 axis=1,
             )
-            alt_weather: str = ""
 
     # Make the auto-generated directory.
     os.makedirs(AUTO_GENERATED, exist_ok=True)
@@ -1190,15 +1220,21 @@ def main(args: list[Any]) -> None:
                     ]
                 )
                 validation_data[ValidationColumns.DIFFUSE_ERROR.value] = (
-                    0.1 * validation_data[ValidationColumns.DIFFUSE_PAR.value]
+                    DIFFUSE_PAR_ERROR
+                    * validation_data[ValidationColumns.DIFFUSE_PAR.value]
                 )
                 validation_data[ValidationColumns.TOTAL_ERROR.value] = (
-                    0.1 * validation_data[ValidationColumns.TOTAL_PAR.value]
+                    TOTAL_PAR_ERROR * validation_data[ValidationColumns.TOTAL_PAR.value]
                 )
-                validation_data[ValidationColumns.DIRECT_ERROR.value] = (
-                    validation_data[ValidationColumns.DIFFUSE_ERROR.value]
-                    + validation_data[ValidationColumns.TOTAL_ERROR.value]
-                )
+                validation_data[ValidationColumns.DIRECT_ERROR.value] = [
+                    sqrt(entry)
+                    for entry in (
+                        validation_data[ValidationColumns.DIFFUSE_ERROR.value]
+                        / validation_data[ValidationColumns.DIFFUSE_PAR.value]
+                        + validation_data[ValidationColumns.TOTAL_ERROR.value]
+                        / validation_data[ValidationColumns.TOTAL_PAR.value]
+                    )
+                ]
 
                 dir_day_gnd_tot_val: pd.DataFrame = pd.merge(
                     direct_day_total_ground_with_beam_irradiance_map,
@@ -1978,30 +2014,6 @@ def main(args: list[Any]) -> None:
                     pbar.update(3)
 
                 else:
-                    # Compute what the on-the-ground irradiance looks like based on the
-                    # diffuse and direct irradiance supplied using the weather-data file
-                    # provided.
-                    predicted_day_gnd_dif_val: pd.DataFrame = pd.merge(
-                        diffuse_day_total_ground_irradiance_map
-                        + direct_day_ground_diffuse_irradiance_map,
-                        validation_data,
-                        left_index=True,
-                        right_index=True,
-                    )
-                    predicted_day_gnd_dir_val: pd.DataFrame = pd.merge(
-                        direct_day_ground_direct_beam_irradiance,
-                        validation_data,
-                        left_index=True,
-                        right_index=True,
-                    )
-                    predicted_day_gnd_tot_val: pd.DataFrame = pd.merge(
-                        diffuse_day_total_ground_irradiance_map
-                        + direct_day_total_ground_irradiance_map,
-                        validation_data,
-                        left_index=True,
-                        right_index=True,
-                    )
-
                     # Check that the weather-data file has the correct columns.
                     if (
                         INCOMING_SHORTWAVE_DIFFUSE
@@ -2013,12 +2025,86 @@ def main(args: list[Any]) -> None:
                             f"Alternative weather-data file does not have required columns: {INCOMING_SHORTWAVE_DIRECT} and {INCOMING_SHORTWAVE_DIFFUSE}."
                         )
 
-                    diffusivity_series = alternative_weather_data[
-                        INCOMING_SHORTWAVE_DIFFUSE
-                    ] / (
+                    diffusivity_series = (
                         alternative_weather_data[INCOMING_SHORTWAVE_DIFFUSE]
-                        + alternative_weather_data[INCOMING_SHORTWAVE_DIRECT]
-                    )
+                        / (
+                            alternative_weather_data[INCOMING_SHORTWAVE_DIFFUSE]
+                            + alternative_weather_data[INCOMING_SHORTWAVE_DIRECT]
+                        )
+                    )[
+                        [
+                            entry
+                            for entry in diffuse_day_total_ground_irradiance_map.index
+                            if entry.minute % parsed_args.modelling_temporal_resolution
+                            == 0
+                        ]
+                    ]
+
+                    # Compute what the on-the-ground irradiance looks like based on the
+                    # diffuse and direct irradiance supplied using the weather-data file
+                    # provided.
+                    if parsed_args.weather_as_diffusivity_only:
+                        # If the weather data should be used only to compute the
+                        # diffusivity, then use the weather data file to predict the
+                        # weather based on the existing basis values and the diffusivity
+                        # provided.
+
+                        # Compute the on-the-ground irradiance based on the diffusivity
+                        # fraction.
+                        predicted_day_gnd_dif_val: pd.DataFrame = pd.merge(
+                            diffuse_day_total_ground_irradiance_map.mul(
+                                diffusivity_series, axis=0
+                            ).dropna()
+                            + direct_day_ground_diffuse_irradiance_map.mul(
+                                1 - diffusivity_series, axis=0
+                            ).dropna(),
+                            validation_data,
+                            left_index=True,
+                            right_index=True,
+                        )
+                        predicted_day_gnd_dir_val: pd.DataFrame = pd.merge(
+                            direct_day_ground_direct_beam_irradiance.mul(
+                                1 - diffusivity_series, axis=0
+                            ).dropna(),
+                            validation_data,
+                            left_index=True,
+                            right_index=True,
+                        )
+                        predicted_day_gnd_tot_val: pd.DataFrame = pd.merge(
+                            diffuse_day_total_ground_irradiance_map.mul(
+                                diffusivity_series, axis=0
+                            ).dropna()
+                            + direct_day_total_ground_irradiance_map.mul(
+                                1 - diffusivity_series, axis=0
+                            ).dropna(),
+                            validation_data,
+                            left_index=True,
+                            right_index=True,
+                        )
+                        weather_file_error: float = parsed_args.weather_file_error
+
+                    else:
+                        predicted_day_gnd_dif_val: pd.DataFrame = pd.merge(
+                            diffuse_day_total_ground_irradiance_map
+                            + direct_day_ground_diffuse_irradiance_map,
+                            validation_data,
+                            left_index=True,
+                            right_index=True,
+                        )
+                        predicted_day_gnd_dir_val: pd.DataFrame = pd.merge(
+                            direct_day_ground_direct_beam_irradiance,
+                            validation_data,
+                            left_index=True,
+                            right_index=True,
+                        )
+                        predicted_day_gnd_tot_val: pd.DataFrame = pd.merge(
+                            diffuse_day_total_ground_irradiance_map
+                            + direct_day_total_ground_irradiance_map,
+                            validation_data,
+                            left_index=True,
+                            right_index=True,
+                        )
+                        weather_file_error = parsed_args.weather_file_error
 
                     # Compute the direct and diffuse irradiance predictions on the
                     # ground.
@@ -2040,7 +2126,7 @@ def main(args: list[Any]) -> None:
                         predicted_day_gnd_tot_val.index,
                         predicted_day_gnd_tot_val[parsed_args.validation_index],
                         yerr=predicted_day_gnd_tot_val[parsed_args.validation_index]
-                        * parsed_args.weather_file_error,
+                        * weather_file_error,
                         ls="none",
                         color="C1",
                     )
@@ -2130,7 +2216,7 @@ def main(args: list[Any]) -> None:
                         predicted_day_gnd_dir_val.index,
                         predicted_day_gnd_dir_val[parsed_args.validation_index],
                         yerr=predicted_day_gnd_dir_val[parsed_args.validation_index]
-                        * parsed_args.weather_file_error,
+                        * weather_file_error,
                         ls="none",
                         color="C4",
                     )
@@ -2220,7 +2306,7 @@ def main(args: list[Any]) -> None:
                         predicted_day_gnd_dif_val.index,
                         predicted_day_gnd_dif_val[parsed_args.validation_index],
                         yerr=predicted_day_gnd_dif_val[parsed_args.validation_index]
-                        * parsed_args.weather_file_error,
+                        * weather_file_error,
                         ls="none",
                         color="C3",
                     )
