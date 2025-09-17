@@ -124,6 +124,10 @@ INCOMING_SHORTWAVE_DIFFUSE: str = "SWIN_LEVEL3_DIFFUSE"
 #   Keyword for direct component of incoming light.
 INCOMING_SHORTWAVE_DIRECT: str = "SWIN_LEVEL3_DIRECT"
 
+# INDEX:
+#   Integer for storing index of plots.
+INDEX: int = 1
+
 # MODULES:
 #   Keyword for parsing PV-module information.
 MODULES: str = "modules"
@@ -1159,6 +1163,14 @@ def main(args: list[Any]) -> None:
             diffuse_day_ground_diffuse_irradiance_map.reset_index(drop=True)
         )
 
+        #######################
+        # Plotting code No. 1 #
+        #######################
+
+        ########################
+        # Plotting code No. 1a #
+        ########################
+
     # Reset missing indices
     clearsky_total_ground_irradiance_map.index = dni_to_weather_adjustment_factor.index
     clearsky_ground_direct_irradiance_map.index = dni_to_weather_adjustment_factor.index
@@ -1186,6 +1198,168 @@ def main(args: list[Any]) -> None:
     diffuse_day_total_ground_irradiance_map.index = (
         dni_to_weather_adjustment_factor.index
     )
+
+    if alternative_weather_data is not None:
+        diffusivity_series = (
+            alternative_weather_data[INCOMING_SHORTWAVE_DIFFUSE]
+            / (
+                alternative_weather_data[INCOMING_SHORTWAVE_DIFFUSE]
+                + alternative_weather_data[INCOMING_SHORTWAVE_DIRECT]
+            )
+        )[
+            [
+                entry
+                for entry in diffuse_day_total_ground_irradiance_map.index
+                if entry.minute % parsed_args.modelling_temporal_resolution == 0
+            ]
+        ]
+
+        if parsed_args.weather_as_diffusivity_only:
+            # If the weather data should be used only to compute the
+            # diffusivity, then use the weather data file to predict the
+            # weather based on the existing basis values and the diffusivity
+            # provided.
+
+            # Compute the on-the-ground irradiance based on the diffusivity
+            # fraction.
+            predicted_day_ground_diffuse_map: (
+                pd.DataFrame
+            ) = diffuse_day_total_ground_irradiance_map.mul(
+                diffusivity_series, axis=0
+            ).fillna(
+                0
+            ) + direct_day_ground_diffuse_irradiance_map.mul(
+                1 - diffusivity_series, axis=0
+            ).fillna(
+                0
+            )
+
+            predicted_day_ground_direct_map: pd.DataFrame = (
+                direct_day_ground_direct_beam_irradiance.mul(
+                    1 - diffusivity_series, axis=0
+                ).fillna(0)
+            )
+
+            predicted_day_ground_total_map: (
+                pd.DataFrame
+            ) = diffuse_day_total_ground_irradiance_map.mul(
+                diffusivity_series, axis=0
+            ).fillna(
+                0
+            ) + direct_day_total_ground_irradiance_map.mul(
+                1 - diffusivity_series, axis=0
+            ).fillna(
+                0
+            )
+
+        else:
+            predicted_day_ground_diffuse_map: pd.DataFrame = (
+                diffuse_day_total_ground_irradiance_map.fillna(0)
+                + direct_day_ground_diffuse_irradiance_map.fillna(0)
+            )
+
+            predicted_day_ground_direct_map: pd.DataFrame = (
+                direct_day_ground_direct_beam_irradiance.fillna(0)
+            )
+
+            predicted_day_ground_total_map: pd.DataFrame = (
+                diffuse_day_total_ground_irradiance_map.fillna(0)
+                + direct_day_total_ground_irradiance_map.fillna(0)
+            )
+
+    # Save the output profiles
+    with time_execution("Saving output CSV maps"):
+        with tqdm(
+            desc="Saving output irradiance maps",
+            leave=False,
+            total=5 + (3 if alternative_weather_data is not None else 0),
+        ) as pbar:
+            with open(
+                f"clearsky_map_{polytunnel_diffusivity}_{polytunnel.name}_"
+                f"{parsed_args.start_time.replace(':','_')}_"
+                f"{parsed_args.end_time.replace(':','_')}.csv",
+                "w",
+                encoding="UTF-8",
+            ) as clearsky_file:
+                clearsky_total_ground_irradiance_map.to_csv(clearsky_file)
+
+            pbar.update(1)
+            with open(
+                f"direct_day_direct_map_{polytunnel_diffusivity}_{polytunnel.name}_"
+                f"{parsed_args.start_time.replace(':','_')}_"
+                f"{parsed_args.end_time.replace(':','_')}.csv",
+                "w",
+                encoding="UTF-8",
+            ) as direct_day_direct_file:
+                direct_day_ground_direct_beam_irradiance.to_csv(direct_day_direct_file)
+
+            pbar.update(1)
+            with open(
+                f"direct_day_diffuse_map_{polytunnel_diffusivity}_{polytunnel.name}_"
+                f"{parsed_args.start_time.replace(':','_')}_"
+                f"{parsed_args.end_time.replace(':','_')}.csv",
+                "w",
+                encoding="UTF-8",
+            ) as direct_day_dif_file:
+                direct_day_ground_diffuse_irradiance_map.to_csv(direct_day_dif_file)
+
+            pbar.update(1)
+            with open(
+                f"direct_day_total_map_{polytunnel_diffusivity}_{polytunnel.name}_"
+                f"{parsed_args.start_time.replace(':','_')}_"
+                f"{parsed_args.end_time.replace(':','_')}.csv",
+                "w",
+                encoding="UTF-8",
+            ) as direct_day_tot_file:
+                direct_day_total_ground_with_beam_irradiance_map.to_csv(
+                    direct_day_tot_file
+                )
+
+            pbar.update(1)
+            with open(
+                f"diffuse_day_total_map_{polytunnel_diffusivity}_{polytunnel.name}_"
+                f"{parsed_args.start_time.replace(':','_')}_"
+                f"{parsed_args.end_time.replace(':','_')}.csv",
+                "w",
+                encoding="UTF-8",
+            ) as diffuse_day_file:
+                diffuse_day_total_ground_irradiance_map.to_csv(diffuse_day_file)
+
+            pbar.update(1)
+            if alternative_weather_data is None:
+                pbar.update(3)
+
+            else:
+                with open(
+                    f"predicted_day_diffuse_map_{polytunnel_diffusivity}_{polytunnel.name}_"
+                    f"{parsed_args.start_time.replace(':','_')}_"
+                    f"{parsed_args.end_time.replace(':','_')}.csv",
+                    "w",
+                    encoding="UTF-8",
+                ) as predicted_day_dif_file:
+                    predicted_day_ground_diffuse_map.to_csv(predicted_day_dif_file)
+
+                pbar.update(1)
+                with open(
+                    f"predicted_day_direct_map_{polytunnel_diffusivity}_{polytunnel.name}_"
+                    f"{parsed_args.start_time.replace(':','_')}_"
+                    f"{parsed_args.end_time.replace(':','_')}.csv",
+                    "w",
+                    encoding="UTF-8",
+                ) as predicted_day_dir_file:
+                    predicted_day_ground_direct_map.to_csv(predicted_day_dir_file)
+
+                pbar.update(1)
+                with open(
+                    f"predicted_day_total_map_{polytunnel_diffusivity}_{polytunnel.name}_"
+                    f"{parsed_args.start_time.replace(':','_')}_"
+                    f"{parsed_args.end_time.replace(':','_')}.csv",
+                    "w",
+                    encoding="UTF-8",
+                ) as predicted_day_tot_file:
+                    predicted_day_ground_total_map.to_csv(predicted_day_tot_file)
+
+                pbar.update(1)
 
     # Parse the validation data if provided to compare against.
     if parsed_args.validation_filename is not None:
@@ -3125,20 +3299,22 @@ def main(args: list[Any]) -> None:
 # import seaborn as sns
 # import numpy as np
 
-# fig, ax = plt.subplots()
+# sns.set_context("notebook")
+
+# fig, ax = plt.subplots(figsize=(180*MM, 120*MM))
 
 # # Create initial heatmap with dummy data
 # initial_data = np.reshape(
-#     direct_day_diffuse_surface_irradiance.iloc[0],
+#     clearsky_total_ground_irradiance_map.iloc[0],
 #     (
 #         _dim_x := polytunnel.meshgrid_resolution,
 #         _dim_y := polytunnel.length_wise_meshgrid_resolution,
 #     ),
 # )
 # vmin = 0
-# vmax = max(direct_day_diffuse_surface_irradiance.max(axis=0))
+# vmax = max(clearsky_total_ground_irradiance_map.max(axis=0))
 # heatmap = sns.heatmap(
-#     initial_data, vmin=vmin, vmax=vmax, cmap="viridis", cbar=True, ax=ax
+#     initial_data, vmin=vmin, vmax=vmax, cmap="viridis", cbar=True, ax=ax, cbar_kws={"label": "Irradiance / W/m$^2$"}
 # )
 
 # _ten_minutes: int = int(
@@ -3149,11 +3325,12 @@ def main(args: list[Any]) -> None:
 # def update(time_index: int):
 #     ax.clear()  # clear previous heatmap
 #     data = np.reshape(
-#         direct_day_diffuse_surface_irradiance.iloc[time_index], (_dim_x, _dim_y)
+#         clearsky_total_ground_irradiance_map.iloc[time_index], (_dim_x, _dim_y)
 #     )
 #     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
 #     ax.set_title(
-#         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
+#         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
+#         f"Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
 #     )
 
 
@@ -3161,11 +3338,50 @@ def main(args: list[Any]) -> None:
 # ani = animation.FuncAnimation(
 #     fig,
 #     update,
-#     frames=len(direct_day_diffuse_surface_irradiance),
+#     frames=len(clearsky_total_ground_irradiance_map),
 #     interval=300,
 #     repeat=False,
 # )
-# ani.save("direct_day_diffuse_surface_irradiance.gif", writer="pillow", fps=15)
+# ani.save(f"clearsky_total_ground_irradiance_map_{INDEX}.gif", writer="pillow", fps=15)
+# plt.show()
+
+########################
+# Plotting code No. 1a #
+########################
+
+# import matplotlib.pyplot as plt
+# import matplotlib.animation as animation
+# import seaborn as sns
+# import numpy as np
+
+# sns.set_context("notebook")
+
+# for _index in [40, 50, 60, 70, 80, 90, 100]:
+#     fig, ax = plt.subplots(figsize=(180*MM, 120*MM))
+#     # Create initial heatmap with dummy data
+#     initial_data = np.reshape(
+#         clearsky_total_ground_irradiance_map.iloc[_index],
+#         (
+#             _dim_x := polytunnel.meshgrid_resolution,
+#             _dim_y := polytunnel.length_wise_meshgrid_resolution,
+#         ),
+#     )
+#     vmin = 0
+#     vmax = max(clearsky_total_ground_irradiance_map.max(axis=0))
+#     heatmap = sns.heatmap(
+#         initial_data, vmin=vmin, vmax=vmax, cmap="viridis", cbar=True, ax=ax, cbar_kws={"label": "Irradiance / W/m$^2$"}
+#     )
+#     _ten_minutes: int = int(
+#         _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
+#     )
+#     ax.set_title(
+#         f"Time index: {_index}. Date: {_index // (_ten_minutes * 24)}; "
+#         f"Time: {_index // _ten_minutes}:{int((_index % _ten_minutes) * (6 / _ten_minutes))}0"
+#     )
+#     ax.set_xlabel("Length-wise index")
+#     ax.set_ylabel("Width-wise index")
+#     plt.savefig(f"clearsky_total_ground_irradiance_map_{_index}_{INDEX}.pdf", format="pdf", bbox_inches="tight", pad_inches=0.05)
+
 # plt.show()
 
 

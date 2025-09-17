@@ -60,6 +60,11 @@ FLOATING_POINT_PRECISION: int = 8
 #   Keyword used for parsing the polytunnel length.
 LENGTH: str = "length"
 
+# LENGTH_WISE_MAP_SCALING_FACTOR:
+#   Factor to scale mesh because polytunnels are rectangular.
+#   NOTE: This value is fixed at a constant to ensure maps are comprable.
+LENGTH_WISE_MAP_SCALING_FACTOR: int = 5
+
 # MATERIALS:
 #   Keyword used for parsing the materials information.
 MATERIALS: str = "materials"
@@ -1584,9 +1589,11 @@ class Curve(ABC):
         radius: int = 1
 
         # Create more z-wise points depending on the PV module spacing
-        z_wise_meshgrid_resolution = meshgrid_resolution * int(
-            length // pv_module_spacing
-        )
+        z_wise_meshgrid_resolution = (
+            meshgrid_resolution * LENGTH_WISE_MAP_SCALING_FACTOR
+        )  # int(
+        #     length // pv_module_spacing
+        # )
 
         # Determine the radial distance transcribed by a single meshpoint.
         # This value will be the angule transcribed, in radians, multiplied by the
@@ -2464,9 +2471,11 @@ class Polytunnel:
         """
 
         # Create more length-wise meshpoints based on the PV module spacing.
-        length_wise_meshgrid_resolution: int = self.meshgrid_resolution * int(
-            self.length // self.pv_module_spacing
-        )
+        length_wise_meshgrid_resolution: int = (
+            self.meshgrid_resolution * LENGTH_WISE_MAP_SCALING_FACTOR
+        )  # int(
+        #     self.length // self.pv_module_spacing
+        # )
 
         # Create a mesh within the Polytunnel instance.
         meshpoint_width: float = self.length / self.meshgrid_resolution
@@ -2517,10 +2526,16 @@ class Polytunnel:
 
         """
 
-        y_index = int(y // (self.length / self.length_wise_meshgrid_resolution))
-        theta_index = int(
-            (theta + self.curve.maximum_theta_value)
-            // (2 * self.curve.maximum_theta_value / self.meshgrid_resolution)
+        y_index = min(
+            int(y // (self.length / self.length_wise_meshgrid_resolution)),
+            self.length_wise_meshgrid_resolution,
+        )
+        theta_index = min(
+            int(
+                (theta + self.curve.maximum_theta_value)
+                // (2 * self.curve.maximum_theta_value / self.meshgrid_resolution)
+            ),
+            self.meshgrid_resolution - 1,
         )
 
         meshpoint_index: int = (
