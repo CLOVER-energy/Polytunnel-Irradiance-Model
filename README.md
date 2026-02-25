@@ -19,22 +19,26 @@ Where the individual parameters are given below in Table 1.
 
 **Table 1.** Parameters included when running a simulation.
 
-| Parameter        | Explanation                                                  |
-| ---------------- | ------------------------------------------------------------ |
-| `start_time_str` | The date and time that you want the simulation(s) to begin should be passed in with this keyword argument. The format is `YYYY-MM-DD` followed by `T` then `HH:MM:SS` with `Z` at the end to close the string. |
-| `end_time_str`   | The end date and time for the simulation(s) also needs to be specified. The format is `YYYY-MM-DD` followed by `T` then `HH:MM:SS` with `Z` at the end to close the string. |
-| `latitude`       | The latitude for which solar data should be used, specified in degrees North; _i.e._, positive number are for locations North of the Equator |
-| `longitude`      | The longitude for which solar data should be used, specified in degrees East. |
-| `res_minutes`    | The resolution, in minutes, to use for the modelling         |
-| `length`         | The length of polytunnel section to model. Longer sections will increase the computation time but improve the ray-tracing modelling. In general, a repeated unit (or an integer number of repeated units) within a polytunnel can be modelled with sufficient Physics captured. |
-| `azimuthal_orientation`        |                                                              |
-| `transmissivity` | The (optical) transmissivity of the material that makes up the polytunnel structure. |
-| `material_list`  | The list of materials, defined in the `materials` data directory. |
-| `material_thick` | The thickness of the various materials.                      |
-| `multistack`     | The number of donor and acceptor layers that should be repeated. This defaults to `1` if it isn't defined. |
-| `cell_thickness` | The thickness of the cell, _i.e._, its width along the length of the polytunnel, in metres. |
-| `cell_spacing`       | The "gap" between consecutive cells along the length of the polytunnel, _i.e._, the length of space where just polytunnel material, uncovered, is exposed, in metres. |
-| `res_mesh_grid`  | The resolution of the mesh grid to use, in metres.           |
+| Parameter                 | Explanation                                                          |
+| ------------------------- | -------------------------------------------------------------------- |
+| `--meshgrid-resolution`   | The resolution of the mesh grid to use, in metres. |
+| `--weather-file`          | The name of the weather file to use. |
+| `--weather-file-error`    | The error in the weather data file variables to use for calculating error bars. |
+| `-wado`                   | "Weather as diffusivity only"; _i.e._, use the weather data only for diffusuvity information. |
+| `--regenerate`            | Regenerate the profiles for the surface irradiance. Use this flag when the location has changed or irradiance information has otherwise altered. |
+| `--regenerate-mesh`       | Regenerate (re-compute) the mesh sheets used for computing distances between the surface of the polytunnel and the ground. Use this flag when the resolution of the mesh has changed or other geometry factors need altering. |
+| `--start-time`            | The start date and time for the simulation(s) also needs to be specified. The format is `YYYY-MM-DD` followed by `T` then `HH:MM:SS` with `Z` at the end to close the string. |
+| `--end-time`              | The end date and time for the simulation(s) also needs to be specified. The format is `YYYY-MM-DD` followed by `T` then `HH:MM:SS` with `Z` at the end to close the string. |
+| `--latitude`              | The latitude for which solar data should be used, specified in degrees North; _i.e._, positive number are for locations North of the Equator |
+| `--longitude`             | The longitude for which solar data should be used, specified in degrees East. |
+| `--altitude`              | The altitude for the location where the weather data should be used. |
+| `-mtr`                    | "Modelling temporal resolution": The resolution, in minutes, to use for the modelling throughout the day. |
+| `--validation-filename`   | The name of the file to use for validation purposes. |
+| `--validation-index`      | The element to use for validation. |
+| `--diffusivity`           | The diffusivity of the polytunnel material to use. This parameter governs the extent to which the material scatters incoming direct irradiance as diffuse irradiance. |
+| `--polytunnel-input-file` | The name of the polytunnels input file to use. |
+| `--polytunnel`            | The name of the polytunnel to use. |
+| `--solar-cells-file`      | The path to the solar-cells materials inputs file. |
 
 ### File-based parameters
 
