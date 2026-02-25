@@ -12,7 +12,7 @@ The script can be executed by either importing individual functions (see the doc
 
 If you're passing all of the parameters needed in on the command-line interface (CLI), your command will look something like the following:
 ```bash
-python -m polytunnel_irradiance_model --start_time_str 2024-06-06T00:00:00Z --end_time_str 2024-06-06T23:59:59Z --latitude 51.249814 --longitude 0.347779 --res_minutes 15 --length 2.5 --radius1 2.5 --radius2 1.5 --xy_angle 0 --z_angle 0 --transmissivity 1 --material_list ag ag ag ag ag ag --material_thick 80 80 80 80 80 80 --multistack 1 --cell_thickness 0.35 --cell_gap 2.8 --initial_cell_gap 2.1 --res_meshgrid 0.35
+python -m polytunnel_irradiance_model --start_time_str 2024-06-06T00:00:00Z --end_time_str 2024-06-06T23:59:59Z --latitude 51.249814 --longitude 0.347779 --res_minutes 15 --length 2.5 --semi_major_axis 2.5 --semi_minor_axis 1.5 --tilt 0 --azimuthal_orientation 0 --transmissivity 1 --material_list ag ag ag ag ag ag --material_thick 80 80 80 80 80 80 --multistack 1 --cell_thickness 0.35 --cell_spacing 2.8 --initial_cell_spacing 2.1 --res_meshgrid 0.35
 ```
 
 Where the individual parameters are given below in Table 1.
@@ -27,13 +27,13 @@ Where the individual parameters are given below in Table 1.
 | `longitude`      | The longitude for which solar data should be used, specified in degrees East. |
 | `res_minutes`    | The resolution, in minutes, to use for the modelling         |
 | `length`         | The length of polytunnel section to model. Longer sections will increase the computation time but improve the ray-tracing modelling. In general, a repeated unit (or an integer number of repeated units) within a polytunnel can be modelled with sufficient Physics captured. |
-| `z_angle`        |                                                              |
+| `azimuthal_orientation`        |                                                              |
 | `transmissivity` | The (optical) transmissivity of the material that makes up the polytunnel structure. |
 | `material_list`  | The list of materials, defined in the `materials` data directory. |
 | `material_thick` | The thickness of the various materials.                      |
 | `multistack`     | The number of donor and acceptor layers that should be repeated. This defaults to `1` if it isn't defined. |
 | `cell_thickness` | The thickness of the cell, _i.e._, its width along the length of the polytunnel, in metres. |
-| `cell_gap`       | The "gap" between consecutive cells along the length of the polytunnel, _i.e._, the length of space where just polytunnel material, uncovered, is exposed, in metres. |
+| `cell_spacing`       | The "gap" between consecutive cells along the length of the polytunnel, _i.e._, the length of space where just polytunnel material, uncovered, is exposed, in metres. |
 | `res_mesh_grid`  | The resolution of the mesh grid to use, in metres.           |
 
 ### File-based parameters
@@ -61,7 +61,7 @@ or within the YAML input file
 ```yaml
   ...
   cell_thickness: 0.0
-  cell_gap: 0.0
+  cell_spacing: 0.0
   ...
 ```
 
