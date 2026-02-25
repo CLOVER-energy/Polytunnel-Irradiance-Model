@@ -12,7 +12,7 @@ The script can be executed by either importing individual functions (see the doc
 
 If you're passing all of the parameters needed in on the command-line interface (CLI), your command will look something like the following:
 ```bash
-python -m polytunnel_irradiance_model --start_time_str 2024-06-06T00:00:00Z --end_time_str 2024-06-06T23:59:59Z --latitude 51.249814 --longitude 0.347779 --res_minutes 15 --length 2.5 --semi_major_axis 2.5 --semi_minor_axis 1.5 --tilt 0 --azimuthal_orientation 0 --transmissivity 1 --material_list ag ag ag ag ag ag --material_thick 80 80 80 80 80 80 --multistack 1 --cell_thickness 0.35 --cell_spacing 2.8 --initial_cell_spacing 2.1 --res_meshgrid 0.35
+python -m src.polytunnel_irradiance_model -pt circular_narrow_short -mres 10 -st 2024-03-01T00:00:00Z -et 2024-09-30T23:59:59Z -d 0.55 -vi 1050 -wf corrected_renewables_ninja_weather.csv -wado -mtr 60 --latitude 51.249814 --longitude 0.347779 
 ```
 
 Where the individual parameters are given below in Table 1.
