@@ -19,6 +19,7 @@ import datetime
 import enum
 import os
 import re
+import subprocess
 import sys
 import time
 
@@ -126,7 +127,7 @@ INCOMING_SHORTWAVE_DIRECT: str = "SWIN_LEVEL3_DIRECT"
 
 # INDEX:
 #   Integer for storing index of plots.
-INDEX: int = 1
+INDEX: int = 3
 
 # MODULES:
 #   Keyword for parsing PV-module information.
@@ -294,14 +295,14 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
         "--latitude",
         "-lat",
         type=float,
-        default=51.1950,
+        default=51.251841,
         help="The latitude of the location for which weather data should be used.",
     )
     simulation_arguments.add_argument(
         "--longitude",
         "-lon",
         type=float,
-        default=0.2757,
+        default=0.347040,
         help="The longitude of the location for which weather data should be used.",
     )
     simulation_arguments.add_argument(
@@ -422,6 +423,10 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
         help="Regenerate the polytunnel-to-ground mesh.",
     )
 
+    parser.add_argument(
+        "--debug", "-dbug", action="store_true", default=False, help=argparse.SUPPRESS
+    )
+
     return parser.parse_args(args)
 
 
@@ -538,6 +543,28 @@ def main(args: list[Any]) -> None:
         polytunnel_surface_pv_uncovered_fraction_map = pd.DataFrame(
             [1 - meshpoint.covered_fraction for meshpoint in polytunnel.surface_mesh]
         )
+
+    # Open the TMM and, if necessary, compute.
+    if polytunnel.pv_module.stack is not None:
+        # If there is no stack file, then compute in Julia.
+        if not os.path.isfile(
+            stack_filename := f"{polytunnel.pv_module.stack_name}.csv"
+        ):
+            code_print("Running JULIA computation for stack")
+            run = subprocess.run(
+                f"julia tmm_ppv_script.jl -s {polytunnel.pv_module.stack_name} -t 0:90 "
+                f"-f {polytunnel.pv_module.stack_name}".split(" ")
+            )
+            if run.returncode != 0:
+                raise Exception("TMM code failed: check STDOUT.")
+            print(DONE)
+
+        with open(stack_filename, "r", encoding="UTF-8") as stack_tmm_file:
+            stack_tmm: pd.DataFrame | None = pd.read_csv(stack_tmm_file)
+    else:
+        stack_tmm = None
+
+    stack_tmm.index = stack_tmm["wavelength"]
 
     # Compute the position of the sun at each time within the simulation.
     location = Location(
@@ -1473,7 +1500,7 @@ def main(args: list[Any]) -> None:
                 # import seaborn as sns
                 # import numpy as np
 
-                # fig, ax = plt.subplots(figsize=(180*MM, 120*MM))
+                # fig, ax = plt.subplots(figsize=(171*MM, 120*MM))
 
                 # # Create initial heatmap with dummy data
                 # initial_data = np.reshape(
@@ -1518,7 +1545,25 @@ def main(args: list[Any]) -> None:
                 # Plotting code No. 3 #
                 #######################
 
-                plt.figure(figsize=(180 * MM, 120 * MM))
+                dif_day_gnd_tot_val.index = pd.Index(
+                    [entry.time().strftime("%H") for entry in dif_day_gnd_tot_val.index]
+                )
+                dir_day_gnd_tot_val.index = pd.Index(
+                    [entry.time().strftime("%H") for entry in dir_day_gnd_tot_val.index]
+                )
+                dir_day_gnd_dir_val.index = pd.Index(
+                    [entry.time().strftime("%H") for entry in dir_day_gnd_dir_val.index]
+                )
+                dir_day_gnd_dif_val.index = pd.Index(
+                    [entry.time().strftime("%H") for entry in dir_day_gnd_dif_val.index]
+                )
+                diffusivity_series.index = pd.Index(
+                    [entry.time().strftime("%H") for entry in diffusivity_series.index]
+                )
+
+                plt.figure(
+                    figsize=(83 * MM, 60 * MM)
+                )  # 171 * MM, 120 * MM  # 83 * MM, 60 * MM
                 sns.scatterplot(
                     x=dir_day_gnd_tot_val.index,
                     y=dir_day_gnd_tot_val[parsed_args.validation_index],
@@ -1566,10 +1611,11 @@ def main(args: list[Any]) -> None:
                     ls="none",
                     color="C0",
                 )
-                plt.xlabel("Date and time")
+                plt.xlabel("Time / h")
                 plt.ylabel("Irradiance / W/m$^2$")
 
                 axis_right = (axis_left := plt.gca()).twinx()
+                axis_right.set_ylabel("Diffusivity")
                 axis_left.tick_params(axis="both", which="major", labelsize=7)
                 axis_right.tick_params(axis="both", which="major", labelsize=7)
                 sns.scatterplot(
@@ -1590,6 +1636,7 @@ def main(args: list[Any]) -> None:
                     left_handles + right_handles,
                     left_labels + right_labels,
                     loc="upper right",
+                    fontsize=7,
                 )
                 axis_right.set_ylim(-0.05, 1.05)
                 axis_left.set_ylim(-25, 825)
@@ -1598,7 +1645,7 @@ def main(args: list[Any]) -> None:
                     f"validation_{parsed_args.validation_index}_{alt_weather}total_"
                     f"{polytunnel_diffusivity}_{polytunnel.name}_"
                     f"{parsed_args.start_time.replace(':','_')}_"
-                    f"{parsed_args.end_time.replace(':','_')}.pdf",
+                    f"{parsed_args.end_time.replace(':','_')}_{INDEX}.pdf",
                     format="pdf",
                     bbox_inches="tight",
                     pad_inches=0.05,
@@ -1609,7 +1656,7 @@ def main(args: list[Any]) -> None:
                 # Plotting code No. 4 #
                 #######################
 
-                plt.figure(figsize=(180 * MM, 120 * MM))
+                plt.figure(figsize=(83 * MM, 60 * MM))
                 sns.scatterplot(
                     x=dir_day_gnd_dir_val.index,
                     y=dir_day_gnd_dir_val[parsed_args.validation_index],
@@ -1645,7 +1692,7 @@ def main(args: list[Any]) -> None:
                     color="C1",
                 )
 
-                plt.xlabel("Date and time")
+                plt.xlabel("Time / h")
                 plt.ylabel("Irradiance / W/m$^2$")
 
                 axis_right = (axis_left := plt.gca()).twinx()
@@ -1664,18 +1711,20 @@ def main(args: list[Any]) -> None:
                 axis_left.legend().remove()
                 right_handles, right_labels = axis_right.get_legend_handles_labels()
                 axis_right.legend().remove()
+                axis_right.set_ylabel("Diffusivity")
 
                 plt.legend(
                     left_handles + right_handles,
                     left_labels + right_labels,
                     loc="upper right",
+                    fontsize=7,
                 )
                 axis_right.set_ylim(-0.05, 1.05)
                 axis_left.set_ylim(-25, 825)
                 plt.savefig(
                     f"validation_{parsed_args.validation_index}_{alt_weather}direct_diff_"
                     f"{polytunnel_diffusivity}_{polytunnel.name}_"
-                    f"{parsed_args.start_time.replace(':','_')}_{parsed_args.end_time.replace(':','_')}.pdf",
+                    f"{parsed_args.start_time.replace(':','_')}_{parsed_args.end_time.replace(':','_')}_{INDEX}.pdf",
                     format="pdf",
                     bbox_inches="tight",
                     pad_inches=0.05,
@@ -1686,7 +1735,7 @@ def main(args: list[Any]) -> None:
                 # Plotting code No. 5 #
                 #######################
 
-                plt.figure(figsize=(180 * MM, 120 * MM))
+                plt.figure(figsize=(83 * MM, 60 * MM))
                 sns.scatterplot(
                     x=dir_day_gnd_dif_val.index,
                     y=dir_day_gnd_dif_val[parsed_args.validation_index],
@@ -1702,7 +1751,7 @@ def main(args: list[Any]) -> None:
                 )
                 sns.scatterplot(
                     x=dif_day_gnd_tot_val.index,
-                    y=dif_day_gnd_tot_val[parsed_args.validation_index],
+                    y=dif_day_gnd_tot_val[parsed_args.validation_index].values,
                     color="C3",
                     label="Diffuse-day prediction",
                     marker="h",
@@ -1734,14 +1783,15 @@ def main(args: list[Any]) -> None:
                     ls="none",
                     color="C1",
                 )
-                plt.xlabel("Date and time")
+                plt.xlabel("Time / h")
                 plt.ylabel("Irradiance / W/m$^2$")
 
-                plt.legend()
+                plt.legend(fontsize=7)
 
                 axis_right = (axis_left := plt.gca()).twinx()
                 axis_left.tick_params(axis="both", which="major", labelsize=7)
                 axis_right.tick_params(axis="both", which="major", labelsize=7)
+                axis_right.set_ylabel("Diffusivity")
                 sns.scatterplot(
                     x=dir_day_gnd_tot_val.index,
                     y=dir_day_gnd_tot_val["diffusivity"],
@@ -1760,6 +1810,7 @@ def main(args: list[Any]) -> None:
                     left_handles + right_handles,
                     left_labels + right_labels,
                     loc="upper right",
+                    fontsize=7,
                 )
                 axis_right.set_ylim(-0.05, 1.05)
                 axis_left.set_ylim(-25, 825)
@@ -1767,7 +1818,7 @@ def main(args: list[Any]) -> None:
                     f"validation_{parsed_args.validation_index}_{alt_weather}diffuse_diff_"
                     f"{polytunnel_diffusivity}_{polytunnel.name}_"
                     f"{parsed_args.start_time.replace(':','_')}_"
-                    f"{parsed_args.end_time.replace(':','_')}.pdf",
+                    f"{parsed_args.end_time.replace(':','_')}_{INDEX}.pdf",
                     format="pdf",
                     bbox_inches="tight",
                     pad_inches=0.05,
@@ -1778,7 +1829,7 @@ def main(args: list[Any]) -> None:
                 # Plotting code No. 6 #
                 #######################
 
-                plt.figure(figsize=(180 * MM, 120 * MM))
+                plt.figure(figsize=(83 * MM, 60 * MM))
                 sns.boxplot(
                     dif_day_gnd_tot_val.reset_index(drop=True).transpose()[:-13],
                     boxprops=dict(alpha=0.75),
@@ -1821,12 +1872,13 @@ def main(args: list[Any]) -> None:
                     color="C0",
                     zorder=1,
                 )
-                plt.xlabel("Date and time")
+                plt.xlabel("Time / h")
                 plt.ylabel("Irradiance / W/m$^2$")
 
                 axis_right = (axis_left := plt.gca()).twinx()
                 axis_left.tick_params(axis="both", which="major", labelsize=7)
                 axis_right.tick_params(axis="both", which="major", labelsize=7)
+                axis_right.set_ylabel("Diffusivity")
                 sns.scatterplot(
                     x=range(len(dir_day_gnd_tot_val)),
                     y=dir_day_gnd_tot_val["diffusivity"],
@@ -1846,22 +1898,21 @@ def main(args: list[Any]) -> None:
                     left_handles + right_handles,
                     left_labels + right_labels,
                     loc="upper right",
+                    fontsize=7,
                 )
                 axis_right.set_ylim(-0.05, 1.05)
                 axis_left.set_ylim(-25, 825)
 
                 plt.xticks(
                     plt.xticks()[0][::3],
-                    [entry.strftime("%d-%m %H") for entry in dir_day_gnd_tot_val.index][
-                        ::3
-                    ],
+                    [entry for entry in dir_day_gnd_tot_val.index][::3],
                 )
 
                 plt.savefig(
                     "validation_total_map_boxplot_"
                     f"{polytunnel_diffusivity}_{polytunnel.name}_{alt_weather}"
                     f"{parsed_args.start_time.replace(':','_')}_"
-                    f"{parsed_args.end_time.replace(':','_')}.pdf",
+                    f"{parsed_args.end_time.replace(':','_')}_{INDEX}.pdf",
                     format="pdf",
                     bbox_inches="tight",
                     pad_inches=0.05,
@@ -1872,7 +1923,7 @@ def main(args: list[Any]) -> None:
                 # Plotting code No. 7 #
                 #######################
 
-                plt.figure(figsize=(180 * MM, 120 * MM))
+                plt.figure(figsize=(83 * MM, 60 * MM))
                 sns.boxplot(
                     dif_day_gnd_tot_val.reset_index(drop=True).transpose()[:-13],
                     boxprops=dict(alpha=0.75),
@@ -1915,7 +1966,7 @@ def main(args: list[Any]) -> None:
                     color="C1",
                     zorder=1,
                 )
-                plt.xlabel("Date and time")
+                plt.xlabel("Time / h")
                 plt.ylabel("Irradiance / W/m$^2$")
 
                 axis_right = (axis_left := plt.gca()).twinx()
@@ -1935,27 +1986,27 @@ def main(args: list[Any]) -> None:
                 axis_left.legend().remove()
                 right_handles, right_labels = axis_right.get_legend_handles_labels()
                 axis_right.legend().remove()
+                axis_right.set_ylabel("Diffusivity")
 
                 plt.legend(
                     left_handles + right_handles,
                     left_labels + right_labels,
                     loc="upper right",
+                    fontsize=7,
                 )
                 axis_right.set_ylim(-0.05, 1.05)
                 axis_left.set_ylim(-25, 825)
 
                 plt.xticks(
                     plt.xticks()[0][::3],
-                    [entry.strftime("%d-%m %H") for entry in dir_day_gnd_dir_val.index][
-                        ::3
-                    ],
+                    [entry for entry in dir_day_gnd_dir_val.index][::3],
                 )
 
                 plt.savefig(
                     "validation_diffuse_map_boxplot_"
                     f"{polytunnel_diffusivity}_{polytunnel.name}_{alt_weather}"
                     f"{parsed_args.start_time.replace(':','_')}_"
-                    f"{parsed_args.end_time.replace(':','_')}.pdf",
+                    f"{parsed_args.end_time.replace(':','_')}_{INDEX}.pdf",
                     format="pdf",
                     bbox_inches="tight",
                     pad_inches=0.05,
@@ -1966,7 +2017,7 @@ def main(args: list[Any]) -> None:
                 # Plotting code No. 8 #
                 #######################
 
-                plt.figure(figsize=(180 * MM, 120 * MM))
+                plt.figure(figsize=(83 * MM, 60 * MM))
                 sns.scatterplot(
                     x=range(len(dir_day_gnd_dir_val)),
                     y=dir_day_gnd_dir_val.reset_index(drop=True)
@@ -2013,12 +2064,13 @@ def main(args: list[Any]) -> None:
                     color="C1",
                     zorder=1,
                 )
-                plt.xlabel("Date and time")
+                plt.xlabel("Time / h")
                 plt.ylabel("Irradiance / W/m$^2$")
 
                 axis_right = (axis_left := plt.gca()).twinx()
                 axis_left.tick_params(axis="both", which="major", labelsize=7)
                 axis_right.tick_params(axis="both", which="major", labelsize=7)
+                axis_right.set_ylabel("Diffusivity")
                 sns.scatterplot(
                     x=range(len(dir_day_gnd_dir_val)),
                     y=dir_day_gnd_dir_val["diffusivity"],
@@ -2038,22 +2090,21 @@ def main(args: list[Any]) -> None:
                     left_handles + right_handles,
                     left_labels + right_labels,
                     loc="upper right",
+                    fontsize=7,
                 )
                 axis_right.set_ylim(-0.05, 1.05)
                 axis_left.set_ylim(-25, 825)
 
                 plt.xticks(
                     list(range(len(dir_day_gnd_dir_val.index)))[::3],
-                    [entry.strftime("%d-%m %H") for entry in dir_day_gnd_dir_val.index][
-                        ::3
-                    ],
+                    [entry for entry in dir_day_gnd_dir_val.index][::3],
                 )
 
                 plt.savefig(
                     "validation_direct_map_boxplot_"
                     f"{polytunnel_diffusivity}_{polytunnel.name}_{alt_weather}"
                     f"{parsed_args.start_time.replace(':','_')}_"
-                    f"{parsed_args.end_time.replace(':','_')}.pdf",
+                    f"{parsed_args.end_time.replace(':','_')}_{INDEX}.pdf",
                     format="pdf",
                     bbox_inches="tight",
                     pad_inches=0.05,
@@ -2075,7 +2126,7 @@ def main(args: list[Any]) -> None:
 
                 diffusivity_error = abs(diffusivity * 0.1)
 
-                plt.figure(figsize=(180 * MM, 120 * MM))
+                plt.figure(figsize=(83 * MM, 60 * MM))
                 axis_right = (axis_left := plt.gca()).twinx()
 
                 sns.scatterplot(
@@ -2103,7 +2154,7 @@ def main(args: list[Any]) -> None:
                     color="C0",
                     zorder=1,
                 )
-                plt.xlabel("Date and time")
+                plt.xlabel("Time / h")
                 plt.ylabel("Irradiance / W/m$^2$")
 
                 sns.scatterplot(
@@ -2125,15 +2176,13 @@ def main(args: list[Any]) -> None:
                     color="C2",
                     zorder=1,
                 )
-                axis_right.set_xlabel("Date and time")
+                axis_right.set_xlabel("Time / h")
                 axis_left.set_ylabel("Irradiance / W/m$^2$")
                 axis_right.set_ylabel("Diffusivity")
 
                 plt.xticks(
                     list(range(len(dir_day_gnd_dir_val.index)))[::4],
-                    [entry.strftime("%d-%m %H") for entry in dir_day_gnd_dir_val.index][
-                        ::4
-                    ],
+                    [entry for entry in dir_day_gnd_dir_val.index][::4],
                 )
 
                 lower_ylim: float = -0.75
@@ -2175,7 +2224,7 @@ def main(args: list[Any]) -> None:
                     "validation_diffusivity_prediction_"
                     f"{polytunnel_diffusivity}_{polytunnel.name}_{alt_weather}"
                     f"{parsed_args.start_time.replace(':','_')}_"
-                    f"{parsed_args.end_time.replace(':','_')}.pdf",
+                    f"{parsed_args.end_time.replace(':','_')}_{INDEX}.pdf",
                     format="pdf",
                     bbox_inches="tight",
                     pad_inches=0.05,
@@ -2280,9 +2329,35 @@ def main(args: list[Any]) -> None:
                         )
                         weather_file_error = parsed_args.weather_file_error
 
+                    # Readjust the indices for plotting.
+                    diffusivity_series.index = pd.Index(
+                        [
+                            entry.time().strftime("%H")
+                            for entry in diffusivity_series.index
+                        ]
+                    )
+                    predicted_day_gnd_tot_val.index = pd.Index(
+                        [
+                            entry.time().strftime("%H")
+                            for entry in predicted_day_gnd_tot_val.index
+                        ]
+                    )
+                    predicted_day_gnd_dir_val.index = pd.Index(
+                        [
+                            entry.time().strftime("%H")
+                            for entry in predicted_day_gnd_dir_val.index
+                        ]
+                    )
+                    predicted_day_gnd_dif_val.index = pd.Index(
+                        [
+                            entry.time().strftime("%H")
+                            for entry in predicted_day_gnd_dif_val.index
+                        ]
+                    )
+
                     # Compute the direct and diffuse irradiance predictions on the
                     # ground.
-                    plt.figure(figsize=(180 * MM, 120 * MM))
+                    plt.figure(figsize=(83 * MM, 60 * MM))
                     sns.scatterplot(
                         x=predicted_day_gnd_tot_val.index,
                         y=predicted_day_gnd_tot_val[parsed_args.validation_index],
@@ -2331,12 +2406,13 @@ def main(args: list[Any]) -> None:
                         ls="none",
                         color="C0",
                     )
-                    plt.xlabel("Date and time")
+                    plt.xlabel("Time / h")
                     plt.ylabel("Irradiance / W/m$^2$")
 
                     axis_right = (axis_left := plt.gca()).twinx()
                     axis_left.tick_params(axis="both", which="major", labelsize=7)
                     axis_right.tick_params(axis="both", which="major", labelsize=7)
+                    axis_right.set_ylabel("Diffusivity")
                     sns.scatterplot(
                         x=dir_day_gnd_tot_val.index,
                         y=diffusivity_series[dir_day_gnd_tot_val.index],
@@ -2355,6 +2431,7 @@ def main(args: list[Any]) -> None:
                         left_handles + right_handles,
                         left_labels + right_labels,
                         loc="upper right",
+                        fontsize=7,
                     )
                     axis_right.set_ylim(-0.05, 1.05)
                     axis_left.set_ylim(-25, 825)
@@ -2364,7 +2441,7 @@ def main(args: list[Any]) -> None:
                         "total_"
                         f"{polytunnel_diffusivity}_{polytunnel.name}_"
                         f"{parsed_args.start_time.replace(':','_')}_"
-                        f"{parsed_args.end_time.replace(':','_')}.pdf",
+                        f"{parsed_args.end_time.replace(':','_')}_{INDEX}.pdf",
                         format="pdf",
                         bbox_inches="tight",
                         pad_inches=0.05,
@@ -2372,7 +2449,7 @@ def main(args: list[Any]) -> None:
                     pbar.update(1)
 
                     # Look at the direct irradiance on the ground
-                    plt.figure(figsize=(180 * MM, 120 * MM))
+                    plt.figure(figsize=(83 * MM, 60 * MM))
                     sns.scatterplot(
                         x=predicted_day_gnd_dir_val.index,
                         y=predicted_day_gnd_dir_val[parsed_args.validation_index],
@@ -2421,12 +2498,13 @@ def main(args: list[Any]) -> None:
                         ls="none",
                         color="C0",
                     )
-                    plt.xlabel("Date and time")
+                    plt.xlabel("Time / h")
                     plt.ylabel("Irradiance / W/m$^2$")
 
                     axis_right = (axis_left := plt.gca()).twinx()
                     axis_left.tick_params(axis="both", which="major", labelsize=7)
                     axis_right.tick_params(axis="both", which="major", labelsize=7)
+                    axis_right.set_ylabel("Diffusivity")
                     sns.scatterplot(
                         x=dir_day_gnd_tot_val.index,
                         y=diffusivity_series[dir_day_gnd_tot_val.index],
@@ -2445,6 +2523,7 @@ def main(args: list[Any]) -> None:
                         left_handles + right_handles,
                         left_labels + right_labels,
                         loc="upper right",
+                        fontsize=7,
                     )
                     axis_right.set_ylim(-0.05, 1.05)
                     axis_left.set_ylim(-25, 825)
@@ -2454,7 +2533,7 @@ def main(args: list[Any]) -> None:
                         "direct_"
                         f"{polytunnel_diffusivity}_{polytunnel.name}_"
                         f"{parsed_args.start_time.replace(':','_')}_"
-                        f"{parsed_args.end_time.replace(':','_')}.pdf",
+                        f"{parsed_args.end_time.replace(':','_')}_{INDEX}.pdf",
                         format="pdf",
                         bbox_inches="tight",
                         pad_inches=0.05,
@@ -2462,7 +2541,7 @@ def main(args: list[Any]) -> None:
                     pbar.update(1)
 
                     # Look at the diffuse irradiance on the ground
-                    plt.figure(figsize=(180 * MM, 120 * MM))
+                    plt.figure(figsize=(83 * MM, 60 * MM))
                     sns.scatterplot(
                         x=predicted_day_gnd_dif_val.index,
                         y=predicted_day_gnd_dif_val[parsed_args.validation_index],
@@ -2511,12 +2590,13 @@ def main(args: list[Any]) -> None:
                         ls="none",
                         color="C0",
                     )
-                    plt.xlabel("Date and time")
+                    plt.xlabel("Time / h")
                     plt.ylabel("Irradiance / W/m$^2$")
 
                     axis_right = (axis_left := plt.gca()).twinx()
                     axis_left.tick_params(axis="both", which="major", labelsize=7)
                     axis_right.tick_params(axis="both", which="major", labelsize=7)
+                    axis_right.set_ylabel("Diffusivity")
                     sns.scatterplot(
                         x=dir_day_gnd_tot_val.index,
                         y=diffusivity_series[dir_day_gnd_tot_val.index],
@@ -2535,6 +2615,7 @@ def main(args: list[Any]) -> None:
                         left_handles + right_handles,
                         left_labels + right_labels,
                         loc="upper right",
+                        fontsize=7,
                     )
                     axis_right.set_ylim(-0.05, 1.05)
                     axis_left.set_ylim(-25, 825)
@@ -2544,7 +2625,7 @@ def main(args: list[Any]) -> None:
                         "diffuse_"
                         f"{polytunnel_diffusivity}_{polytunnel.name}_"
                         f"{parsed_args.start_time.replace(':','_')}_"
-                        f"{parsed_args.end_time.replace(':','_')}.pdf",
+                        f"{parsed_args.end_time.replace(':','_')}_{INDEX}.pdf",
                         format="pdf",
                         bbox_inches="tight",
                         pad_inches=0.05,
@@ -2556,6 +2637,9 @@ def main(args: list[Any]) -> None:
     # import pdb
 
     # pdb.set_trace()
+
+    if parsed_args.debug:
+        plt.show()
 
     return
 
@@ -2710,7 +2794,7 @@ def main(args: list[Any]) -> None:
 
     sns.heatmap(surface_shaded_map)
     plt.savefig(
-        "surface_shaded_unmodulatead.pdf",
+        "surface_shaded_unmodulatead_{INDEX}.pdf",
         format="pdf",
         bbox_inches="tight",
         pad_inches=0,
@@ -2719,7 +2803,7 @@ def main(args: list[Any]) -> None:
 
     sns.heatmap(direct_surface_irradiance, cmap="viridis")
     plt.savefig(
-        "direct_surface_unmodulatead.pdf",
+        "direct_surface_unmodulatead_{INDEX}.pdf",
         format="pdf",
         bbox_inches="tight",
         pad_inches=0,
@@ -2733,7 +2817,10 @@ def main(args: list[Any]) -> None:
         )
     )
     plt.savefig(
-        "polytunnel_positions.pdf", format="pdf", bbox_inches="tight", pad_inches=0
+        "polytunnel_positions_{INDEX}.pdf",
+        format="pdf",
+        bbox_inches="tight",
+        pad_inches=0,
     )
     plt.show()
 
@@ -3301,7 +3388,7 @@ def main(args: list[Any]) -> None:
 
 # sns.set_context("notebook")
 
-# fig, ax = plt.subplots(figsize=(180*MM, 120*MM))
+# fig, ax = plt.subplots(figsize=(171*MM, 120*MM))
 
 # # Create initial heatmap with dummy data
 # initial_data = np.reshape(
@@ -3357,7 +3444,7 @@ def main(args: list[Any]) -> None:
 # sns.set_context("notebook")
 
 # for _index in [40, 50, 60, 70, 80, 90, 100]:
-#     fig, ax = plt.subplots(figsize=(180*MM, 120*MM))
+#     fig, ax = plt.subplots(figsize=(171*MM, 120*MM))
 #     # Create initial heatmap with dummy data
 #     initial_data = np.reshape(
 #         clearsky_total_ground_irradiance_map.iloc[_index],

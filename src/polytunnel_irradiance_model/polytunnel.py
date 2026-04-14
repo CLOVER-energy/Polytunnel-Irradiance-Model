@@ -18,9 +18,9 @@ import enum
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass
 from math import acos, asin, atan, cos, radians, pi, sin, sqrt
-from multiprocessing import Pool
 from typing import Any, Iterable, Iterator, TypeVar
 
+import json
 import numpy as np
 
 from tqdm import tqdm
@@ -65,10 +65,6 @@ LENGTH: str = "length"
 #   NOTE: This value is fixed at a constant to ensure maps are comprable.
 LENGTH_WISE_MAP_SCALING_FACTOR: int = 5
 
-# MATERIALS:
-#   Keyword used for parsing the materials information.
-MATERIALS: str = "materials"
-
 # MODULE_TYPE:
 #   Keyword used for parsing module-type information.
 MODULE_TYPE: str = "module_type"
@@ -80,6 +76,14 @@ PV_MODULE: str = "pv_module"
 # PV_MODULE_SPACING:
 #   Keyword for determining the spacing between PV modules.
 PV_MODULE_SPACING: str = "module_spacing"
+
+# STACK:
+#   Keyword used for parsing the stack information.
+STACK: str = "stack"
+
+# STACK_NAME:
+#   Keyword used for parsing the stack information.
+STACK_NAME: str = "stack_name"
 
 # TRANSMISSIVITY:
 #   Keyword used for parsing transmissivity data.
@@ -1386,9 +1390,6 @@ class PVModule:
     .. attribute:: length:
         The length of the module, in meters.
 
-    .. attribute:: materials:
-        The materials included, along with their thicknesses.
-
     .. attribute:: module_type:
         The type of the module.
 
@@ -1401,17 +1402,25 @@ class PVModule:
     .. attribute:: orientation:
         The angle between the axis of the polytunnel and of the module.
 
+    .. attribute:: stack:
+        The materials included, in the module stack, if present, along with their
+        thicknesses.
+
+    .. attribute:: stack_name:
+        The name of the stack.
+
     .. attribute:: width:
         The width of the cell, measured in metres.
 
     """
 
     length: float
-    materials: list[PVCellMaterial]
     module_type: ModuleType
     multistack: int | None
     name: str
     orientation: float
+    stack: list[PVCellMaterial] | None
+    stack_name: str | None
     width: float
 
 
@@ -2597,14 +2606,29 @@ class Polytunnel:
                 raise KeyError("Missing module-type information.") from None
 
             try:
-                module_input_data[module_name][MATERIALS] = [
-                    PVCellMaterial.from_entry(material_information)
-                    for material_information in module_input_data[module_name][
-                        MATERIALS
-                    ]
-                ]
+                stack_name: str | None = module_input_data[module_name][STACK]
             except KeyError:
-                raise KeyError("Missing PV material information.") from None
+                stack_name = None
+
+            module_input_data[module_name][STACK_NAME] = stack_name
+
+            if stack_name is not None:
+                try:
+                    with open(
+                        f"{stack_name}.json",
+                        "r",
+                        encoding="UTF-8",
+                    ) as stack_file:
+                        stack_data = json.load(stack_file)
+
+                    module_input_data[module_name][STACK] = [
+                        PVCellMaterial.from_entry(material_information)
+                        for material_information in stack_data
+                    ]
+                except KeyError:
+                    raise KeyError("Missing PV stack information.") from None
+            else:
+                module_input_data[module_name][STACK] = None
 
             try:
                 pv_module = PVModule(**module_input_data[input_data[PV_MODULE]])
