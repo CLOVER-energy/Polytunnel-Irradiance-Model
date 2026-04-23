@@ -97,6 +97,10 @@ AUTO_GENERATED: str = "auto_generated"
 #   The error in the bolometer as a fraction.
 BOLOMETER_ERROR: float = 0.1
 
+# CLOUDY_DAY_SPECTRA_DATA_FILE:
+#   Name of the file used for cloudy-day weather data.
+CLOUDY_DAY_SPECTRA_DATA_FILE: str = "brecl_spectra_on_typical_days.csv"
+
 # DIFFUSE_PAR_ERROR:
 #   The fractional error in the diffuse PAR.
 DIFFUSE_PAR_ERROR: float = 0.12
@@ -194,6 +198,10 @@ TOTAL_PAR_ERROR: float = 0.12
 #   Regex used to extract the main version number.
 VERSION_REGEX: Pattern[str] = re.compile(r"(?P<number>\d\.\d\.\d)([\.](?P<post>.*))?")
 
+# WAVELENGTH:
+#   Keyword for parsing wavelength information.
+WAVELENGTH: str = "wavelength"
+
 
 class ValidationColumns(enum.Enum):
     """
@@ -224,6 +232,22 @@ class ValidationColumns(enum.Enum):
     SECTION: str = "Section"
     TOTAL_ERROR: str = "total std"
     TOTAL_PAR: str = "total illum umol m2 -1 s -1"
+
+
+class SpectrumUnit(enum.Enum):
+    """
+    Contains the possible spectrum units for the cloudy-day spectra.
+
+    - W_PER_M2_NM:
+        Watts per meter squared per nanometer.
+
+    - W_PER_M2_UM:
+        Watts per meter squared per micrometer.
+
+    """
+
+    W_PER_M2_NM = "watts_per_m2_per_nm"
+    W_PER_M2_UM = "watts_per_m2_per_um"
 
 
 def code_print(string_to_print: str, end: str = "") -> None:
@@ -410,6 +434,23 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
         help="Use the alternative weather-data file for diffusivity data only.",
     )
 
+    tmm_and_spectral_arguments = parser.add_argument_group("solar-spectra arguments")
+    tmm_and_spectral_arguments.add_argument(
+        "--cloudy-day-spectra-data-file",
+        "-cdsdf",
+        type=str,
+        default=CLOUDY_DAY_SPECTRA_DATA_FILE,
+        help="Name of the data file used for cloudy-day solar spectra.",
+    )
+    tmm_and_spectral_arguments.add_argument(
+        "--cloudy-day-spectra-units",
+        "-cdsu",
+        type=str,
+        default=SpectrumUnit.W_PER_M2_UM,
+        choices=[entry.value for entry in SpectrumUnit],
+        help="Unit for the spectral units.",
+    )
+
     parser.add_argument(
         "--regenerate",
         action="store_true",
@@ -565,6 +606,47 @@ def main(args: list[Any]) -> None:
         stack_tmm = None
 
     stack_tmm.index = stack_tmm["wavelength"]
+
+    # Load the solar spectra from the data files.
+    try:
+        with open(
+            parsed_args.cloudy_day_spectra_data_file, "r", encoding="UTF-8"
+        ) as cloudy_day_spectra_data_file:
+            cloudy_day_spectra = pd.read_csv(cloudy_day_spectra_data_file)
+
+    except FileNotFoundError:
+        raise FileNotFoundError(
+            "Cloudy day--spectra data file ({filename}) was not found.".format(
+                filename=parsed_args.cloudy_day_spectra_data_file
+            )
+        ) from None
+
+    # Pop metadata rows until the data are only spectral and not metadata.
+    cloudy_day_spectra = cloudy_day_spectra.transpose()
+
+    def _recursive_row_removal(frame: pd.DataFrame, index: int = 0) -> pd.DataFrame:
+        """
+        Recursively remove rows from the dataframe.
+
+        :param: frame:
+            The :class:`pd.DataFrame` to recursively remove rows from.
+
+        :returns:
+            The frame with only values and no metadata remaining.
+
+        """
+
+        try:
+            return frame.astype(float).transpose()
+        except ValueError:
+            frame.pop(index)
+            return _recursive_row_removal(frame, index + 1)
+
+    cloudy_day_spectra = (
+        _recursive_row_removal(cloudy_day_spectra)
+        .reset_index(drop=True)
+        .set_index(WAVELENGTH)
+    )
 
     # Compute the position of the sun at each time within the simulation.
     location = Location(

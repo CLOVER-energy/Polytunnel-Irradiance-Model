@@ -12,6 +12,7 @@ import os
 from dataclasses import dataclass
 from matplotlib import rc, rcParams
 
+import matplotlib.colors as pltcolors
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
@@ -255,9 +256,20 @@ def tmm(
             return "\\\\"
         return "//"
 
-    background_palette = sns.cubehelix_palette(
-        start=-0.2, rot=-0.6, n_colors=5
-    ).as_hex()
+    background_palette = [
+        tuple(sub_entry / 255 for sub_entry in entry)
+        for entry in [
+            (221, 221, 221),
+            (46, 37, 133),
+            (51, 117, 56),
+            (93, 168, 153),
+            (148, 203, 236),
+            (220, 205, 125),
+            (194, 106, 119),
+            (159, 74, 150),
+            (126, 41, 84),
+        ]
+    ]
 
     sns.set_palette(
         sns.cubehelix_palette(
