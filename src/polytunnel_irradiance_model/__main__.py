@@ -38,7 +38,8 @@ import seaborn as sns
 import yaml
 
 from matplotlib import rc, rcParams
-from numpy import inf
+from numpy import inf, arange as np_arange
+from scipy.interpolate import interp1d
 from tqdm import tqdm
 
 from src.polytunnel_irradiance_model.__utils__ import *
@@ -232,6 +233,30 @@ class ValidationColumns(enum.Enum):
     SECTION: str = "Section"
     TOTAL_ERROR: str = "total std"
     TOTAL_PAR: str = "total illum umol m2 -1 s -1"
+
+
+class SpectrumType(enum.Enum):
+    """
+    Denotes the type of spectrum being modelled.
+
+    - CLEARSKY_DIFFUSE:
+        Denotes a clearsky, diffuse spectrum.
+
+    - CLEARSKY_DIRECT:
+        Denotes a clearsky, direct spectrum.
+
+    - CLEARSKY_GLOBAL:
+        Denotes a clearsky, global spectrum.
+
+    - CLOUDY_DAY:
+        Denotes a cloudy-day spectrum.
+
+    """
+
+    CLEARSKY_DIFFUSE: str = "diffuse"
+    CLEARSKY_DIRECT: str = "direct"
+    CLEARSKY_GLOBAL: str = "global"
+    CLOUDY_DAY: str = "cloudy_day"
 
 
 class SpectrumUnit(enum.Enum):
@@ -450,6 +475,13 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
         choices=[entry.value for entry in SpectrumUnit],
         help="Unit for the spectral units.",
     )
+    tmm_and_spectral_arguments.add_argument(
+        "--wavelength-step-nm",
+        "-wsnm",
+        type=float,
+        default=1,
+        help="Resolution to use for TMM and wavelength calculations in nm.",
+    )
 
     parser.add_argument(
         "--regenerate",
@@ -586,6 +618,9 @@ def main(args: list[Any]) -> None:
         )
 
     # Open the TMM and, if necessary, compute.
+    wavelength_step_nm: float | int = parsed_args.wavelength_step_nm
+    if float(wavelength_step_nm) == int(wavelength_step_nm):
+        wavelength_step_nm = int(wavelength_step_nm)
     if polytunnel.pv_module.stack is not None:
         # If there is no stack file, then compute in Julia.
         if not os.path.isfile(
@@ -594,7 +629,9 @@ def main(args: list[Any]) -> None:
             code_print("Running JULIA computation for stack")
             run = subprocess.run(
                 f"julia tmm_ppv_script.jl -s {polytunnel.pv_module.stack_name} -t 0:90 "
-                f"-f {polytunnel.pv_module.stack_name}".split(" ")
+                f"-f {polytunnel.pv_module.stack_name} -w {wavelength_step_nm}".split(
+                    " "
+                )
             )
             if run.returncode != 0:
                 raise Exception("TMM code failed: check STDOUT.")
@@ -647,6 +684,60 @@ def main(args: list[Any]) -> None:
         .reset_index(drop=True)
         .set_index(WAVELENGTH)
     )
+
+    if (
+        spectra_units := SpectrumUnit(parsed_args.cloudy_day_spectra_units)
+    ) == SpectrumUnit.W_PER_M2_UM:
+        cloudy_day_spectra /= 1000
+        spectra_units = SpectrumUnit.W_PER_M2_NM
+
+    # Load the reference solar spcetrum from PVlib for a sunny day.
+    reference_day_spectra = pvlib.spectrum.get_reference_spectra()
+
+    # Recompute the spectra at wavelength steps matching those used in the TMM
+    # calculation.
+    wavelength_range = np_arange(
+        _min_wavelength := stack_tmm.index[0],
+        _max_wavelength := stack_tmm.index[-1],
+        wavelength_step_nm,
+    )
+    global_spectrum = [
+        interp1d(
+            reference_day_spectra.index,
+            reference_day_spectra[SpectrumType.CLEARSKY_GLOBAL.value],
+            fill_value=(0, 0),
+            bounds_error=False,
+        )(entry)
+        for entry in wavelength_range
+    ]
+    direct_spectrum = [
+        interp1d(
+            reference_day_spectra.index,
+            reference_day_spectra[SpectrumType.CLEARSKY_DIRECT.value],
+            fill_value=(0, 0),
+            bounds_error=False,
+        )(entry)
+        for entry in wavelength_range
+    ]
+    cloudy_spectrum = [
+        interp1d(
+            cloudy_day_spectra.index,
+            cloudy_day_spectra[SpectrumType.CLOUDY_DAY.value],
+            fill_value=(0, 0),
+            bounds_error=False,
+        )(entry)
+        for entry in wavelength_range
+    ]
+    interpolated_spectra = pd.DataFrame(
+        {
+            SpectrumType.CLEARSKY_DIFFUSE.value: pd.Series(global_spectrum)
+            - pd.Series(direct_spectrum),
+            SpectrumType.CLEARSKY_DIRECT.value: direct_spectrum,
+            SpectrumType.CLEARSKY_GLOBAL.value: global_spectrum,
+            SpectrumType.CLOUDY_DAY.value: cloudy_spectrum,
+        }
+    )
+    interpolated_spectra.index = pd.Index(wavelength_range, name=WAVELENGTH)
 
     # Compute the position of the sun at each time within the simulation.
     location = Location(
@@ -873,6 +964,10 @@ def main(args: list[Any]) -> None:
             surface_shaded_map.columns = pd.Index(
                 [int(entry) for entry in surface_shaded_map.columns]
             )
+
+    import pdb
+
+    pdb.set_trace()
 
     # Carry out a calculation if the outputs have not already been saved.
     if (
