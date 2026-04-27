@@ -15,6 +15,7 @@ distribution within a curved structure, _e.g._, a polytunnel.
 """
 
 import argparse
+import csv
 import datetime
 import enum
 import os
@@ -38,7 +39,7 @@ import seaborn as sns
 import yaml
 
 from matplotlib import rc, rcParams
-from numpy import inf, arange as np_arange
+from numpy import inf
 from scipy.interpolate import interp1d
 from tqdm import tqdm
 
@@ -68,6 +69,8 @@ import src.polytunnel_irradiance_model.visualisation as viz
 
 
 import warnings
+
+import numpy as np
 
 warnings.filterwarnings(
     "ignore", category=UserWarning, module=r".*vectorized_tmm_dispersive_multistack.*"
@@ -503,6 +506,24 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
     return parser.parse_args(args)
 
 
+def round_nearest(x: float, a: float):
+    """
+    Function to round the nearest number to a decimal or other float.
+
+    :param: x:
+        The number to round.
+
+    :param: a:
+        The number to round to the nearest multiple of.
+
+    :returns:
+        The result of the rounding process.
+
+    """
+
+    return round(x / a) * a
+
+
 @contextmanager
 def time_execution(
     this_code_block_name: str,
@@ -619,6 +640,7 @@ def main(args: list[Any]) -> None:
 
     # Open the TMM and, if necessary, compute.
     wavelength_step_nm: float | int = parsed_args.wavelength_step_nm
+    _tmm_angular_resolution: float | int = 1
     if float(wavelength_step_nm) == int(wavelength_step_nm):
         wavelength_step_nm = int(wavelength_step_nm)
     if polytunnel.pv_module.stack is not None:
@@ -628,7 +650,8 @@ def main(args: list[Any]) -> None:
         ):
             code_print("Running JULIA computation for stack")
             run = subprocess.run(
-                f"julia tmm_ppv_script.jl -s {polytunnel.pv_module.stack_name} -t 0:90 "
+                f"julia tmm_ppv_script.jl -s {polytunnel.pv_module.stack_name} -t "
+                f"0:{_tmm_angular_resolution}:90 "
                 f"-f {polytunnel.pv_module.stack_name} -w {wavelength_step_nm}".split(
                     " "
                 )
@@ -642,7 +665,8 @@ def main(args: list[Any]) -> None:
     else:
         stack_tmm = None
 
-    stack_tmm.index = stack_tmm["wavelength"]
+    stack_tmm = stack_tmm.set_index(WAVELENGTH)
+    stack_tmm.columns = pd.Index([float(entry) for entry in stack_tmm.columns])
 
     # Load the solar spectra from the data files.
     try:
@@ -696,9 +720,11 @@ def main(args: list[Any]) -> None:
 
     # Recompute the spectra at wavelength steps matching those used in the TMM
     # calculation.
-    wavelength_range = np_arange(
+    import numpy as np
+
+    wavelength_range = np.arange(
         _min_wavelength := stack_tmm.index[0],
-        _max_wavelength := stack_tmm.index[-1],
+        _max_wavelength := stack_tmm.index[-1] + wavelength_step_nm,
         wavelength_step_nm,
     )
     global_spectrum = [
@@ -965,9 +991,21 @@ def main(args: list[Any]) -> None:
                 [int(entry) for entry in surface_shaded_map.columns]
             )
 
-    import pdb
-
-    pdb.set_trace()
+    # Compute the solar position dot-product across the surface of the polytunnel.
+    dot_product_map = pd.DataFrame(
+        {
+            meshpoint_index: [
+                meshpoint._normal_vector * solar_position
+                for solar_position in solar_positions
+            ]
+            for meshpoint_index, meshpoint in tqdm(
+                enumerate(polytunnel.surface_mesh),
+                desc="Surface dot-product calculation",
+                leave=False,
+                total=len(polytunnel.surface_mesh),
+            )
+        }
+    )
 
     # Carry out a calculation if the outputs have not already been saved.
     if (
@@ -986,22 +1024,6 @@ def main(args: list[Any]) -> None:
         # Determine the intercept lines with neighbouring polytunnels.
         # calculate_and_update_intercept_planes(polytunnel)
         with time_execution("Direct surface calculation"):
-            # Compute the solar position dot-product across the surface of the polytunnel.
-            dot_product_map = pd.DataFrame(
-                {
-                    meshpoint_index: [
-                        meshpoint._normal_vector * solar_position
-                        for solar_position in solar_positions
-                    ]
-                    for meshpoint_index, meshpoint in tqdm(
-                        enumerate(polytunnel.surface_mesh),
-                        desc="Surface dot-product calculation",
-                        leave=False,
-                        total=len(polytunnel.surface_mesh),
-                    )
-                }
-            )
-
             # Construct a map of the surface irradiance on the polytunnel (direct) as a
             # function of time.
             direct_surface_irradiance = (
@@ -1197,6 +1219,7 @@ def main(args: list[Any]) -> None:
 
     # Compute the amount of direct light reaching the ground.
     with time_execution("Direct on-the-ground calculation"):
+        # Code without spectra
         clearsky_ground_direct_irradiance_map: pd.DataFrame = pd.DataFrame(
             [
                 ground_direct_irradiance(
@@ -1220,54 +1243,148 @@ def main(args: list[Any]) -> None:
             ]
         )
 
+        # Code with spectra:
+        # Compute direct light which doesn't pass through a solar module
+        clearsky_ground_direct_irradiance_map_sans_pv_module: pd.DataFrame = (
+            pd.DataFrame(
+                [
+                    ground_direct_irradiance(
+                        polytunnel.ground_mesh,
+                        polytunnel,
+                        (
+                            surface_shaded_map.loc[time_index]
+                            * clearsky_irradiance["dni"].iloc[time_index]
+                            * (1 - polytunnel_diffusivity)
+                        ).reset_index(drop=True)
+                        * polytunnel_surface_pv_uncovered_fraction_mask.iloc[
+                            time_index
+                        ],
+                        solar_position,
+                        diffusivity=parsed_args.diffusivity,
+                    )
+                    for time_index, solar_position in tqdm(
+                        enumerate(solar_positions),
+                        desc="Direct ground irradiance calculation",
+                        leave=False,
+                        total=len(solar_positions),
+                    )
+                ]
+            )
+        )
+        clearsky_ground_direct_irradiance_map_sans_pv_module: np.ndarray = (
+            clearsky_ground_direct_irradiance_map_sans_pv_module.to_numpy()[:, :, None]
+            * np.array(interpolated_spectra.direct)[None, None, :]
+        ).astype(float)
+
+        # Compute the light which passes through the PV modules
+        clearsky_ground_direct_irradiance_map_with_pv_module: pd.DataFrame = (
+            pd.DataFrame(
+                [
+                    ground_direct_irradiance(
+                        polytunnel.ground_mesh,
+                        polytunnel,
+                        (
+                            surface_shaded_map.loc[time_index]
+                            * clearsky_irradiance["dni"].iloc[time_index]
+                            * (1 - polytunnel_diffusivity)
+                        ).reset_index(drop=True)
+                        * (
+                            1
+                            - polytunnel_surface_pv_uncovered_fraction_mask.iloc[
+                                time_index
+                            ]
+                        ),
+                        solar_position,
+                        diffusivity=parsed_args.diffusivity,
+                    )
+                    for time_index, solar_position in tqdm(
+                        enumerate(solar_positions),
+                        desc="Direct ground irradiance calculation",
+                        leave=False,
+                        total=len(solar_positions),
+                    )
+                ]
+            )
+        )
+        # Compute the incident angles for each element to compute spectra.
+        solar_angles: pd.DataFrame = round_nearest(
+            np.degrees(np.acos(dot_product_map)), _tmm_angular_resolution
+        )
+        post_tmm_spectra: np.ndarray = np.array(
+            [
+                [stack_tmm[min(angle, max(stack_tmm.columns))] * interpolated_spectra.direct.values for angle in row]
+                for _, row in solar_angles.iterrows()
+            ]
+        )
+        clearsky_ground_direct_irradiance_map_with_pv_module: np.ndarray = (
+            clearsky_ground_direct_irradiance_map_with_pv_module.to_numpy()[:, :, None]
+            * post_tmm_spectra
+        ).astype(float)
+
+        clearsky_ground_direct_irradiance_map = clearsky_ground_direct_irradiance_map_sans_pv_module + clearsky_ground_direct_irradiance_map_with_pv_module
+
         #######################
         # Plotting code No. 1 #
         #######################
 
         # If the ends are open, add the irradiance from the ends.
         if polytunnel.ends == EndType.OPEN:
-            end_intercept_projection: pd.DataFrame = pd.DataFrame(
-                [
-                    open_end_direct_irradiance(
-                        polytunnel.ground_mesh, polytunnel, solar_position
-                    )
-                    for solar_position in tqdm(
-                        solar_positions,
-                        desc="Light from ends",
-                        leave=False,
-                        total=len(solar_positions),
-                    )
-                ]
-            )
-            end_direct_irradiance_map: pd.DataFrame | None = (
-                end_intercept_projection.transpose()
-                .mul(clearsky_irradiance["dni"].values)
-                .transpose()
-            )
+            with time_execution("End--direct irradiance calculation")
+                end_intercept_projection: pd.DataFrame = pd.DataFrame(
+                    [
+                        open_end_direct_irradiance(
+                            polytunnel.ground_mesh, polytunnel, solar_position
+                        )
+                        for solar_position in tqdm(
+                            solar_positions,
+                            desc="Light from ends",
+                            leave=False,
+                            total=len(solar_positions),
+                        )
+                    ]
+                )
 
-            clearsky_ground_direct_irradiance_map += end_direct_irradiance_map
+                # Code without spectra:
+                end_direct_irradiance_map: pd.DataFrame | None = (
+                    end_intercept_projection.transpose()
+                    .mul(clearsky_irradiance["dni"].values)
+                    .transpose()
+                )
 
-            with open(
-                os.path.join(
-                    AUTO_GENERATED,
-                    polytunnel.name,
-                    f"{polytunnel.name}_end_irradiance_"
-                    f"{parsed_args.start_time.replace(":","_")}_"
-                    f"{parsed_args.end_time.replace(":","_")}.csv",
-                ),
-                "w",
-                encoding="UTF-8",
-            ) as end_irradiance_file:
-                end_direct_irradiance_map.to_csv(end_irradiance_file)
+                # Code with spectra:
+                end_direct_irradiance_map: np.ndarray = (
+                    end_direct_irradiance_map.to_numpy()[:, :, None]
+                    * np.array(interpolated_spectra.direct)[None, None, :]
+                ).astype(float)
 
-            #######################
-            # Plotting code No. 1 #
-            #######################
+                clearsky_ground_direct_irradiance_map += end_direct_irradiance_map
+
+                with open(
+                    os.path.join(
+                        AUTO_GENERATED,
+                        polytunnel.name,
+                        f"{polytunnel.name}_end_irradiance_"
+                        f"{parsed_args.start_time.replace(":","_")}_"
+                        f"{parsed_args.end_time.replace(":","_")}.csv",
+                    ),
+                    "w",
+                    encoding="UTF-8",
+                ) as end_irradiance_file:
+                    csv.writer(end_irradiance_file, delimiter=",").writerows(end_direct_irradiance_map.tolist())
+                    # end_direct_irradiance_map.to_csv(end_irradiance_file)
+
+                #######################
+                # Plotting code No. 1 #
+                #######################
 
         direct_day_ground_direct_irradiance = (
             clearsky_ground_direct_irradiance_map
-            * dni_to_weather_adjustment_factor.reset_index(drop=True)
+            * dni_to_weather_adjustment_factor.reset_index(drop=True).to_numpy()[:, :, None]
         )
+
+    import pdb
+
+    pdb.set_trace()
 
     # Compute the amount of diffuse light reaching the ground.
     with time_execution("Diffuse on-the-ground calculation"):
