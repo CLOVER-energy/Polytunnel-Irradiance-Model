@@ -40,6 +40,7 @@ import yaml
 
 from matplotlib import rc, rcParams
 from numpy import inf
+from scipy.integrate import trapezoid
 from scipy.interpolate import interp1d
 from tqdm import tqdm
 
@@ -193,6 +194,10 @@ POLYTUNNEL_HEADER_STRING: str = """
                              For more information, contact
                   Benedict Winchester (benedict.winchester@gmail.com)
 """
+
+# PYRANOMETER_RESPONSE_FILENAME:
+#   The name of the file containing the pyranometer response data.
+PYRANOMETER_RESPONSE_FILENAME: str = "pyranometer_nr01_ra01_response.csv"
 
 # TOTAL_PAR_ERROR:
 #   The fractional error in the total (global) PAR.
@@ -765,6 +770,132 @@ def main(args: list[Any]) -> None:
     )
     interpolated_spectra.index = pd.Index(wavelength_range, name=WAVELENGTH)
 
+    # Normalise the interpolated spectra to 1 over the wavelength range.
+    interpolated_spectra /= interpolated_spectra.sum(axis=0)
+
+    # Rescale the spectra by the pyranometer response integrated over this range vs over
+    # the whole datarange.
+    if os.path.isfile(PYRANOMETER_RESPONSE_FILENAME):
+        with time_execution("Rescaling spectra with pyranometer spectral response"):
+            with open(
+                PYRANOMETER_RESPONSE_FILENAME, "r", encoding="UTF-8"
+            ) as pyranometer_response_file:
+                pyranometer_response_data: pd.DataFrame = pd.read_csv(
+                    pyranometer_response_file
+                )
+
+            pyranometer_wavelength_range = range(0, 10000)
+            pyranometer_response_data = pyranometer_response_data.set_index(WAVELENGTH)
+            pyranometer_response_function = interp1d(
+                pyranometer_response_data.index.values,
+                pyranometer_response_data.values,
+                axis=0,
+                fill_value=(0, 0),
+                bounds_error=False,
+            )
+            pyranometer_response = [
+                pyranometer_response_function(wavelength)[0]
+                for wavelength in pyranometer_wavelength_range
+            ]
+            pyranometer_response /= max(pyranometer_response)
+
+            # Compute and multiply the pyranometer response by the global irradiance at each wavelength.
+            _global_spectrum = [
+                interp1d(
+                    reference_day_spectra.index,
+                    reference_day_spectra[SpectrumType.CLEARSKY_GLOBAL.value],
+                    fill_value=(0, 0),
+                    bounds_error=False,
+                )(entry)
+                for entry in pyranometer_wavelength_range
+            ]
+            _global_spectrum /= sum(_global_spectrum)
+            pyranometer_global_response_list = (
+                (_global_spectrum * np.array(pyranometer_response))
+                .astype(float)
+                .tolist()
+            )
+            adjusted_global_spectrum = _global_spectrum / sum(
+                pyranometer_global_response_list
+            )
+
+            _direct_spectrum = [
+                interp1d(
+                    reference_day_spectra.index,
+                    reference_day_spectra[SpectrumType.CLEARSKY_DIRECT.value],
+                    fill_value=(0, 0),
+                    bounds_error=False,
+                )(entry)
+                for entry in pyranometer_wavelength_range
+            ]
+            _direct_spectrum /= sum(_direct_spectrum)
+            pyranometer_direct_response_list = (
+                (_direct_spectrum * np.array(pyranometer_response))
+                .astype(float)
+                .tolist()
+            )
+            adjusted_direct_spectrum = _direct_spectrum / sum(
+                pyranometer_direct_response_list
+            )
+
+            _diffuse_spectrum = [
+                interp1d(
+                    interpolated_spectra.index,
+                    interpolated_spectra[SpectrumType.CLEARSKY_DIFFUSE.value],
+                    fill_value=(0, 0),
+                    bounds_error=False,
+                )(entry)
+                for entry in pyranometer_wavelength_range
+            ]
+            _diffuse_spectrum /= sum(_diffuse_spectrum)
+            pyranometer_diffuse_response_list = (
+                _diffuse_spectrum * np.array(pyranometer_response)
+            ).tolist()
+            adjusted_diffuse_spectrum = _diffuse_spectrum / sum(
+                pyranometer_diffuse_response_list
+            )
+
+            _cloudy_spectrum = [
+                interp1d(
+                    cloudy_day_spectra.index,
+                    cloudy_day_spectra[SpectrumType.CLOUDY_DAY.value],
+                    fill_value=(0, 0),
+                    bounds_error=False,
+                )(entry)
+                for entry in pyranometer_wavelength_range
+            ]
+            _cloudy_spectrum /= sum(_cloudy_spectrum)
+            pyranometer_cloudy_day_response_list = (
+                _cloudy_spectrum * np.array(pyranometer_response)
+            ).tolist()
+            adjusted_cloudy_spectrum = _cloudy_spectrum / sum(
+                pyranometer_cloudy_day_response_list
+            )
+
+            #######################
+            # Plotting code No. 0 #
+            #######################
+
+            # Construct a frame which can be used.
+            pyranometer_adjusted_interpolated_spectra = pd.DataFrame(
+                {
+                    WAVELENGTH: pyranometer_wavelength_range,
+                    SpectrumType.CLEARSKY_DIFFUSE.value: adjusted_diffuse_spectrum,
+                    SpectrumType.CLEARSKY_DIRECT.value: adjusted_direct_spectrum,
+                    SpectrumType.CLEARSKY_GLOBAL.value: adjusted_global_spectrum,
+                    SpectrumType.CLOUDY_DAY.value: adjusted_cloudy_spectrum,
+                }
+            )
+            pyranometer_adjusted_interpolated_spectra = (
+                pyranometer_adjusted_interpolated_spectra.set_index(WAVELENGTH)
+            )
+            pyranometer_adjusted_interpolated_spectra = (
+                pyranometer_adjusted_interpolated_spectra.loc[wavelength_range]
+            )
+
+    else:
+        pyranometer_adjusted_interpolated_spectra = interpolated_spectra.copy()
+
     # Compute the position of the sun at each time within the simulation.
     location = Location(
         parsed_args.altitude, parsed_args.latitude, parsed_args.longitude
@@ -1273,7 +1404,7 @@ def main(args: list[Any]) -> None:
         )
         clearsky_ground_direct_irradiance_map_sans_pv_module: np.ndarray = (
             clearsky_ground_direct_irradiance_map_sans_pv_module.to_numpy()[:, :, None]
-            * np.array(interpolated_spectra.direct)[None, None, :]
+            * np.array(pyranometer_adjusted_interpolated_spectra.direct)[None, None, :]
         ).astype(float)
 
         # Compute the light which passes through the PV modules
@@ -1312,7 +1443,11 @@ def main(args: list[Any]) -> None:
         )
         post_tmm_spectra: np.ndarray = np.array(
             [
-                [stack_tmm[min(angle, max(stack_tmm.columns))] * interpolated_spectra.direct.values for angle in row]
+                [
+                    stack_tmm[min(angle, max(stack_tmm.columns))]
+                    * pyranometer_adjusted_interpolated_spectra.direct.values
+                    for angle in row
+                ]
                 for _, row in solar_angles.iterrows()
             ]
         )
@@ -1321,7 +1456,10 @@ def main(args: list[Any]) -> None:
             * post_tmm_spectra
         ).astype(float)
 
-        clearsky_ground_direct_irradiance_map = clearsky_ground_direct_irradiance_map_sans_pv_module + clearsky_ground_direct_irradiance_map_with_pv_module
+        clearsky_ground_direct_irradiance_map = (
+            clearsky_ground_direct_irradiance_map_sans_pv_module
+            + clearsky_ground_direct_irradiance_map_with_pv_module
+        )
 
         #######################
         # Plotting code No. 1 #
@@ -1329,7 +1467,7 @@ def main(args: list[Any]) -> None:
 
         # If the ends are open, add the irradiance from the ends.
         if polytunnel.ends == EndType.OPEN:
-            with time_execution("End--direct irradiance calculation")
+            with time_execution("End--direct irradiance calculation"):
                 end_intercept_projection: pd.DataFrame = pd.DataFrame(
                     [
                         open_end_direct_irradiance(
@@ -1354,7 +1492,9 @@ def main(args: list[Any]) -> None:
                 # Code with spectra:
                 end_direct_irradiance_map: np.ndarray = (
                     end_direct_irradiance_map.to_numpy()[:, :, None]
-                    * np.array(interpolated_spectra.direct)[None, None, :]
+                    * np.array(pyranometer_adjusted_interpolated_spectra.direct)[
+                        None, None, :
+                    ]
                 ).astype(float)
 
                 clearsky_ground_direct_irradiance_map += end_direct_irradiance_map
@@ -1370,7 +1510,9 @@ def main(args: list[Any]) -> None:
                     "w",
                     encoding="UTF-8",
                 ) as end_irradiance_file:
-                    csv.writer(end_irradiance_file, delimiter=",").writerows(end_direct_irradiance_map.tolist())
+                    csv.writer(end_irradiance_file, delimiter=",").writerows(
+                        end_direct_irradiance_map.tolist()
+                    )
                     # end_direct_irradiance_map.to_csv(end_irradiance_file)
 
                 #######################
@@ -1379,7 +1521,9 @@ def main(args: list[Any]) -> None:
 
         direct_day_ground_direct_irradiance = (
             clearsky_ground_direct_irradiance_map
-            * dni_to_weather_adjustment_factor.reset_index(drop=True).to_numpy()[:, :, None]
+            * dni_to_weather_adjustment_factor.reset_index(drop=True).to_numpy()[
+                :, :, None
+            ]
         )
 
     import pdb
@@ -3725,6 +3869,155 @@ def main(args: list[Any]) -> None:
 # )
 # ani.save(f"clearsky_total_ground_irradiance_map_{INDEX}.gif", writer="pillow", fps=15)
 # plt.show()
+
+
+#######################
+# Plotting code No. 0 #
+#######################
+#
+# try:
+#     sns.set_palette(
+#         # ["#648FFF", "#785EF0", "#DC267F", "#FE6100", "#FFB000", "#0041C8"]
+#         [
+#             "#423252",
+#             "#4A688B",
+#             "#779FB1",
+#             "#36C7B8",
+#             "#FBC412",
+#             "#e04606",
+#         ],
+#     )
+# except UnboundLocalError:
+#     import seaborn as sns
+#     import matplotlib.pyplot as plt
+
+#     sns.set_palette(
+#         # ["#648FFF", "#785EF0", "#DC267F", "#FE6100", "#FFB000", "#0041C8"]
+#         [
+#             "#423252",
+#             "#4A688B",
+#             "#779FB1",
+#             "#36C7B8",
+#             "#FBC412",
+#             "#e04606",
+#         ],
+#     )
+
+# plt.figure(figsize=(171 * MM, 120 * MM))
+# plt.plot(
+#     pyranometer_wavelength_range,
+#     adjusted_global_spectrum,
+#     label=f"Global response ({sum(adjusted_global_spectrum):.4g}×)",
+#     color="C5",
+# )
+# plt.plot(
+#     pyranometer_wavelength_range,
+#     adjusted_direct_spectrum,
+#     label=f"Direct response ({sum(adjusted_direct_spectrum):.4g}×)",
+#     color="C4",
+# )
+# plt.plot(
+#     pyranometer_wavelength_range,
+#     adjusted_diffuse_spectrum,
+#     label=f"Clearsky diffuse response ({sum(adjusted_diffuse_spectrum):.4g}×)",
+#     color="C2",
+# )
+# plt.plot(
+#     pyranometer_wavelength_range,
+#     adjusted_cloudy_spectrum,
+#     label=f"Cloudy-day response ({sum(adjusted_cloudy_spectrum):.4g}×)",
+#     color="C0",
+# )
+# # plt.plot(pyranometer_wavelength_range, _global_spectrum, dashes=(2,4), label="Global solar irradiance", color="C5")
+# (right_axis := (left_axis := plt.gca()).twinx()).plot(
+#     pyranometer_wavelength_range,
+#     pyranometer_response,
+#     ":",
+#     label="Raw pyranometer response",
+#     color="C1",
+# )
+
+# left_axis.set_ylabel("Normalised solar spectra")
+# right_axis.set_ylabel("Normalised pyranometer response")
+
+# left_axis.tick_params(axis="both", which="major", labelsize=7)
+# right_axis.tick_params(axis="both", which="major", labelsize=7)
+# left_axis.set_xlim(0, 4000)
+
+# left_handles, left_labels = left_axis.get_legend_handles_labels()
+# right_handles, right_labels = right_axis.get_legend_handles_labels()
+# plt.legend(
+#     left_handles + right_handles,
+#     left_labels + right_labels,
+#     loc="upper right",
+#     fontsize=7,
+# )
+
+# plt.savefig(
+#     f"pyranometer_response_{INDEX}.pdf",
+#     format="pdf",
+#     bbox_inches="tight",
+#     pad_inches=0.05,
+# )
+
+# plt.figure(figsize=(83 * MM, 60 * MM))
+# plt.plot(
+#     pyranometer_wavelength_range,
+#     adjusted_global_spectrum,
+#     label=f"Global response ({sum(adjusted_global_spectrum):.4g}×)",
+#     color="C5",
+# )
+# plt.plot(
+#     pyranometer_wavelength_range,
+#     adjusted_direct_spectrum,
+#     label=f"Direct response ({sum(adjusted_direct_spectrum):.4g}×)",
+#     color="C4",
+# )
+# plt.plot(
+#     pyranometer_wavelength_range,
+#     adjusted_diffuse_spectrum,
+#     label=f"Clearsky diffuse response ({sum(adjusted_diffuse_spectrum):.4g}×)",
+#     color="C2",
+# )
+# plt.plot(
+#     pyranometer_wavelength_range,
+#     adjusted_cloudy_spectrum,
+#     label=f"Cloudy-day response ({sum(adjusted_cloudy_spectrum):.4g}×)",
+#     color="C0",
+# )
+# # plt.plot(pyranometer_wavelength_range, _global_spectrum, dashes=(2,4), label="Global solar irradiance", color="C5")
+# (right_axis := (left_axis := plt.gca()).twinx()).plot(
+#     pyranometer_wavelength_range,
+#     pyranometer_response,
+#     ":",
+#     label="Raw pyranometer response",
+#     color="C1",
+# )
+
+# left_axis.set_ylabel("Normalised solar spectra")
+# right_axis.set_ylabel("Normalised pyranometer response")
+
+# left_axis.tick_params(axis="both", which="major", labelsize=7)
+# right_axis.tick_params(axis="both", which="major", labelsize=7)
+# left_axis.set_xlim(0, 4000)
+
+# left_handles, left_labels = left_axis.get_legend_handles_labels()
+# right_handles, right_labels = right_axis.get_legend_handles_labels()
+# plt.legend(
+#     left_handles + right_handles,
+#     left_labels + right_labels,
+#     loc="upper right",
+#     fontsize=7,
+# )
+
+# plt.savefig(
+#     f"pyranometer_response_small_{INDEX}.pdf",
+#     format="pdf",
+#     bbox_inches="tight",
+#     pad_inches=0.05,
+# )
+# plt.show()
+
 
 ########################
 # Plotting code No. 1a #
