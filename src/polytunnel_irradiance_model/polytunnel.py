@@ -2906,7 +2906,11 @@ def calculate_solid_angles(
         meshpoints = [meshpoints]
 
     unobstructed_solid_angles: float | list[float] = [
-        pi - abs(meshpoint.theta_cylindrical) for meshpoint in meshpoints
+        pi - abs(unrotated_meshpoint.theta_cylindrical)
+        for unrotated_meshpoint in [
+            polytunnel.curve.calculate_unrotated_vector(meshpoint)
+            for meshpoint in meshpoints
+        ]
     ]
 
     # Subtract the obstruction, save, and return.
