@@ -15,6 +15,7 @@ distribution within a curved structure, _e.g._, a polytunnel.
 """
 
 import argparse
+import colour.plotting
 import csv
 import datetime
 import enum
@@ -25,12 +26,14 @@ import sys
 import time
 
 from collections import defaultdict
+from colour import SpectralDistribution, XYZ_to_sRGB, sd_to_XYZ
 from contextlib import contextmanager
 from dataclasses import dataclass
 from math import ceil, cos, floor, pi, sqrt
 from typing import Any, Callable, Generator, Match, Pattern
 
 import json
+import matplotlib.colors as m_colors
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -102,6 +105,10 @@ AUTO_GENERATED: str = "auto_generated"
 #   The error in the bolometer as a fraction.
 BOLOMETER_ERROR: float = 0.1
 
+# CHLOROPHYL_A_EXTINCTION_FILENAME:
+#   Name of the file containing chlorophyl-a extinction data
+CHLOROPHYL_A_EXTINCTION_FILENAME: str = "chrlorophyl_a_extinction.csv"
+
 # CLOUDY_DAY_SPECTRA_DATA_FILE:
 #   Name of the file used for cloudy-day weather data.
 CLOUDY_DAY_SPECTRA_DATA_FILE: str = "brecl_spectra_on_typical_days.csv"
@@ -136,7 +143,7 @@ INCOMING_SHORTWAVE_DIRECT: str = "SWIN_LEVEL3_DIRECT"
 
 # INDEX:
 #   Integer for storing index of plots.
-INDEX: int = 3
+INDEX: int = 4
 
 # MODULES:
 #   Keyword for parsing PV-module information.
@@ -145,6 +152,10 @@ MODULES: str = "modules"
 # MM:
 #   Conversion factor from mm to inches.
 MM = 1 / 25.4
+
+# PAR_WAVELENGTH_RANGE:
+#   The range of photosynthetically-active radiation.
+PAR_WAVELENGTH_RANGE: list[float] = list(range(400, 701))
 
 # POLYTUNNEL_HEADER_STRING:
 #   Header string for the polytunnel-PV code.
@@ -1315,6 +1326,7 @@ def main(args: list[Any]) -> None:
     )
 
     with time_execution("Readjusting with Hadlow data"):
+        # Without spectra:
         clearsky_total_diffuse_surface_irradiance = (
             diffuse_surface_irradiance.reset_index(drop=True)
             + (
@@ -1334,6 +1346,11 @@ def main(args: list[Any]) -> None:
             clearsky_total_diffuse_surface_irradiance
             * dni_to_weather_adjustment_factor.reset_index(drop=True)
         )
+
+        # With spectra:
+        import pdb
+
+        pdb.set_trace()
 
     clearsky_total_diffuse_surface_irradiance.index = (
         dni_to_weather_adjustment_factor.index
@@ -1403,9 +1420,17 @@ def main(args: list[Any]) -> None:
             )
         )
         clearsky_ground_direct_irradiance_map_sans_pv_module: np.ndarray = (
-            clearsky_ground_direct_irradiance_map_sans_pv_module.to_numpy()[:, :, None]
-            * np.array(pyranometer_adjusted_interpolated_spectra.direct)[None, None, :]
-        ).astype(float)
+            (
+                clearsky_ground_direct_irradiance_map_sans_pv_module.to_numpy()[
+                    :, :, None
+                ]
+                * np.array(pyranometer_adjusted_interpolated_spectra.direct)[
+                    None, None, :
+                ]
+            )
+            .astype(float)
+            .clip(0, None)
+        )
 
         # Compute the light which passes through the PV modules
         clearsky_ground_direct_irradiance_map_with_pv_module: pd.DataFrame = (
@@ -1436,7 +1461,7 @@ def main(args: list[Any]) -> None:
                     )
                 ]
             )
-        )
+        ).clip(0, None)
         # Compute the incident angles for each element to compute spectra.
         solar_angles: pd.DataFrame = round_nearest(
             np.degrees(np.acos(dot_product_map)), _tmm_angular_resolution
@@ -1459,11 +1484,11 @@ def main(args: list[Any]) -> None:
         clearsky_ground_direct_irradiance_map = (
             clearsky_ground_direct_irradiance_map_sans_pv_module
             + clearsky_ground_direct_irradiance_map_with_pv_module
-        )
+        ).clip(0, None)
 
-        #######################
-        # Plotting code No. 1 #
-        #######################
+        ########################
+        # Plotting code No. 1b #
+        ########################
 
         # If the ends are open, add the irradiance from the ends.
         if polytunnel.ends == EndType.OPEN:
@@ -1497,7 +1522,9 @@ def main(args: list[Any]) -> None:
                     ]
                 ).astype(float)
 
-                clearsky_ground_direct_irradiance_map += end_direct_irradiance_map
+                clearsky_ground_direct_irradiance_map += end_direct_irradiance_map.clip(
+                    0, None
+                )
 
                 with open(
                     os.path.join(
@@ -1516,7 +1543,7 @@ def main(args: list[Any]) -> None:
                     # end_direct_irradiance_map.to_csv(end_irradiance_file)
 
                 #######################
-                # Plotting code No. 1 #
+                # Plotting code No. 1b #
                 #######################
 
         direct_day_ground_direct_irradiance = (
@@ -1525,6 +1552,14 @@ def main(args: list[Any]) -> None:
                 :, :, None
             ]
         )
+
+        ########################
+        # Plotting code No. 1b #
+        ########################
+
+        ########################
+        # Plotting code No. 1c #
+        ########################
 
     import pdb
 
@@ -1976,7 +2011,7 @@ def main(args: list[Any]) -> None:
                 #     interval=300,
                 #     repeat=False,
                 # )
-                # ani.save("diffuse_day_total_ground_irradiance_map_2.gif", writer="pillow", fps=15)
+                # ani.save("diffuse_day_total_ground_irradiance_map_2.gif", writer="pillow", fps=5)
                 # plt.show()
 
                 #######################
@@ -3137,7 +3172,7 @@ def main(args: list[Any]) -> None:
         interval=300,
         repeat=False,
     )
-    ani.save("16_may_24_control_diffuse_ground_t_0.5.gif", writer="pillow", fps=15)
+    ani.save("16_may_24_control_diffuse_ground_t_0.5.gif", writer="pillow", fps=5)
 
     import matplotlib.pyplot as plt
     import matplotlib.animation as animation
@@ -3183,7 +3218,7 @@ def main(args: list[Any]) -> None:
         interval=300,
         repeat=False,
     )
-    ani.save("direct_day_total_ground_irradiance_map.gif", writer="pillow", fps=15)
+    ani.save("direct_day_total_ground_irradiance_map.gif", writer="pillow", fps=5)
     plt.show()
 
     fig, ax = plt.subplots()
@@ -3224,7 +3259,7 @@ def main(args: list[Any]) -> None:
         interval=300,
         repeat=False,
     )
-    ani.save("diffuse_day_total_ground_irradiance_map.gif", writer="pillow", fps=15)
+    ani.save("diffuse_day_total_ground_irradiance_map.gif", writer="pillow", fps=5)
     plt.show()
 
     import seaborn as sns
@@ -3867,7 +3902,7 @@ def main(args: list[Any]) -> None:
 #     interval=300,
 #     repeat=False,
 # )
-# ani.save(f"clearsky_total_ground_irradiance_map_{INDEX}.gif", writer="pillow", fps=15)
+# ani.save(f"clearsky_total_ground_irradiance_map_{INDEX}.gif", writer="pillow", fps=5)
 # plt.show()
 
 
@@ -4058,6 +4093,454 @@ def main(args: list[Any]) -> None:
 
 # plt.show()
 
+########################
+# Plotting code No. 1b #
+########################
+
+# import matplotlib.pyplot as plt
+# import matplotlib.animation as animation
+# import seaborn as sns
+# import numpy as np
+
+# sns.set_context("notebook")
+
+# fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
+
+# # Create initial heatmap with dummy data
+# initial_data = np.reshape(
+#     clearsky_ground_direct_irradiance_map_sans_pv_module[0].sum(axis=1),
+#     (
+#         _dim_x := polytunnel.meshgrid_resolution,
+#         _dim_y := polytunnel.length_wise_meshgrid_resolution,
+#     ),
+# )
+# vmin = 0
+# vmax = max(
+#     direct_day_ground_direct_irradiance.sum(axis=2).max(axis=1)
+# )
+# heatmap = sns.heatmap(
+#     initial_data,
+#     vmin=vmin,
+#     vmax=vmax,
+#     cmap="viridis",
+#     cbar=True,
+#     ax=ax,
+#     cbar_kws={"label": "Irradiance / W/m$^2$"},
+# )
+
+# _ten_minutes: int = int(
+#     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
+# )
+
+# def update(time_index: int):
+#     ax.clear()  # clear previous heatmap
+#     data = np.reshape(
+#         clearsky_ground_direct_irradiance_map_sans_pv_module[time_index].sum(
+#             axis=1
+#         ),
+#         (_dim_x, _dim_y),
+#     )
+#     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
+#     ax.set_title(
+#         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
+#         f"Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
+#     )
+
+# # Create the animation
+# ani = animation.FuncAnimation(
+#     fig,
+#     update,
+#     frames=len(clearsky_ground_direct_irradiance_map_sans_pv_module),
+#     interval=300,
+#     repeat=False,
+# )
+# ani.save(
+#     f"clearsky_ground_direct_irradiance_map_sans_pv_module_{INDEX}.gif",
+#     writer="pillow",
+#     fps=5,
+# )
+# plt.show()
+
+# fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
+
+# # Create initial heatmap with dummy data
+# initial_data = np.reshape(
+#     clearsky_ground_direct_irradiance_map_with_pv_module[0].sum(axis=1),
+#     (
+#         _dim_x := polytunnel.meshgrid_resolution,
+#         _dim_y := polytunnel.length_wise_meshgrid_resolution,
+#     ),
+# )
+# heatmap = sns.heatmap(
+#     initial_data,
+#     vmin=vmin,
+#     vmax=vmax,
+#     cmap="viridis",
+#     cbar=True,
+#     ax=ax,
+#     cbar_kws={"label": "Irradiance / W/m$^2$"},
+# )
+
+# _ten_minutes: int = int(
+#     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
+# )
+
+# def update(time_index: int):
+#     ax.clear()  # clear previous heatmap
+#     data = np.reshape(
+#         clearsky_ground_direct_irradiance_map_with_pv_module[time_index].sum(
+#             axis=1
+#         ),
+#         (_dim_x, _dim_y),
+#     )
+#     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
+#     ax.set_title(
+#         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
+#         f"Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
+#     )
+
+# # Create the animation
+# ani = animation.FuncAnimation(
+#     fig,
+#     update,
+#     frames=len(clearsky_ground_direct_irradiance_map_with_pv_module),
+#     interval=300,
+#     repeat=False,
+# )
+# ani.save(
+#     f"clearsky_ground_direct_irradiance_map_with_pv_module_{INDEX}.gif",
+#     writer="pillow",
+#     fps=5,
+# )
+# plt.show()
+
+# fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
+
+# # Create initial heatmap with dummy data
+# initial_data = np.reshape(
+#     end_direct_irradiance_map[0].sum(axis=1),
+#     (
+#         _dim_x := polytunnel.meshgrid_resolution,
+#         _dim_y := polytunnel.length_wise_meshgrid_resolution,
+#     ),
+# )
+# heatmap = sns.heatmap(
+#     initial_data,
+#     vmin=vmin,
+#     vmax=vmax,
+#     cmap="viridis",
+#     cbar=True,
+#     ax=ax,
+#     cbar_kws={"label": "Irradiance / W/m$^2$"},
+# )
+
+# _ten_minutes: int = int(
+#     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
+# )
+
+# def update(time_index: int):
+#     ax.clear()  # clear previous heatmap
+#     data = np.reshape(
+#         end_direct_irradiance_map[time_index].sum(axis=1),
+#         (_dim_x, _dim_y),
+#     )
+#     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
+#     ax.set_title(
+#         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
+#         f"Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
+#     )
+
+# # Create the animation
+# ani = animation.FuncAnimation(
+#     fig,
+#     update,
+#     frames=len(end_direct_irradiance_map),
+#     interval=300,
+#     repeat=False,
+# )
+# ani.save(
+#     f"end_direct_irradiance_map_{INDEX}.gif",
+#     writer="pillow",
+#     fps=5,
+# )
+# plt.show()
+
+# fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
+
+# # Create initial heatmap with dummy data
+# initial_data = np.reshape(
+#     direct_day_ground_direct_irradiance[0].sum(axis=1),
+#     (
+#         _dim_x := polytunnel.meshgrid_resolution,
+#         _dim_y := polytunnel.length_wise_meshgrid_resolution,
+#     ),
+# )
+# heatmap = sns.heatmap(
+#     initial_data,
+#     vmin=vmin,
+#     vmax=vmax,
+#     cmap="viridis",
+#     cbar=True,
+#     ax=ax,
+#     cbar_kws={"label": "Irradiance / W/m$^2$"},
+# )
+
+# _ten_minutes: int = int(
+#     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
+# )
+
+# def update(time_index: int):
+#     ax.clear()  # clear previous heatmap
+#     data = np.reshape(
+#         direct_day_ground_direct_irradiance[time_index].sum(axis=1),
+#         (_dim_x, _dim_y),
+#     )
+#     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
+#     ax.set_title(
+#         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
+#         f"Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
+#     )
+
+# # Create the animation
+# ani = animation.FuncAnimation(
+#     fig,
+#     update,
+#     frames=len(direct_day_ground_direct_irradiance),
+#     interval=300,
+#     repeat=False,
+# )
+# ani.save(
+#     f"direct_day_ground_direct_irradiance_{INDEX}.gif",
+#     writer="pillow",
+#     fps=5,
+# )
+# plt.show()
+
+########################
+# Plotting code No. 1c #
+########################
+
+# import matplotlib.pyplot as plt
+# import matplotlib.animation as animation
+# import seaborn as sns
+# import numpy as np
+
+# sns.set_context("notebook")
+
+# # Create a slice tool for the PAR wavelengths.
+# par_filter: list[bool] = [entry in PAR_WAVELENGTH_RANGE for entry in wavelength_range]
+
+# fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
+
+# # Create initial heatmap with dummy data
+# initial_data = np.reshape(
+#     clearsky_ground_direct_irradiance_map_sans_pv_module[0].sum(axis=1),
+#     (
+#         _dim_x := polytunnel.meshgrid_resolution,
+#         _dim_y := polytunnel.length_wise_meshgrid_resolution,
+#     ),
+# )
+# vmin = 0
+# vmax = max(
+#     (par_filter * direct_day_ground_direct_irradiance).sum(axis=2).max(axis=1)
+# )
+# heatmap = sns.heatmap(
+#     initial_data,
+#     vmin=vmin,
+#     vmax=vmax,
+#     cmap="viridis",
+#     cbar=True,
+#     ax=ax,
+#     cbar_kws={"label": "Irradiance / W/m$^2$"},
+# )
+
+# _ten_minutes: int = int(
+#     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
+# )
+
+# def update(time_index: int):
+#     ax.clear()  # clear previous heatmap
+#     data = np.reshape(
+#         (par_filter * clearsky_ground_direct_irradiance_map_sans_pv_module[time_index]).sum(
+#             axis=1
+#         ),
+#         (_dim_x, _dim_y),
+#     )
+#     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
+#     ax.set_title(
+#         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
+#         f"Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
+#     )
+
+# # Create the animation
+# ani = animation.FuncAnimation(
+#     fig,
+#     update,
+#     frames=len(clearsky_ground_direct_irradiance_map_sans_pv_module),
+#     interval=300,
+#     repeat=False,
+# )
+# ani.save(
+#     f"clearsky_ground_direct_par_wm2_map_sans_pv_module_{INDEX}.gif",
+#     writer="pillow",
+#     fps=5,
+# )
+# plt.show()
+
+# fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
+
+# # Create initial heatmap with dummy data
+# initial_data = np.reshape(
+#     clearsky_ground_direct_irradiance_map_with_pv_module[0].sum(axis=1),
+#     (
+#         _dim_x := polytunnel.meshgrid_resolution,
+#         _dim_y := polytunnel.length_wise_meshgrid_resolution,
+#     ),
+# )
+# heatmap = sns.heatmap(
+#     initial_data,
+#     vmin=vmin,
+#     vmax=vmax,
+#     cmap="viridis",
+#     cbar=True,
+#     ax=ax,
+#     cbar_kws={"label": "Irradiance / W/m$^2$"},
+# )
+
+# _ten_minutes: int = int(
+#     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
+# )
+
+# def update(time_index: int):
+#     ax.clear()  # clear previous heatmap
+#     data = np.reshape(
+#         (par_filter * clearsky_ground_direct_irradiance_map_with_pv_module[time_index]).sum(
+#             axis=1
+#         ),
+#         (_dim_x, _dim_y),
+#     )
+#     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
+#     ax.set_title(
+#         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
+#         f"Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
+#     )
+
+# # Create the animation
+# ani = animation.FuncAnimation(
+#     fig,
+#     update,
+#     frames=len(clearsky_ground_direct_irradiance_map_with_pv_module),
+#     interval=300,
+#     repeat=False,
+# )
+# ani.save(
+#     f"clearsky_ground_direct_par_wm2_map_with_pv_module_{INDEX}.gif",
+#     writer="pillow",
+#     fps=5,
+# )
+# plt.show()
+
+# fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
+
+# # Create initial heatmap with dummy data
+# initial_data = np.reshape(
+#     end_direct_irradiance_map[0].sum(axis=1),
+#     (
+#         _dim_x := polytunnel.meshgrid_resolution,
+#         _dim_y := polytunnel.length_wise_meshgrid_resolution,
+#     ),
+# )
+# heatmap = sns.heatmap(
+#     initial_data,
+#     vmin=vmin,
+#     vmax=vmax,
+#     cmap="viridis",
+#     cbar=True,
+#     ax=ax,
+#     cbar_kws={"label": "Irradiance / W/m$^2$"},
+# )
+
+# _ten_minutes: int = int(
+#     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
+# )
+
+# def update(time_index: int):
+#     ax.clear()  # clear previous heatmap
+#     data = np.reshape(
+#         (par_filter * end_direct_irradiance_map[time_index]).sum(axis=1),
+#         (_dim_x, _dim_y),
+#     )
+#     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
+#     ax.set_title(
+#         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
+#         f"Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
+#     )
+
+# # Create the animation
+# ani = animation.FuncAnimation(
+#     fig,
+#     update,
+#     frames=len(end_direct_irradiance_map),
+#     interval=300,
+#     repeat=False,
+# )
+# ani.save(
+#     f"end_direct_par_wm2_map_{INDEX}.gif",
+#     writer="pillow",
+#     fps=5,
+# )
+# plt.show()
+
+# fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
+
+# # Create initial heatmap with dummy data
+# initial_data = np.reshape(
+#     direct_day_ground_direct_irradiance[0].sum(axis=1),
+#     (
+#         _dim_x := polytunnel.meshgrid_resolution,
+#         _dim_y := polytunnel.length_wise_meshgrid_resolution,
+#     ),
+# )
+# heatmap = sns.heatmap(
+#     initial_data,
+#     vmin=vmin,
+#     vmax=vmax,
+#     cmap="viridis",
+#     cbar=True,
+#     ax=ax,
+#     cbar_kws={"label": "Irradiance / W/m$^2$"},
+# )
+
+# _ten_minutes: int = int(
+#     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
+# )
+
+# def update(time_index: int):
+#     ax.clear()  # clear previous heatmap
+#     data = np.reshape(
+#         (par_filter * direct_day_ground_direct_irradiance[time_index]).sum(axis=1),
+#         (_dim_x, _dim_y),
+#     )
+#     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
+#     ax.set_title(
+#         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
+#         f"Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
+#     )
+
+# # Create the animation
+# ani = animation.FuncAnimation(
+#     fig,
+#     update,
+#     frames=len(direct_day_ground_direct_irradiance),
+#     interval=300,
+#     repeat=False,
+# )
+# ani.save(
+#     f"direct_day_ground_direct_par_wm2_{INDEX}.gif",
+#     writer="pillow",
+#     fps=5,
+# )
+# plt.show()
 
 if __name__ == "__main__":
     main(sys.argv[1:])
