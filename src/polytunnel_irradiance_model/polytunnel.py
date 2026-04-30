@@ -681,10 +681,10 @@ class MeshPoint(Vector):
         """Method run post instantiation of the point."""
 
         # Compute the normal vector to the point.
-        if self._normal_vector is None:
-            self._normal_vector = Vector(self.x, self.y, self.z).normalise()
-        if isinstance(self._normal_vector, dict):
-            self._normal_vector = Vector(**self._normal_vector)
+        if self.normal_vector is None:
+            self.normal_vector = Vector(self.x, self.y, self.z).normalise()
+        if isinstance(self.normal_vector, dict):
+            self.normal_vector = Vector(**self.normal_vector)
 
         # Compute the corners of the point (given that the point starts as a square).
         # Two vectors within the meshpoint can be found. The first will be parallel to
@@ -929,7 +929,19 @@ class MeshPoint(Vector):
 
         self._covered_fraction = covered_fraction
 
-    def set_normal_vector(self, new_normal_vector: Vector) -> None:
+    @property
+    def normal_vector(self) -> Vector:
+        """
+        Access to private normal-vector member.
+
+        :returns:
+            The normal vector for the meshpoint.
+
+        """
+        return self._normal_vector
+
+    @normal_vector.setter
+    def normal_vector(self, new_normal_vector: Vector) -> None:
         """
         Set the normal vector on the meshpoint, _e.g._, after an operation.
 
@@ -1307,7 +1319,7 @@ class RotationMatrix(Matrix):
         # If multiplying by a meshpoint, then rotate the meshpoint and its normal.
         if isinstance(other, MeshPoint):
             coordinate_vector = Vector(*[row * other for row in self.rows])
-            normal_vector = Vector(*[row * other._normal_vector for row in self.rows])
+            normal_vector = Vector(*[row * other.normal_vector for row in self.rows])
 
             meshpoint_dict = asdict(other)
             meshpoint_dict["x"] = coordinate_vector.x
@@ -1315,7 +1327,7 @@ class RotationMatrix(Matrix):
             meshpoint_dict["z"] = coordinate_vector.z
 
             meshpoint = MeshPoint(**meshpoint_dict)
-            meshpoint.set_normal_vector(normal_vector)
+            meshpoint.normal_vector = normal_vector
 
             return meshpoint
 
@@ -2802,8 +2814,6 @@ def calculate_adjacent_polytunnel_solid_angle(
 
     """
 
-    radius: float = polytunnel.curve.radius_of_curvature
-
     def _calculate_meshpoint_adjacent_polytunnel_solid_angle(
         meshpoint: MeshPoint,
     ) -> float:
@@ -2839,7 +2849,7 @@ def calculate_adjacent_polytunnel_solid_angle(
             # Skip points which are around the wrong side of the polytunnel
             if (
                 _dot_product := (
-                    _rotated_surface_to_point * surface_meshpoint._normal_vector
+                    _rotated_surface_to_point * surface_meshpoint.normal_vector
                 )
             ) < 0:
                 continue
@@ -2848,7 +2858,7 @@ def calculate_adjacent_polytunnel_solid_angle(
             projected_area: float = (
                 surface_meshpoint.area
                 * _dot_product
-                / (abs(_surface_to_point) * abs(surface_meshpoint._normal_vector))
+                / (abs(_surface_to_point) * abs(surface_meshpoint.normal_vector))
             )
 
             # Add to the solid angle
@@ -2905,12 +2915,8 @@ def calculate_solid_angles(
     if isinstance(meshpoints, MeshPoint):
         meshpoints = [meshpoints]
 
-    unobstructed_solid_angles: float | list[float] = [
-        pi - abs(unrotated_meshpoint.theta_cylindrical)
-        for unrotated_meshpoint in [
-            polytunnel.curve.calculate_unrotated_vector(meshpoint)
-            for meshpoint in meshpoints
-        ]
+    unobstructed_solid_angles: list[float] = [
+        2 * pi - pi * sin(acos(meshpoint.normal_vector.z)) for meshpoint in meshpoints
     ]
 
     # Subtract the obstruction, save, and return.

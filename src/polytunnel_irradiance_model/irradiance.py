@@ -237,9 +237,7 @@ def open_end_direct_irradiance(
             return 0
 
         # Return the fraction which falls within this region.
-        return _v * polytunnel.curve.calculate_unrotated_vector(
-            meshpoint._normal_vector
-        )
+        return _v * polytunnel.curve.calculate_unrotated_vector(meshpoint.normal_vector)
 
     if not polytunnel.curve.curve_type == CurveType.CIRCULAR:
         raise NotImplementedError("Only circular curve types are implemented.")

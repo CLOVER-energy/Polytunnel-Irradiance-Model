@@ -1103,7 +1103,7 @@ def main(args: list[Any]) -> None:
                             not calculate_adjacent_polytunnel_shading(
                                 meshpoint, polytunnel, solar_position
                             )
-                            and ((meshpoint._normal_vector * solar_position) > 0)
+                            and ((meshpoint.normal_vector * solar_position) > 0)
                             and (solar_position.elevation > 0)
                         )
                         for solar_position in solar_positions
@@ -1137,7 +1137,7 @@ def main(args: list[Any]) -> None:
     dot_product_map = pd.DataFrame(
         {
             meshpoint_index: [
-                meshpoint._normal_vector * solar_position
+                meshpoint.normal_vector * solar_position
                 for solar_position in solar_positions
             ]
             for meshpoint_index, meshpoint in tqdm(
@@ -1282,18 +1282,18 @@ def main(args: list[Any]) -> None:
                     # the ground;
                     surface_index: abs(
                         (_vector := (ground_meshpoint - surface_meshpoint))
-                        * ground_meshpoint._normal_vector
+                        * ground_meshpoint.normal_vector
                     )
                     # multiplied by the angle between the ground-to-surface veccto and the
                     # normal of the surface;
-                    * abs(_vector * surface_meshpoint._normal_vector)
+                    * abs(_vector * surface_meshpoint.normal_vector)
                     # multiplied by the area of the surface element to go from Watts to
                     # Watts per meter squared;
                     * surface_meshpoint.area
                     # all normalised by the 1/distance^2 to scale back to Watts/meter^2.
                     / (
-                        abs(surface_meshpoint._normal_vector)
-                        * abs(ground_meshpoint._normal_vector)
+                        abs(surface_meshpoint.normal_vector)
+                        * abs(ground_meshpoint.normal_vector)
                         * abs(_vector) ** 4
                     )
                     for surface_index, surface_meshpoint in tqdm(
@@ -1323,6 +1323,21 @@ def main(args: list[Any]) -> None:
 
     ground_to_surface_projection_frame: pd.DataFrame = pd.DataFrame(
         ground_to_surface_projection_map
+    )
+
+    # Compute the angle of the sun for each element on the surface in degrees.
+    solar_angles: pd.DataFrame = round_nearest(
+        np.degrees(np.acos(dot_product_map)), _tmm_angular_resolution
+    )
+    surface_post_tmm_direct_spectra: np.ndarray = np.array(
+        [
+            [
+                stack_tmm[min(angle, max(stack_tmm.columns))]
+                * pyranometer_adjusted_interpolated_spectra.direct.values
+                for angle in row
+            ]
+            for _, row in solar_angles.iterrows()
+        ]
     )
 
     with time_execution("Readjusting with Hadlow data"):
@@ -1384,129 +1399,257 @@ def main(args: list[Any]) -> None:
         import pdb
 
         pdb.set_trace()
+        direct_day_total_diffuse_surface_irradiance_with_pv = (
+            parsed_args.diffusivity
+            * (1 - polytunnel_surface_pv_uncovered_fraction_mask.reset_index(drop=True))
+            * direct_surface_irradiance.reset_index(drop=True)
+        ).to_numpy()[:, :, None] * surface_post_tmm_direct_spectra
+
+        # Combine these for a direct day,
+        direct_day_total_diffuse_surface_irradiance = (
+            direct_day_total_diffuse_surface_irradiance_sans_pv
+            + direct_day_total_diffuse_surface_irradiance_with_pv
+        )
+        # and a diffuse day.
+        diffuse_day_total_diffuse_surface_irradiance = (
+            diffuse_day_total_diffuse_surface_irradiance_sans_pv
+            + diffuse_day_total_diffuse_surface_irradiance_with_pv
+        )
 
         ########################
         # Plotting code No. 1d #
         ########################
 
-        # import matplotlib.pyplot as plt
-        # import matplotlib.animation as animation
-        # import seaborn as sns
-        # import numpy as np
+        import matplotlib.pyplot as plt
+        import matplotlib.animation as animation
+        import seaborn as sns
+        import numpy as np
 
-        # sns.set_context("notebook")
+        sns.set_context("notebook")
 
-        # fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
+        fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
 
-        # # Create initial heatmap with dummy data
-        # initial_data = np.reshape(
-        #     diffuse_surface_irradiance.iloc[0],
-        #     (
-        #         _dim_x := polytunnel.meshgrid_resolution,
-        #         _dim_y := polytunnel.length_wise_meshgrid_resolution,
-        #     ),
-        # )
-        # vmin = 0
-        # vmax = diffuse_surface_irradiance.max(axis=1).max()
-        # heatmap = sns.heatmap(
-        #     initial_data,
-        #     vmin=vmin,
-        #     vmax=vmax,
-        #     cmap="viridis",
-        #     cbar=True,
-        #     ax=ax,
-        #     cbar_kws={"label": "Irradiance / W/m$^2$"},
-        # )
+        # Create initial heatmap with dummy data
+        initial_data = np.reshape(
+            diffuse_surface_irradiance.iloc[0],
+            (
+                _dim_x := polytunnel.meshgrid_resolution,
+                _dim_y := polytunnel.length_wise_meshgrid_resolution,
+            ),
+        )
+        vmin = 0
+        vmax = direct_day_total_diffuse_surface_irradiance.sum(axis=2).max(axis=1).max()
+        heatmap = sns.heatmap(
+            initial_data,
+            vmin=vmin,
+            vmax=vmax,
+            cmap="viridis",
+            cbar=True,
+            ax=ax,
+            cbar_kws={"label": "Irradiance / W/m$^2$"},
+        )
 
-        # _ten_minutes: int = int(
-        #     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
-        # )
+        _ten_minutes: int = int(
+            _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
+        )
 
-        # def update(time_index: int):
-        #     ax.clear()  # clear previous heatmap
-        #     data = np.reshape(
-        #         diffuse_surface_irradiance.iloc[time_index],
-        #         (_dim_x, _dim_y),
-        #     )
-        #     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
-        #     ax.set_title(
-        #         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
-        #         f"Time: {time_index // _ten_minutes}:"
-        #         f"{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
-        #     )
+        def update(time_index: int):
+            ax.clear()  # clear previous heatmap
+            data = np.reshape(
+                direct_day_total_diffuse_surface_irradiance[time_index].sum(axis=1),
+                (_dim_x, _dim_y),
+            )
+            sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
+            ax.set_title(
+                f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
+                f"Time: {time_index // _ten_minutes}:"
+                f"{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
+            )
 
-        # # Create the animation
-        # ani = animation.FuncAnimation(
-        #     fig,
-        #     update,
-        #     frames=len(diffuse_surface_irradiance),
-        #     interval=300,
-        #     repeat=False,
-        # )
-        # ani.save(
-        #     f"diffuse_surface_irradiance_{INDEX}.gif",
-        #     writer="pillow",
-        #     fps=5,
-        # )
-        # plt.show()
+        # Create the animation
+        ani = animation.FuncAnimation(
+            fig,
+            update,
+            frames=len(direct_day_total_diffuse_surface_irradiance),
+            interval=300,
+            repeat=False,
+        )
+        ani.save(
+            f"diffuse_surface_irradiance_{INDEX}.gif",
+            writer="pillow",
+            fps=5,
+        )
+        plt.show()
 
-        # fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
+        fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
 
-        # # Create initial heatmap with dummy data
-        # initial_data = np.reshape(
-        #     diffuse_day_total_diffuse_surface_irradiance_sans_pv[0].sum(axis=1),
-        #     (
-        #         _dim_x := polytunnel.meshgrid_resolution,
-        #         _dim_y := polytunnel.length_wise_meshgrid_resolution,
-        #     ),
-        # )
-        # vmin = 0
-        # vmax = max(
-        #     diffuse_day_total_diffuse_surface_irradiance_sans_pv.sum(axis=2).max(axis=1)
-        # )
-        # heatmap = sns.heatmap(
-        #     initial_data,
-        #     vmin=vmin,
-        #     vmax=vmax,
-        #     cmap="viridis",
-        #     cbar=True,
-        #     ax=ax,
-        #     cbar_kws={"label": "Irradiance / W/m$^2$"},
-        # )
+        # Create initial heatmap with dummy data
+        initial_data = np.reshape(
+            diffuse_day_total_diffuse_surface_irradiance_sans_pv[0].sum(axis=1),
+            (
+                _dim_x := polytunnel.meshgrid_resolution,
+                _dim_y := polytunnel.length_wise_meshgrid_resolution,
+            ),
+        )
+        vmin = 0
+        heatmap = sns.heatmap(
+            initial_data,
+            vmin=vmin,
+            vmax=vmax,
+            cmap="viridis",
+            cbar=True,
+            ax=ax,
+            cbar_kws={"label": "Irradiance / W/m$^2$"},
+        )
 
-        # _ten_minutes: int = int(
-        #     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
-        # )
+        _ten_minutes: int = int(
+            _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
+        )
 
-        # def update(time_index: int):
-        #     ax.clear()  # clear previous heatmap
-        #     data = np.reshape(
-        #         diffuse_day_total_diffuse_surface_irradiance_sans_pv[time_index].sum(
-        #             axis=1
-        #         ),
-        #         (_dim_x, _dim_y),
-        #     )
-        #     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
-        #     ax.set_title(
-        #         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
-        #         f"Time: {time_index // _ten_minutes}:"
-        #         f"{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
-        #     )
+        def update(time_index: int):
+            ax.clear()  # clear previous heatmap
+            data = np.reshape(
+                diffuse_day_total_diffuse_surface_irradiance_sans_pv[time_index].sum(
+                    axis=1
+                ),
+                (_dim_x, _dim_y),
+            )
+            sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
+            ax.set_title(
+                f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
+                f"Time: {time_index // _ten_minutes}:"
+                f"{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
+            )
 
-        # # Create the animation
-        # ani = animation.FuncAnimation(
-        #     fig,
-        #     update,
-        #     frames=len(diffuse_day_total_diffuse_surface_irradiance_sans_pv),
-        #     interval=300,
-        #     repeat=False,
-        # )
-        # ani.save(
-        #     f"diffuse_day_total_diffuse_surface_irradiance_sans_pv_{INDEX}.gif",
-        #     writer="pillow",
-        #     fps=5,
-        # )
-        # plt.show()
+        # Create the animation
+        ani = animation.FuncAnimation(
+            fig,
+            update,
+            frames=len(diffuse_day_total_diffuse_surface_irradiance_sans_pv),
+            interval=300,
+            repeat=False,
+        )
+        ani.save(
+            f"diffuse_day_total_diffuse_surface_irradiance_sans_pv_{INDEX}.gif",
+            writer="pillow",
+            fps=5,
+        )
+        plt.show()
+
+        fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
+
+        # Create initial heatmap with dummy data
+        initial_data = np.reshape(
+            direct_day_total_diffuse_surface_irradiance_with_pv[0].sum(axis=1),
+            (
+                _dim_x := polytunnel.meshgrid_resolution,
+                _dim_y := polytunnel.length_wise_meshgrid_resolution,
+            ),
+        )
+        vmin = 0
+        heatmap = sns.heatmap(
+            initial_data,
+            vmin=vmin,
+            vmax=vmax,
+            cmap="viridis",
+            cbar=True,
+            ax=ax,
+            cbar_kws={"label": "Irradiance / W/m$^2$"},
+        )
+
+        _ten_minutes: int = int(
+            _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
+        )
+
+        def update(time_index: int):
+            ax.clear()  # clear previous heatmap
+            data = np.reshape(
+                direct_day_total_diffuse_surface_irradiance_with_pv[time_index].sum(
+                    axis=1
+                ),
+                (_dim_x, _dim_y),
+            )
+            sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
+            ax.set_title(
+                f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
+                f"Time: {time_index // _ten_minutes}:"
+                f"{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
+            )
+
+        # Create the animation
+        ani = animation.FuncAnimation(
+            fig,
+            update,
+            frames=len(diffuse_day_total_diffuse_surface_irradiance_sans_pv),
+            interval=300,
+            repeat=False,
+        )
+        ani.save(
+            f"direct_day_total_diffuse_surface_irradiance_with_pv_{INDEX}.gif",
+            writer="pillow",
+            fps=5,
+        )
+        plt.show()
+
+        fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
+
+        # Create initial heatmap with dummy data
+        initial_data = np.reshape(
+            direct_day_total_diffuse_surface_irradiance_with_pv[0].sum(axis=1),
+            (
+                _dim_x := polytunnel.meshgrid_resolution,
+                _dim_y := polytunnel.length_wise_meshgrid_resolution,
+            ),
+        )
+        vmin = 0
+        vmax = (
+            direct_day_total_diffuse_surface_irradiance_with_pv.sum(axis=2)
+            .max(axis=1)
+            .max()
+        )
+        heatmap = sns.heatmap(
+            initial_data,
+            vmin=vmin,
+            vmax=vmax,
+            cmap="viridis",
+            cbar=True,
+            ax=ax,
+            cbar_kws={"label": "Irradiance / W/m$^2$"},
+        )
+
+        _ten_minutes: int = int(
+            _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
+        )
+
+        def update(time_index: int):
+            ax.clear()  # clear previous heatmap
+            data = np.reshape(
+                direct_day_total_diffuse_surface_irradiance_with_pv[time_index].sum(
+                    axis=1
+                ),
+                (_dim_x, _dim_y),
+            )
+            sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
+            ax.set_title(
+                f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
+                f"Time: {time_index // _ten_minutes}:"
+                f"{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
+            )
+
+        # Create the animation
+        ani = animation.FuncAnimation(
+            fig,
+            update,
+            frames=len(diffuse_day_total_diffuse_surface_irradiance_sans_pv),
+            interval=300,
+            repeat=False,
+        )
+        ani.save(
+            f"direct_day_total_diffuse_surface_irradiance_with_pv_no_vmax_{INDEX}.gif",
+            writer="pillow",
+            fps=5,
+        )
+        plt.show()
 
     clearsky_total_diffuse_surface_irradiance.index = (
         dni_to_weather_adjustment_factor.index
@@ -1618,6 +1761,15 @@ def main(args: list[Any]) -> None:
                 ]
             )
         ).clip(0, None)
+
+        ##########################################################
+        # FIXME: Check that these spectra use the right indices. #
+        ##########################################################
+
+        import pdb
+
+        pdb.set_trace()
+
         # Compute the incident angles for each element to compute spectra.
         solar_angles: pd.DataFrame = round_nearest(
             np.degrees(np.acos(dot_product_map)), _tmm_angular_resolution

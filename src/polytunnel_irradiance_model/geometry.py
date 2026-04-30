@@ -549,6 +549,16 @@ class MeshPoint(Point):
 
         return self._covered_fraction
 
+    @property
+    def normal_vector(self) -> Vector:
+        """
+        Access to private normal-vector member.
+
+        :returns:
+            The normal vector for the meshpoint.
+
+        """
+        return self._normal_vector
 
 class CurveType(enum.Enum):
     """
