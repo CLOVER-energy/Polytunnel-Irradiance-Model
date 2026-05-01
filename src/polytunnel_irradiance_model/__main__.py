@@ -1395,13 +1395,13 @@ def main(args: list[Any]) -> None:
         # surface diffuse irradiance.
         diffuse_day_total_diffuse_surface_irradiance_sans_pv = (
             polytunnel_surface_pv_uncovered_fraction_mask.reset_index(drop=True)
-            * diffuse_surface_irradiance.reset_index(drop=True)
-            * dhi_to_weather_adjustment_factor.reset_index(drop=True)
+            * diffuse_surface_irradiance.reset_index(drop=True)  # [W/m^2]
+            * dhi_to_weather_adjustment_factor.reset_index(drop=True)  # [W/m^2 / W/m^2]
         ).to_numpy()[:, :, None] * np.array(
             pyranometer_adjusted_interpolated_spectra.cloudy_day
         )[
             None, None, :
-        ]
+        ]  # [Dimensionless intensity]
 
         direct_day_total_diffuse_surface_irradiance_sans_pv = (
             polytunnel_surface_pv_uncovered_fraction_mask.reset_index(drop=True)
@@ -1413,15 +1413,15 @@ def main(args: list[Any]) -> None:
                         if parsed_args.diffusivity is not None
                         else polytunnel.diffusivity
                     )
-                )
-                * direct_surface_irradiance.reset_index(drop=True)
+                )  # [Dimensionless]
+                * direct_surface_irradiance.reset_index(drop=True)  # [W/m^2]
             )
-            * dni_to_weather_adjustment_factor.reset_index(drop=True)
+            * dni_to_weather_adjustment_factor.reset_index(drop=True)  # [W/m^2 / W/m^2]
         ).to_numpy()[:, :, None] * np.array(
             pyranometer_adjusted_interpolated_spectra.diffuse
         )[
             None, None, :
-        ]
+        ]  # [Dimensionless intensity]
 
         # Compute the covered regions' contributions using a solid-angle integral over
         # the TMMs.
@@ -1431,11 +1431,13 @@ def main(args: list[Any]) -> None:
             parsed_args.diffusivity
             * (1 - polytunnel_surface_pv_uncovered_fraction_mask.reset_index(drop=True))
             * (
-                direct_surface_irradiance.reset_index(drop=True)
-                * dni_to_weather_adjustment_factor.reset_index(drop=True)
+                direct_surface_irradiance.reset_index(drop=True)  # [W/m^2]
+                * dni_to_weather_adjustment_factor.reset_index(
+                    drop=True
+                )  # [Dimensionless]
             )
         ).to_numpy()[:, :, None] * surface_post_tmm_direct_spectra * np.array(
-            pyranometer_adjusted_interpolated_spectra.direct
+            pyranometer_adjusted_interpolated_spectra.direct  # [Dimensionless intensity]
         )[
             None, None, :
         ] + (
@@ -1448,11 +1450,15 @@ def main(args: list[Any]) -> None:
                         drop=True
                     )
                 )
-                * (diffuse_surface_irradiance.reset_index(drop=True))
-                * dhi_to_weather_adjustment_factor.reset_index(drop=True)
+                * (diffuse_surface_irradiance.reset_index(drop=True))  # [W/m^2]
+                * dhi_to_weather_adjustment_factor.reset_index(
+                    drop=True
+                )  # [W/m^2 / W/m^2]
             ).to_numpy()[:, :, None]
-            * np.array(pyranometer_adjusted_interpolated_spectra.diffuse)[None, None, :]
-            * diffuse_surface_tmm
+            * np.array(pyranometer_adjusted_interpolated_spectra.diffuse)[
+                None, None, :
+            ]  # [Dimensionless intensity]
+            * diffuse_surface_tmm  # [Dimless transmittance]
         )
 
         diffuse_day_total_diffuse_surface_irradiance_with_pv = (
@@ -1486,19 +1492,23 @@ def main(args: list[Any]) -> None:
         # Plotting code No. 1d #
         ########################
 
-        import pdb
-
-        pdb.set_trace()
-
     clearsky_total_diffuse_surface_irradiance.index = (
         dni_to_weather_adjustment_factor.index
     )
-    diffuse_day_total_diffuse_surface_irradiance.index = (
-        dni_to_weather_adjustment_factor.index
-    )
-    direct_day_total_diffuse_surface_irradiance.index = (
-        dni_to_weather_adjustment_factor.index
-    )
+
+    try:
+        diffuse_day_total_diffuse_surface_irradiance.index = (
+            dni_to_weather_adjustment_factor.index
+        )
+    except AttributeError:
+        pass
+
+    try:
+        direct_day_total_diffuse_surface_irradiance.index = (
+            dni_to_weather_adjustment_factor.index
+        )
+    except AttributeError:
+        pass
 
     # Calculate the amount of polytunnel surface sunlight which will reach the ground,
     # both as diffuse and direct components.
