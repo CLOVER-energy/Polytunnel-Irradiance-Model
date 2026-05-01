@@ -16,12 +16,14 @@ This module contains all polytunnel information to define the system.
 import enum
 
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from dataclasses import asdict, dataclass
 from math import acos, asin, atan, cos, radians, pi, sin, sqrt
 from typing import Any, Iterable, Iterator, TypeVar
 
 import json
 import numpy as np
+import pandas as pd
 
 from tqdm import tqdm
 
@@ -2887,6 +2889,115 @@ def calculate_adjacent_polytunnel_solid_angle(
     )
 
 
+def calculate_adjacent_polytunnel_solid_angle_as_function_of_theta(
+    meshpoints: MeshPoint | list[MeshPoint],
+    polytunnel: Polytunnel,
+    rounding_function: callable = round,
+    angle_degrees: bool = True,
+) -> dict[float, float]:
+    """
+    Calculate, for a given meshpoint or `list` of meshpoints, their shaded solid angles.
+
+    :param: meshpoints:
+        The :class:`Meshpoint` instance or `list` of :class:`Meshpoint` instances for
+        which to compute shaded solid angles.
+
+    :param: polytunnel:
+        The :class:`Polytunnel` instance.
+
+    :param: rounding_function:
+        Function to round to the nearest angular resolution.
+
+    :param: angle_degrees:
+        Whether to return angles in degrees.
+
+    :return:
+        The solid angle which is obstructued by the adjactent polytunnel for each of the
+        values of the angle, theta, defined from the normal vector of the meshpoint on
+        the current polytunnel.
+
+    """
+
+    def _calculate_meshpoint_adjacent_polytunnel_solid_angle(
+        meshpoint: MeshPoint,
+    ) -> float:
+        # Consider equations from the polytunnel of intercept.
+        if (
+            point_to_left := (
+                polytunnel_meshpoint := meshpoint.polytunnel_frame_position
+            ).theta_cylindrical
+            > 0
+        ):
+            unrotated_vector: Vector = polytunnel_meshpoint - Vector(
+                polytunnel.width, 0, 0
+            )
+        else:
+            unrotated_vector: Vector = polytunnel_meshpoint + Vector(
+                polytunnel.width, 0, 0
+            )
+
+        # Loop through the meshpoints and, for each that shades the meshpoint in question,
+        # add to the subtended solid angle.
+        solid_angles: defaultdict[float, float] = defaultdict(float)
+
+        for surface_meshpoint in polytunnel.surface_mesh:
+            # Compute the distance between the two points
+            _surface_to_point = (
+                unrotated_vector - surface_meshpoint.polytunnel_frame_position
+            )
+            _rotated_surface_to_point = polytunnel.curve.calculate_rotated_vector(
+                _surface_to_point
+            )
+            distance: float = abs(_surface_to_point)
+
+            # Skip points which are around the wrong side of the polytunnel
+            if (
+                _dot_product := (
+                    _rotated_surface_to_point * surface_meshpoint.normal_vector
+                )
+            ) < 0:
+                continue
+
+            # Reduce the area by the cos of the angle
+            projected_area: float = (
+                surface_meshpoint.area
+                * _dot_product
+                / (abs(_surface_to_point) * abs(surface_meshpoint.normal_vector))
+            )
+
+            # Compute the angle
+            theta = acos(_dot_product / abs(_rotated_surface_to_point))
+            if angle_degrees:
+                theta = np.degrees(theta)
+
+            theta = rounding_function(theta)
+
+            # Add to the solid angle
+            solid_angles[theta] += projected_area / distance**2
+
+        return solid_angles
+
+    if polytunnel.curve.curve_type == CurveType.CIRCULAR:
+        if isinstance(meshpoints, MeshPoint):
+            return _calculate_meshpoint_adjacent_polytunnel_solid_angle(meshpoints)
+        if len(meshpoints) == 1:
+            return _calculate_meshpoint_adjacent_polytunnel_solid_angle(meshpoints[0])
+
+        return [
+            _calculate_meshpoint_adjacent_polytunnel_solid_angle(meshpoint)
+            for meshpoint in tqdm(
+                meshpoints,
+                desc="Solid-angle calculation",
+                leave=False,
+                total=len(meshpoints),
+            )
+        ]
+
+    raise NotImplementedError(
+        "Intercept calculations for non-circular polytunnels are not implemented."
+    )
+
+
 def calculate_solid_angles(
     meshpoints: MeshPoint | list[MeshPoint], polytunnel: Polytunnel
 ) -> float:
@@ -2910,6 +3021,8 @@ def calculate_solid_angles(
     obstructed_solid_angles: float | list[float] = (
         calculate_adjacent_polytunnel_solid_angle(meshpoints, polytunnel)
     )
+    if isinstance(obstructed_solid_angles, float):
+        obstructed_solid_angles = [obstructed_solid_angles]
 
     # Compute the overall solid angle that would have been seen.
     if isinstance(meshpoints, MeshPoint):
@@ -2926,6 +3039,86 @@ def calculate_solid_angles(
         )
 
     return [meshpoint.solid_angle for meshpoint in meshpoints]
+
+
+def solid_angle_weighted_tmm(
+    *,
+    meshpoints: list[MeshPoint],
+    obscured_solid_angle: defaultdict[float, float] = defaultdict(float),
+    rounding_function: callable = round,
+    tmm: pd.DataFrame,
+    tmm_angular_resolution: float,
+) -> np.ndarray | pd.Series:
+    """
+        Compute the solid angle--weighted TMM.
+
+        The integral over the solid angle is broken down into two regions depending on
+        whether the ground obscures the solid angle or not. These two solid angles are then
+        summed over separately.
+
+    wavelengths.
+
+        :param: tmm_angular_resolution:
+            The angule resolution to use when computing the TMM.
+
+    """
+
+    def _compute_meshpoint_tmm_integral(
+        meshpoint: MeshPoint, this_obscured_solid_angle: defaultdict[float]
+    ) -> np.ndarray | pd.Series:
+        """
+        Compute the TMM integral for a single meshpoint.
+
+        :param: meshpoint:
+            The meshpoint to compute the integral for.
+
+        :returns:
+            The TMM, integrated over angle, for the meshpoint.
+
+        """
+
+        theta_z: float = np.degrees(acos(meshpoint.normal_vector[2]))
+        _integral_bound: float = 90 - rounding_function(theta_z)
+
+        # Compute the integral up to pi/2 - theta_z
+        to_pi_by_2_less_theta_z = pd.concat(
+            [
+                (2 * pi * sin(radians(theta)) - this_obscured_solid_angle[theta])
+                * tmm[theta]
+                * radians(tmm_angular_resolution)
+                for theta in np.arange(0, _integral_bound, tmm_angular_resolution)
+            ],
+            axis=1,
+        )
+        to_pi_by_2_less_theta_z /= 2 * pi
+
+        # Compute the integral up to pi/2 beyond theta_z.
+        from_pi_by_2_less_theta_z_to_pi_by_2 = pd.concat(
+            [
+                (2 * pi * sin(radians(theta)) - this_obscured_solid_angle[theta])
+                * tmm[theta]
+                * radians(tmm_angular_resolution)
+                for theta in np.arange(
+                    _integral_bound, 90 + tmm_angular_resolution, tmm_angular_resolution
+                )
+            ],
+            axis=1,
+        )
+        from_pi_by_2_less_theta_z_to_pi_by_2 /= 2 * pi
+
+        return to_pi_by_2_less_theta_z.sum(
+            axis=1
+        ) + from_pi_by_2_less_theta_z_to_pi_by_2.sum(axis=1)
+
+    return [
+        _compute_meshpoint_tmm_integral(*entry)
+        for entry in tqdm(
+            zip(meshpoints, obscured_solid_angle),
+            desc="Integrating TMM over surface",
+            leave=False,
+            total=len(meshpoints),
+        )
+    ]
 
 
 #######################

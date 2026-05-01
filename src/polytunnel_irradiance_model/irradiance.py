@@ -14,16 +14,16 @@ This module contains some irradiance calculations.
 """
 
 
-import numpy as np
-import matplotlib.pyplot as plt
-import tmm_fast as tmm
-from scipy.integrate import trapezoid
 import tracing as tracer
 import os
-import pandas as pd
 import torch
 
 from math import pi, sqrt
+from scipy.integrate import trapezoid
+
+import numpy as np
+import pandas as pd
+import tmm_fast as tmm
 
 from src.polytunnel_irradiance_model.__utils__ import NotInterceptError
 from src.polytunnel_irradiance_model.polytunnel import (
