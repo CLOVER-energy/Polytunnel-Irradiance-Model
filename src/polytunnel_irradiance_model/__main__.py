@@ -31,7 +31,7 @@ from colour import SpectralDistribution, XYZ_to_sRGB, sd_to_XYZ
 from contextlib import contextmanager
 from dataclasses import dataclass
 from math import ceil, cos, floor, pi, sqrt
-from typing import Any, Callable, Generator, Match, Pattern
+from typing import Any, Callable, Generator, Iterator, Match, Pattern
 
 import json
 import matplotlib.colors as m_colors
@@ -224,6 +224,56 @@ VERSION_REGEX: Pattern[str] = re.compile(r"(?P<number>\d\.\d\.\d)([\.](?P<post>.
 # WAVELENGTH:
 #   Keyword for parsing wavelength information.
 WAVELENGTH: str = "wavelength"
+
+
+class Dashes(Iterator):
+    """
+    Contains the dash information for plotting.
+
+    .. attribute:: dashes
+        The dashes to include.
+
+    """
+
+    def __init__(self) -> None:
+        """
+        Instantiate the dashes.
+
+        """
+
+        self.dash_length: int = 0
+        self.dot_length: int = 0
+        self.dotted: bool = False
+        self.space: int = 1
+        super().__init__()
+
+    def __next__(self) -> Generator[tuple[int, int], None, None]:
+        """
+        Iterate through and yield the dash information.
+
+        :yields: The dash information as a `tuple`.
+
+        """
+
+        # Move on the dash length
+        self.dash_length += 1
+
+        # Move on the space length if needed
+        if self.dash_length - self.space > 3:
+            self.dash_length = 1
+            self.space += 1
+
+        # If needed, add dots.
+        if self.space > 5:
+            self.dotted = True
+            self.dash_length = 0
+            self.space = 1
+
+        if self.dotted:
+            self.dot_length += 1
+            return (self.dash_length, self.space, self.dot_length, self.space)
+
+        return (self.dash_length, self.space)
 
 
 class ValidationColumns(enum.Enum):
@@ -1518,18 +1568,23 @@ def main(args: list[Any]) -> None:
         # Code without spectra
         clearsky_ground_direct_irradiance_map: pd.DataFrame = pd.DataFrame(
             [
-                ground_direct_irradiance(
-                    polytunnel.ground_mesh,
-                    polytunnel,
-                    (
-                        surface_shaded_map.loc[time_index]
-                        * clearsky_irradiance["dni"].iloc[time_index]
-                        * (1 - polytunnel_diffusivity)
-                    ).reset_index(drop=True)
-                    * polytunnel_surface_pv_uncovered_fraction_mask.iloc[time_index],
-                    solar_position,
-                    diffusivity=parsed_args.diffusivity,
-                )
+                [
+                    entry[0]
+                    for entry in ground_direct_irradiance(
+                        polytunnel.ground_mesh,
+                        polytunnel,
+                        (
+                            surface_shaded_map.loc[time_index]
+                            * clearsky_irradiance["dni"].iloc[time_index]
+                            * (1 - polytunnel_diffusivity)
+                        ).reset_index(drop=True)
+                        * polytunnel_surface_pv_uncovered_fraction_mask.iloc[
+                            time_index
+                        ],
+                        solar_position,
+                        diffusivity=parsed_args.diffusivity,
+                    )
+                ]
                 for time_index, solar_position in tqdm(
                     enumerate(solar_positions),
                     desc="Direct ground irradiance calculation",
@@ -1544,20 +1599,23 @@ def main(args: list[Any]) -> None:
         clearsky_ground_direct_irradiance_map_sans_pv_module: pd.DataFrame = (
             pd.DataFrame(
                 [
-                    ground_direct_irradiance(
-                        polytunnel.ground_mesh,
-                        polytunnel,
-                        (
-                            surface_shaded_map.loc[time_index]
-                            * clearsky_irradiance["dni"].iloc[time_index]
-                            * (1 - polytunnel_diffusivity)
-                        ).reset_index(drop=True)
-                        * polytunnel_surface_pv_uncovered_fraction_mask.iloc[
-                            time_index
-                        ],
-                        solar_position,
-                        diffusivity=parsed_args.diffusivity,
-                    )
+                    [
+                        entry[0]
+                        for entry in ground_direct_irradiance(
+                            polytunnel.ground_mesh,
+                            polytunnel,
+                            (
+                                surface_shaded_map.loc[time_index]
+                                * clearsky_irradiance["dni"].iloc[time_index]
+                                * (1 - polytunnel_diffusivity)
+                            ).reset_index(drop=True)
+                            * polytunnel_surface_pv_uncovered_fraction_mask.iloc[
+                                time_index
+                            ],
+                            solar_position,
+                            diffusivity=parsed_args.diffusivity,
+                        )
+                    ]
                     for time_index, solar_position in tqdm(
                         enumerate(solar_positions),
                         desc="Direct ground irradiance calculation",
@@ -1580,27 +1638,66 @@ def main(args: list[Any]) -> None:
             .clip(0, None)
         )
 
+        ##########################################################
+        # FIXME: Check that these spectra use the right indices. #
+        ##########################################################
+
         # Compute the light which passes through the PV modules
         clearsky_ground_direct_irradiance_map_with_pv_module: pd.DataFrame = (
             pd.DataFrame(
                 [
-                    ground_direct_irradiance(
-                        polytunnel.ground_mesh,
-                        polytunnel,
-                        (
-                            surface_shaded_map.loc[time_index]
-                            * clearsky_irradiance["dni"].iloc[time_index]
-                            * (1 - polytunnel_diffusivity)
-                        ).reset_index(drop=True)
-                        * (
-                            1
-                            - polytunnel_surface_pv_uncovered_fraction_mask.iloc[
-                                time_index
-                            ]
-                        ),
-                        solar_position,
-                        diffusivity=parsed_args.diffusivity,
+                    [
+                        entry[0]
+                        for entry in ground_direct_irradiance(
+                            polytunnel.ground_mesh,
+                            polytunnel,
+                            (
+                                surface_shaded_map.loc[time_index]
+                                * clearsky_irradiance["dni"].iloc[time_index]
+                                * (1 - polytunnel_diffusivity)
+                            ).reset_index(drop=True)
+                            * (
+                                1
+                                - polytunnel_surface_pv_uncovered_fraction_mask.iloc[
+                                    time_index
+                                ]
+                            ),
+                            solar_position,
+                            diffusivity=parsed_args.diffusivity,
+                        )
+                    ]
+                    for time_index, solar_position in tqdm(
+                        enumerate(solar_positions),
+                        desc="Direct ground irradiance calculation",
+                        leave=False,
+                        total=len(solar_positions),
                     )
+                ]
+            )
+        ).clip(0, None)
+        surface_index_of_illuminating_meshpoint: pd.DataFrame = (
+            pd.DataFrame(
+                [
+                    [
+                        entry[1]
+                        for entry in ground_direct_irradiance(
+                            polytunnel.ground_mesh,
+                            polytunnel,
+                            (
+                                surface_shaded_map.loc[time_index]
+                                * clearsky_irradiance["dni"].iloc[time_index]
+                                * (1 - polytunnel_diffusivity)
+                            ).reset_index(drop=True)
+                            * (
+                                1
+                                - polytunnel_surface_pv_uncovered_fraction_mask.iloc[
+                                    time_index
+                                ]
+                            ),
+                            solar_position,
+                            diffusivity=parsed_args.diffusivity,
+                        )
+                    ]
                     for time_index, solar_position in tqdm(
                         enumerate(solar_positions),
                         desc="Direct ground irradiance calculation",
@@ -1611,13 +1708,9 @@ def main(args: list[Any]) -> None:
             )
         ).clip(0, None)
 
-        ##########################################################
-        # FIXME: Check that these spectra use the right indices. #
-        ##########################################################
-
-        import pdb
-
-        pdb.set_trace()
+        #######################
+        # Plotting code No. 3 #
+        #######################
 
         # Compute the incident angles for each element to compute spectra.
         solar_angles: pd.DataFrame = round_nearest(
@@ -1633,15 +1726,243 @@ def main(args: list[Any]) -> None:
                 for _, row in solar_angles.iterrows()
             ]
         )
-        clearsky_ground_direct_irradiance_map_with_pv_module: np.ndarray = (
+
+        # Extract the surface spectra based on the meshpoint shining onto the ground.
+        null_spectrum = 0 * np.array(pyranometer_adjusted_interpolated_spectra.direct)
+
+        def _get_spectrum(surface_index: int | None, time_index: int) -> np.ndarray:
+            """
+            Get the spectrum from the surface based on the time and surface index.
+
+            :param: surface_index:
+                The index of the meshpoint on the surface casuing the illumination.
+
+            :param: time_index:
+                The index of the time of day.
+
+            :return:
+                The spectrum from the point.
+            """
+            if surface_index is None or np.isnan(surface_index):
+                return null_spectrum
+            return post_tmm_spectra[time_index, int(surface_index), :]
+
+        ground_direct_irradiance_spectra = np.array(
+            [
+                [
+                    _get_spectrum(surface_index, time_index)
+                    for surface_index in surface_indices_row
+                ]
+                for time_index, surface_indices_row in surface_index_of_illuminating_meshpoint.reset_index(
+                    drop=True
+                ).iterrows()
+            ]
+        )
+
+        # Compute the ground irradiance as based on the matching surface-mesh point.
+        clearsky_ground_direct_irradiance_map_with_pv_module_and_spectra: np.ndarray = (
             clearsky_ground_direct_irradiance_map_with_pv_module.to_numpy()[:, :, None]
-            * post_tmm_spectra
+            * ground_direct_irradiance_spectra
         ).astype(float)
 
         clearsky_ground_direct_irradiance_map = (
             clearsky_ground_direct_irradiance_map_sans_pv_module
-            + clearsky_ground_direct_irradiance_map_with_pv_module
+            + clearsky_ground_direct_irradiance_map_with_pv_module_and_spectra
         ).clip(0, None)
+
+        import pdb
+
+        pdb.set_trace()
+
+        from matplotlib import colors as mcolors
+
+        # Plot the spectra at a specific hour for each element within the ground mesh.
+        # NOTE: Colours indicate the index of the element providing surface irradiation.
+
+        # Determine the number of non-zero elements
+        _hour: int = 12
+        num_grid_indices: int = 0
+        for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
+            if (
+                clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][_hour]
+                > 0
+            ):
+                num_grid_indices += 1
+
+        sns.set_palette(
+            sns.cubehelix_palette(
+                start=0.4, rot=-1.2, n_colors=num_grid_indices, reverse=True
+            )
+        )
+        sns.set_palette("viridis", n_colors=num_grid_indices)
+
+        plt.figure(figsize=(171 * MM, 120 * MM))
+        dashes = Dashes()
+        _zorder = 0
+        grid_indices: list[int] = []
+        for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
+            if (
+                clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][_hour]
+                > 0
+            ):
+                _color = f"C{grid_index}"
+                _zorder += 1
+                grid_indices.append(grid_index)
+            else:
+                _color = "C0"
+            plt.plot(
+                wavelength_range,
+                clearsky_ground_direct_irradiance_map_with_pv_module_and_spectra[_hour][
+                    grid_index
+                ],
+                dashes=next(dashes),
+                label=f"#{_color}" if _color != "C0" else None,
+                color=_color,
+                zorder=0 if _color == "C0" else _zorder,
+            )
+
+        plt.legend().remove()
+
+        norm = plt.Normalize(
+            -0.5,
+            clearsky_ground_direct_irradiance_map_with_pv_module.shape[1] + 0.5,
+        )
+        scalar_mappable = plt.cm.ScalarMappable(
+            cmap=mcolors.LinearSegmentedColormap.from_list(
+                "Custom",
+                sns.color_palette().as_hex(),
+                num_grid_indices,
+            ),
+            norm=norm,
+        )
+
+        colorbar = (axis := plt.gca()).figure.colorbar(
+            scalar_mappable,
+            ax=axis,
+            label="Surface index illuminating",
+            pad=(_pad := 0.125),
+        )
+        colorbar.set_ticks(grid_indices)
+        colorbar.set_ticklabels(
+            [
+                entry if index % 3 == 0 else None
+                for index, entry in enumerate(grid_indices)
+            ]
+        )
+
+        axis.tick_params(axis="both", which="major", labelsize=7)
+        plt.xlabel("Wavelength / nm", fontsize=7)
+        plt.ylabel("Irradiance / W/m$^2$nm", fontsize=7)
+
+        (right_axis := axis.twinx()).plot(
+            wavelength_range,
+            pyranometer_adjusted_interpolated_spectra.direct.values,
+            "--",
+            color="C9",
+        )
+        right_axis.set_ylabel("Direct-irradiance response / normalised units")
+        right_axis.tick_params(axis="both", which="major", labelsize=7)
+
+        plt.savefig(
+            f"ground_through_pv_spectra_profiles_{_hour}_{INDEX}.pdf",
+            format="pdf",
+            bbox_inches="tight",
+            pad_inches=0.05,
+        )
+        plt.savefig(
+            f"ground_through_pv_spectra_profiles_{_hour}_{INDEX}.png",
+            format="png",
+            bbox_inches="tight",
+            pad_inches=0.05,
+            transparent=True,
+            dpi=1200,
+        )
+        plt.show()
+
+        plt.figure(figsize=(171 * MM, 120 * MM))
+        dashes = Dashes()
+        _zorder = 0
+        _hour = 12
+        grid_indices: list[int] = []
+        for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
+            if (
+                clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][_hour]
+                > 0
+            ):
+                _color = f"C{grid_index}"
+                _zorder += 1
+                grid_indices.append(grid_index)
+            else:
+                _color = "C0"
+            plt.plot(
+                wavelength_range,
+                clearsky_ground_direct_irradiance_map[_hour][grid_index],
+                dashes=next(dashes),
+                label=f"#{_color}" if _color != "C0" else None,
+                color=_color,
+                zorder=0 if _color == "C0" else _zorder,
+            )
+
+        plt.legend().remove()
+
+        norm = plt.Normalize(
+            -0.5,
+            clearsky_ground_direct_irradiance_map.shape[1] + 0.5,
+        )
+        scalar_mappable = plt.cm.ScalarMappable(
+            cmap=mcolors.LinearSegmentedColormap.from_list(
+                "Custom",
+                sns.color_palette().as_hex(),
+                clearsky_ground_direct_irradiance_map.shape[1] + 1,
+            ),
+            norm=norm,
+        )
+
+        colorbar = (axis := plt.gca()).figure.colorbar(
+            scalar_mappable,
+            ax=axis,
+            label="Surface index illuminating",
+            pad=(_pad := 0.125),
+        )
+        colorbar.set_ticks(grid_indices)
+        colorbar.set_ticklabels(
+            [
+                entry if index % 3 == 0 else None
+                for index, entry in enumerate(grid_indices)
+            ]
+        )
+
+        axis.tick_params(axis="both", which="major", labelsize=7)
+        plt.xlabel("Wavelength / nm", fontsize=7)
+        plt.ylabel("Irradiance / W/m$^2$nm", fontsize=7)
+
+        (right_axis := axis.twinx()).plot(
+            wavelength_range,
+            pyranometer_adjusted_interpolated_spectra.direct.values,
+            "--",
+            color="C9",
+        )
+        right_axis.set_ylabel("Direct-irradiance response / normalised units")
+        right_axis.tick_params(axis="both", which="major", labelsize=7)
+
+        plt.savefig(
+            f"ground_total_with_pv_spectra_profiles_{_hour}_{INDEX}.pdf",
+            format="pdf",
+            bbox_inches="tight",
+            pad_inches=0.05,
+        )
+        plt.savefig(
+            f"ground_total_with_pv_spectra_profiles_{_hour}_{INDEX}.png",
+            format="png",
+            bbox_inches="tight",
+            pad_inches=0.05,
+            transparent=True,
+            dpi=1200,
+        )
+        plt.show()
+
+        def spectrum_to_swatch(spectrum: np.ndarray) -> float:
+            pass
 
         ########################
         # Plotting code No. 1b #
@@ -5038,6 +5359,49 @@ def main(args: list[Any]) -> None:
 #     f"direct_day_total_diffuse_surface_irradiance_pv_only_no_vmax_{INDEX}.gif",
 #     writer="pillow",
 #     fps=5,
+# )
+# plt.show()
+
+#######################
+# Plotting code No. 3 #
+#######################
+
+# from matplotlib import colors as mcolors
+
+# # sns.set_palette(
+# #     [
+# #         "#77AADD",
+# #         "#99DDFF",
+# #         "#44BB99",
+# #         "#BBCC33",
+# #         "#AAA000",
+# #         "#EEDD88",
+# #         "#EE8866",
+# #         "#FFAABB",
+# #         "#DDDDDD",
+# #     ] * ((len(polytunnel.ground_mesh) // 9) + 1)
+# # )
+# sns.set_palette(sns.cubehelix_palette(start=0.4, rot=-25, n_colors=len(polytunnel.ground_mesh)))
+# cmap = sns.color_palette(sns.color_palette().as_hex(), as_cmap=True, n_colors=10)
+
+# plt.figure(figsize=(171 * MM, 120 * MM))
+# sns.heatmap(np.reshape(surface_index_of_illuminating_meshpoint.iloc[12], (10, 50)), square=False, cmap=cmap, cbar=False)
+# norm = plt.Normalize(
+#     0 - 0.5,
+#     len(polytunnel.ground_mesh) + 1,
+# )
+# scalar_mappable = plt.cm.ScalarMappable(
+#     cmap=mcolors.LinearSegmentedColormap.from_list(
+#         "Custom", sns.color_palette().as_hex(), len(polytunnel.ground_mesh) + 1
+#     ),
+#     norm=norm,
+# )
+
+# colorbar = (axis := plt.gca()).figure.colorbar(
+#     scalar_mappable,
+#     ax=axis,
+#     label="Surface-mesh index",
+#     pad=(_pad := 0.025),
 # )
 # plt.show()
 

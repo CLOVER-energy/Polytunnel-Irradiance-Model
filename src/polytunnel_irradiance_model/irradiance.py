@@ -47,7 +47,7 @@ def ground_direct_irradiance(
     solar_position: SolarPositionVector,
     *,
     diffusivity: float | None = None,
-) -> list[float]:
+) -> list[tuple[float, int | None]]:
     """
     Compute the direct irradiance falling on the ground.
 
@@ -66,14 +66,17 @@ def ground_direct_irradiance(
         The position of the sun.
 
     :returns:
-        The irradiance which falls on the ground meshpoint(s) being considered.
+        - The irradiance which falls on the ground meshpoint(s) being considered'
+        - The index of the meshpoint illuminating the ground.
 
     """
 
     if diffusivity is None:
         diffusivity: float = polytunnel.diffusivity
 
-    def _single_meshpoint_ground_direct_irradiance(meshpoint: MeshPoint) -> float:
+    def _single_meshpoint_ground_direct_irradiance(
+        meshpoint: MeshPoint,
+    ) -> tuple[float, int]:
         """
         Compute the ground irradiance falling on a single meshpoint.
 
@@ -81,13 +84,14 @@ def ground_direct_irradiance(
             The :class:`MeshPoint` instance to compute.
 
         :returns:
-            The direct irradiance falling on the meshpoint instance.
+            - The direct irradiance falling on the meshpoint instance;
+            - The index of the meshpoint on the surface.
 
         """
 
         # Skip if the sun is below the horizon.
         if solar_position.elevation < 0:
-            return 0
+            return 0, None
 
         # Rotate everything into the polytunnel frame and translate height.
         _m = meshpoint.polytunnel_frame_position
@@ -97,7 +101,7 @@ def ground_direct_irradiance(
 
         # Skip if the solar position is now below the horizontal
         if solar_position.theta_cylindrical > pi / 2:
-            return 0
+            return 0, None
 
         # Compute the parameterised intercept with the surface of the polytunnel.
         _a: float = _v.x**2 + _v.z**2
@@ -107,7 +111,7 @@ def ground_direct_irradiance(
         _descriminant: float = _b**2 - 4 * _a * _c
         # If no intercept, then return 0
         if _descriminant < 0:
-            return 0
+            return 0, None
 
         _t: float = (-_b + sqrt(_descriminant)) / (2 * _a)
         _u: float = (-_b - sqrt(_descriminant)) / (2 * _a)
@@ -126,7 +130,7 @@ def ground_direct_irradiance(
 
         # If the sun did not come through the polytunnel, return 0.
         if not 0 <= _intercept_point.y <= polytunnel.length:
-            return 0
+            return 0, None
 
         # Determine the meshpoint index based on this coordinate.
         try:
@@ -134,7 +138,7 @@ def ground_direct_irradiance(
                 _intercept_point.theta_cylindrical, _intercept_point.y
             )
         except NotInterceptError:
-            return 0
+            return 0, None
         # un_rotated_surface_normal = polytunnel.curve.calculate_unrotated_vector(surface_point._normal_vector)
 
         # Multiply the irradiance on the surface by the orientation of the surface to
@@ -143,9 +147,8 @@ def ground_direct_irradiance(
             solar_irradiance[surface_index]
             # The irradiance striking the ground needs to account for the orientation of
             # the sun's position;
-            * _v.z
-            * polytunnel.transmissivity
-            * (1 - diffusivity)
+            * _v.z * polytunnel.transmissivity * (1 - diffusivity),
+            surface_index,
         )
 
     if not polytunnel.curve.curve_type == CurveType.CIRCULAR:
