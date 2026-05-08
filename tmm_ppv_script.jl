@@ -12,7 +12,10 @@ using ArgParse
 include("tmm_ppv.jl")
 
 # Enable parsing of unit range
-function ArgParse.parse_item(::Type{Union{Number, UnitRange, Vector{<:Number}}}, x::AbstractString)
+function ArgParse.parse_item(
+    ::Type{Union{Number,UnitRange,Vector{<:Number}}},
+    x::AbstractString,
+)
     # If a colon is present, then try to parse as a unit range.
     if occursin(":", x)
         bounds = split(x, ":")
@@ -57,6 +60,10 @@ function parse_commandline()
         help = "The angle(s) to use."
         arg_type = Union{Vector{<:Number},Number,UnitRange}
         default = 0
+        "--wavelength-resolution", "-w"
+        help = "The unit to use for the wavealength."
+        arg_type = Float64
+        default = 1
         # "--flag1"
         #     help = "an option without argument, i.e. a flag"
         #     action = :store_true
@@ -90,6 +97,7 @@ function main()
                 parsed_args["stack-name"],
                 parsed_args["theta"],
                 parsed_args["to-file"],
+                parsed_args["wavelength-resolution"]
             )
         catch err
             println("TMM script failed.")

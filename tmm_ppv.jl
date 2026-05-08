@@ -20,7 +20,9 @@ using CSV,
 
 gr(size = (171, 120))
 
+global λRESOLUTION::Real = 1
 global DEFAULT_OUTPUT_TMM_FILENAME::AbstractString = "tmm.csv"
+global MM::Float64 = 100 / 25.4
 global NK_DATABASE_FILENAME::AbstractString = "winch_mixed_nk_database.csv"
 
 struct Layer
@@ -96,8 +98,48 @@ function tmm(
     λmin::Real,
     λmax::Real,
 )
+    return tmm(stack, nk_database, θ, λmin, λmax, λRESOLUTION)
+end
+
+
+"""
+    tmm(
+        stack::Vector{Layer},
+        nk_database::DataFrame,
+        θ::Vector{<:Real},
+        λmin::Real,
+        λmax::Real,
+        λresolution::Real,
+    )
+
+Compute the TMM for a given stack name file, angles, and wavelength limits. This TMM is
+then saved and is returned.
+
+**Note:** This function is the base function which is called via various implementations
+which each account for a reduced set of input parameters.
+
+### Inputs
+- `stack`       -- The stack to use.
+- `nk_database` -- The n-k database to use.
+- `θ`           -- The angles of incidence for the incoming light.
+- `λmin`        -- The initial wavelength to use for the range of wavelengths.
+- `λmax`        -- The final wavelength to use for the range of wavelengths.
+- `λresolution` -- The wavelength resolution to use, in nm.
+
+### Outputs
+The transfer matrix.
+
+"""
+function tmm(
+    stack::Vector{Layer},
+    nk_database::DataFrame,
+    θ::Vector{<:Real},
+    λmin::Real,
+    λmax::Real,
+    λresolution::Real,
+)
     # Construct a wavelength series.
-    λ::Vector{Real} = (λmin+1):(λmax-1)
+    λ::Vector{Real} = (λmin+1):λresolution:(λmax-1)
     beam = PlaneWave(λ, θ)
 
     # Construct layers for the TMM.
@@ -133,20 +175,26 @@ function tmm(
     # Compute the TMM.
     sol = tmm_optics(beam, layers; λ0 = mean(beam.λ), emfflag = true, h = 10);
 
-    # figure = plot(
-    #     Spectrum1D(),
-    #     sol.Beam.λ,
-    #     [sol.Spectra.Rp, sol.Spectra.Tp, 1.0 .- (sol.Spectra.Rp .+ sol.Spectra.Tp)],
-    #     label = ["Reflectance" "Transmittance" "Absorbance"],
-    #     line = ([:solid :dash :dashdot]),
-    #     ylims = (0.0, 1.0),
-    #     xlims = (sol.Beam.λ[1], sol.Beam.λ[end]),
-    #     palette = palette(:devon, 5),
-    #     size=(171, 120),
-    # );
-    # xlabel!("Wavelength / nm")
-    # ylabel!("Fraction refelcted, transmitted or absorbed")
-    # savefig(figure, "tmm.pdf")
+    figure = plot(
+        Spectrum1D(),
+        sol.Beam.λ,
+        [sol.Spectra.Rp, sol.Spectra.Tp, 1.0 .- (sol.Spectra.Rp .+ sol.Spectra.Tp)],
+        label = ["Reflectance" "Transmittance" "Absorbance"],
+        line = ([:solid :dash :dashdot]),
+        ylims = (0.0, 1.0),
+        xlims = (sol.Beam.λ[1], sol.Beam.λ[end]),
+        palette = palette(:viridis, 3, rev=true),
+        size=(171*MM, 120*MM),
+        dpi=600,
+        xtickfontsize=7,
+        ytickfontsize=7,
+        xguidefontsize=7,
+        yguidefontsize=7,
+        legendfontsize=7,
+    );
+    xlabel!("Wavelength / nm")
+    ylabel!("Fraction refelcted, transmitted or absorbed")
+    savefig(figure, "tmm.pdf")
 
     # figure = plot(
     #     EMF2D(),
@@ -154,7 +202,7 @@ function tmm(
     #     sol.Misc.ℓ,
     #     log10.(sol.Field.emfp[:, 1, :]),
     #     title = ("Log of EMF intensity"),
-    #     size=(171,120),
+    #     # size=(171,120),
     #     palette=:viridis,
     # );
     # xlabel!("Wavelength / nm")
@@ -177,12 +225,18 @@ default assumed angles. This TMM is then saved and is returned.
 - `stack_name`  -- The name of the file to use for loading the stack information from.
 - `θ`           -- The angle of incidence for the incoming light.
 - `nk_filename` -- The filename for the n-k database.
+- `λresolution` -- The wavelength resolution to use, in nm.
 
 ### Outputs
 The transfer matrix.
 
 """
-function tmm(stack_name::AbstractString, θ::Vector{<:Real}, nk_filename::AbstractString)
+function tmm(
+    stack_name::AbstractString,
+    θ::Vector{<:Real},
+    nk_filename::AbstractString,
+    λresolution::Real,
+)
     # Parse the stack.
     stack = load_stack(stack_name)
 
@@ -212,7 +266,26 @@ function tmm(stack_name::AbstractString, θ::Vector{<:Real}, nk_filename::Abstra
     λmin = Int(trunc(maximum(nk_description.min)))
     λmax = Int(ceil(minimum(nk_description.max)))
 
-    return tmm(stack, nk_database, θ, λmin, λmax)
+    return tmm(stack, nk_database, θ, λmin, λmax, λresolution)
+end
+
+"""
+    tmm(stack_name::AbstractString, θ::Vector{<:Real}, λresolution::Real)
+
+Compute the TMM for a given stack name file and array of angles. The wavelength ranges
+utilise default assumed angles. This TMM is then saved and is returned.
+
+### Inputs
+- `stack_name`  -- The name of the file to use for loading the stack information from.
+- `θ`           -- The array of angles of incidence for the incoming light.
+- `λresolution` -- The wavelength resolution to use, in nm.
+
+### Outputs
+The transfer matrix.
+
+"""
+function tmm(stack_name::String, θ::Vector{<:Real}, λresolution::Real)
+    return tmm(stack_name, θ, NK_DATABASE_FILENAME, λresolution)
 end
 
 """
@@ -230,7 +303,7 @@ The transfer matrix.
 
 """
 function tmm(stack_name::String, θ::Vector{<:Real})
-    return tmm(stack_name, θ, NK_DATABASE_FILENAME)
+    return tmm(stack_name, θ, λRESOLUTION)
 end
 
 """
@@ -288,7 +361,7 @@ function tmm(stack_name::String)
 end
 
 """
-    tmm_to_file(stack_name::String, θ::Vector{<:Real}, output_name::String)
+    tmm_to_file(stack_name::String, θ::Vector{<:Real}, output_name::String, λresolution::Real)
 
 Comuptes the TMM and saves the result to a dataframe file.
 
@@ -296,11 +369,17 @@ Comuptes the TMM and saves the result to a dataframe file.
 - `stack_name`  -- The name of the file to use for loading the stack information from.
 - `θ`           -- The angles of incidence to use.
 - `output_name` -- The name of the output file to use.
+- `λresolution` -- The wavelength resolution to use, in nm.
 
 """
-function tmm_to_file(stack_name::String, θ::Vector{<:Real}, output_name::String)
+function tmm_to_file(
+    stack_name::String,
+    θ::Vector{<:Real},
+    output_name::String,
+    λresolution::Real,
+)
     # Run the TMM model
-    tmm_data = tmm(stack_name, θ)
+    tmm_data = tmm(stack_name, θ, λresolution)
 
     if !occursin(".csv", output_name)
         output_name *= ".csv"
@@ -325,8 +404,64 @@ Comuptes the TMM and saves the result to a dataframe file.
 - `θ`           -- The angles of incidence to use.
 
 """
+function tmm_to_file(stack_name::String, θ::Vector{<:Real}, λresolution::Real)
+    tmm_to_file(stack_name, θ, DEFAULT_OUTPUT_TMM_FILENAME, λresolution)
+
+end
+
+"""
+    tmm_to_file(stack_name::String, θ::AbstractVectpr{Any}, output_name::String)
+
+Comuptes the TMM and saves the result to a dataframe file.
+
+### Inputs
+- `stack_name`  -- The name of the file to use for loading the stack information from.
+- `θ`           -- The angles of incidence to use.
+- `output_name` -- The name of the output file to use.
+
+"""
+function tmm_to_file(
+    stack_name::String,
+    θ::AbstractVector{Any},
+    output_name::String,
+    λresolution,
+)
+    tmm_to_file(stack_name, Vector{<:Real}(θ), output_name, λresolution)
+
+end
+
+"""
+    tmm_to_file(stack_name::String, θ::UnitRange, output_name::String)
+
+Comuptes the TMM and saves the result to a dataframe file.
+
+### Inputs
+- `stack_name`  -- The name of the file to use for loading the stack information from.
+- `θ`           -- The angles of incidence to use.
+- `output_name` -- The name of the output file to use.
+"""
+function tmm_to_file(
+    stack_name::String,
+    θ::UnitRange,
+    output_name::String,
+    λresolution::Real,
+)
+    tmm_to_file(stack_name, Vector(θ), output_name, λresolution)
+
+end
+
+"""
+    tmm_to_file(stack_name::String, θ::Vector{<:Real})
+
+Comuptes the TMM and saves the result to a dataframe file.
+
+### Inputs
+- `stack_name`  -- The name of the file to use for loading the stack information from.
+- `θ`           -- The angles of incidence to use.
+
+"""
 function tmm_to_file(stack_name::String, θ::Vector{<:Real})
-    tmm_to_file(stack_name, θ, DEFAULT_OUTPUT_TMM_FILENAME)
+    tmm_to_file(stack_name, θ, DEFAULT_OUTPUT_TMM_FILENAME, λRESOLUTION)
 
 end
 
@@ -342,7 +477,7 @@ Comuptes the TMM and saves the result to a dataframe file.
 
 """
 function tmm_to_file(stack_name::String, θ::AbstractVector{Any}, output_name::String)
-    tmm_to_file(stack_name, Vector{<:Real}(θ), output_name)
+    tmm_to_file(stack_name, θ, output_name, λRESOLUTION)
 
 end
 
@@ -357,12 +492,28 @@ Comuptes the TMM and saves the result to a dataframe file.
 - `output_name` -- The name of the output file to use.
 """
 function tmm_to_file(stack_name::String, θ::UnitRange, output_name::String)
-    tmm_to_file(stack_name, Vector(θ), output_name)
+    tmm_to_file(stack_name, θ, output_name, λRESOLUTION)
 
 end
 
 """
-    tmm_to_file(stack_name::String, θ::Real)
+    tmm_to_file(stack_name::String, θ::Real, output_name::String, λresolution::Real)
+
+Comuptes the TMM and saves the result to a dataframe file.
+
+### Inputs
+- `stack_name`  -- The name of the file to use for loading the stack information from.
+- `θ`           -- The angle of incidence to use.
+- `output_name` -- The name of the output file to use.
+- `λresolution` -- The wavelength resolution to use, in nm.
+"""
+function tmm_to_file(stack_name::String, θ::Real, output_name::String, λresolution::Real)
+    tmm_to_file(stack_name, [θ], output_name, λresolution)
+
+end
+
+"""
+    tmm_to_file(stack_name::String, θ::Real, output_name::String)
 
 Comuptes the TMM and saves the result to a dataframe file.
 
@@ -372,7 +523,22 @@ Comuptes the TMM and saves the result to a dataframe file.
 - `output_name` -- The name of the output file to use.
 """
 function tmm_to_file(stack_name::String, θ::Real, output_name::String)
-    tmm_to_file(stack_name, [θ], DEFAULT_OUTPUT_TMM_FILENAME)
+    tmm_to_file(stack_name, [θ], output_name, λRESOLUTION)
+
+end
+
+"""
+    tmm_to_file(stack_name::String, θ::UnitRange, λresolution::Real)
+
+Comuptes the TMM and saves the result to a dataframe file.
+
+### Inputs
+- `stack_name`  -- The name of the file to use for loading the stack information from.
+- `θ`           -- The angles of incidence to use.
+- `λresolution` -- The wavelength resolution to use, in nm.
+"""
+function tmm_to_file(stack_name::String, θ::UnitRange, λresolution)
+    tmm_to_file(stack_name, Vector(θ), DEFAULT_OUTPUT_TMM_FILENAME, λresolution)
 
 end
 
@@ -386,7 +552,22 @@ Comuptes the TMM and saves the result to a dataframe file.
 - `θ`           -- The angles of incidence to use.
 """
 function tmm_to_file(stack_name::String, θ::UnitRange)
-    tmm_to_file(stack_name, Vector(θ), DEFAULT_OUTPUT_TMM_FILENAME)
+    tmm_to_file(stack_name, θ, λRESOLUTION)
+
+end
+
+"""
+    tmm_to_file(stack_name::String, θ::Real, λresolution::Real)
+
+Comuptes the TMM and saves the result to a dataframe file.
+
+### Inputs
+- `stack_name`  -- The name of the file to use for loading the stack information from.
+- `θ`           -- The angle of incidence to use.
+- `λresolution` -- The wavelength resolution to use, in nm.
+"""
+function tmm_to_file(stack_name::String, θ::Real, λresolution::Real)
+    tmm_to_file(stack_name, θ, DEFAULT_OUTPUT_TMM_FILENAME, λresolution)
 
 end
 
@@ -400,7 +581,22 @@ Comuptes the TMM and saves the result to a dataframe file.
 - `θ`           -- The angle of incidence to use.
 """
 function tmm_to_file(stack_name::String, θ::Real)
-    tmm_to_file(stack_name, [θ], DEFAULT_OUTPUT_TMM_FILENAME)
+    tmm_to_file(stack_name, θ, λRESOLUTION)
+
+end
+
+"""
+    tmm_to_file(stack_name::String, output_name::String)
+
+Comuptes the TMM and saves the result to a dataframe file.
+
+### Inputs
+- `stack_name`  -- The name of the file to use for loading the stack information from.
+- `output_name` -- The name of the output file to use.
+- `λresolution` -- The wavelength resolution to use, in nm.
+"""
+function tmm_to_file(stack_name::String, output_name::String, λresolution::Real)
+    tmm_to_file(stack_name, [0], output_name, λresolution)
 
 end
 
@@ -414,7 +610,7 @@ Comuptes the TMM and saves the result to a dataframe file.
 - `output_name` -- The name of the output file to use.
 """
 function tmm_to_file(stack_name::String, output_name::String)
-    tmm_to_file(stack_name, [0], output_name)
+    tmm_to_file(stack_name, output_name, λRESOLUTION)
 
 end
 
