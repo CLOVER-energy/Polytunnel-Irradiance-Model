@@ -19,12 +19,15 @@ import seaborn as sns
 
 from numpy import pi, linspace, inf, array
 from scipy.interpolate import interp1d
+from tqdm import tqdm
 from tmm import (
+    absorp_in_each_layer,
     coh_tmm,
-    unpolarized_RT,
     ellips,
-    position_resolved,
     find_in_structure_with_inf,
+    inc_tmm,
+    position_resolved,
+    unpolarized_RT,
 )
 
 # Plotting context
@@ -50,6 +53,32 @@ sns.set_palette(
         "#E03944",
     ]
 )
+
+# ACTIVE_LAYER:
+#   Label used for the active layer.
+ACTIVE_LAYER: str = "Active layer"
+
+# BACKGROUND_PALETTE:
+#   The palette to use for the background absorption for the layers.
+BACKGROUND_PALETTE = [
+    tuple(sub_entry / 255 for sub_entry in entry)
+    for entry in [
+        (221, 221, 221),
+        (46, 37, 133),
+        (51, 117, 56),
+        (93, 168, 153),
+        (148, 203, 236),
+        (220, 205, 125),
+        (194, 106, 119),
+        (159, 74, 150),
+        (126, 41, 84),
+    ]
+]
+
+
+# INDEX:
+#   Variable for labelling plots.
+INDEX: int = 2
 
 # MM:
 #   Conversion factor from mm to inches.
@@ -78,6 +107,24 @@ class Layer:
 
     material: str
     thickness: float
+
+
+def _sanitise_label(label: str) -> str:
+    """
+    Sanitise the labels to make the active layer human-readable.
+
+    :param: label:
+        The label to sanitise.
+
+    :returns:
+        The sanitised label.
+
+    """
+
+    if ":" in label:
+        return ACTIVE_LAYER
+
+    return label
 
 
 def load_stack(stack_name: str) -> list[Layer]:
@@ -211,7 +258,7 @@ def tmm(
             1350,
         ]
     ):
-        # Plot the absorptance as a function of depth.
+        # Save the absorptance as a function of depth
         coh_tmm_data = coh_tmm("p", _stack_nk, _stack_thicknesses, 0, wavelength)
         depths = linspace(
             -50,
@@ -226,6 +273,59 @@ def tmm(
         ]
         absorption[wavelength] = [entry["absor"] for entry in depth_data]
         poynting_vector[wavelength] = [entry["poyn"] for entry in depth_data]
+
+        # Plot the absorptance within each layer.
+        _data = pd.DataFrame(
+            {
+                "layer": (_x := [_sanitise_label(entry.material) for entry in stack]),
+                "absorptance": 100 * absorp_in_each_layer(coh_tmm_data)[1:-1],
+            }
+        )
+
+        plt.figure(figsize=(83 * MM, 60 * MM))
+        _barplot = sns.barplot(
+            _data,
+            x=_data.index,
+            y="absorptance",
+            palette=BACKGROUND_PALETTE,
+            hue="layer",
+            legend=False,
+            ax=(axis := plt.gca()),
+        )
+        # _barplot.set_yscale("log")
+        plt.xticks(plt.xticks()[0], _data.layer)
+        plt.xlabel("Layer", fontsize=7)
+        plt.ylabel("Absorptance / %", fontsize=7)
+        axis.set_ylim(0, 57.5)
+        axis.tick_params(axis="both", which="major", labelsize=7)
+        plt.savefig(
+            f"layerwise_absorptance_unique_{wavelength}_nm_{INDEX}.pdf",
+            format="pdf",
+            bbox_inches="tight",
+            pad_inches=0.05,
+        )
+
+        plt.figure(figsize=(83 * MM, 60 * MM))
+        _barplot = sns.barplot(
+            _data,
+            x="layer",
+            y="absorptance",
+            palette=BACKGROUND_PALETTE,
+            hue="layer",
+            legend=False,
+            ax=(axis := plt.gca()),
+        )
+        # _barplot.set_yscale("log")
+        plt.xlabel("Layer", fontsize=7)
+        plt.ylabel("Absorptance / %", fontsize=7)
+        axis.set_ylim(0, 57.5)
+        axis.tick_params(axis="both", which="major", labelsize=7)
+        plt.savefig(
+            f"layerwise_absorptance_{wavelength}_nm_{INDEX}.pdf",
+            format="pdf",
+            bbox_inches="tight",
+            pad_inches=0.05,
+        )
 
     absorption_frame = pd.DataFrame(absorption)
     absorption_frame.index = depths
@@ -256,21 +356,6 @@ def tmm(
             return "\\\\"
         return "//"
 
-    background_palette = [
-        tuple(sub_entry / 255 for sub_entry in entry)
-        for entry in [
-            (221, 221, 221),
-            (46, 37, 133),
-            (51, 117, 56),
-            (93, 168, 153),
-            (148, 203, 236),
-            (220, 205, 125),
-            (194, 106, 119),
-            (159, 74, 150),
-            (126, 41, 84),
-        ]
-    ]
-
     sns.set_palette(
         sns.cubehelix_palette(
             start=0.6, rot=-0.6, light=0.70, n_colors=len(wavelengths)
@@ -292,7 +377,7 @@ def tmm(
         linspace(ymin, ymax, 1000),
         xmin,
         0,
-        color=background_palette[0],
+        color=BACKGROUND_PALETTE[0],
         label="Air",
         alpha=0.3,
     )
@@ -301,11 +386,11 @@ def tmm(
             linspace(ymin, ymax, 1000),
             current_x,
             current_x + layer.thickness,
-            color=background_palette[(index + 1) % len(background_palette)],
-            hatch=_get_hatch(index, len(background_palette)),
+            color=BACKGROUND_PALETTE[(index + 1) % len(BACKGROUND_PALETTE)],
+            hatch=_get_hatch(index, len(BACKGROUND_PALETTE)),
             label=layer.material,
             alpha=0.25,
-            edgecolor=background_palette[(index + 1) % len(background_palette)],
+            edgecolor=BACKGROUND_PALETTE[(index + 1) % len(BACKGROUND_PALETTE)],
         )
         current_x += layer.thickness
 
@@ -320,10 +405,179 @@ def tmm(
         title="Wavelength / nm",
         title_fontsize=7,
     )
+    material_labels = [_sanitise_label(label) for label in labels]
+    plt.legend(
+        handles[len(wavelengths) :],
+        material_labels,
+        loc=1,
+        fontsize=7,
+        ncols=1,
+        title="Layer",
+        title_fontsize=7,
+    )
+    axis.add_artist(legend1)
+
+    plt.savefig(
+        f"absorption_with_wavelengths_nm_{INDEX}.pdf",
+        format="pdf",
+        bbox_inches="tight",
+        pad_inches=0.05,
+        transparent=True,
+    )
+    plt.savefig(
+        f"absorption_with_wavelengths_nm_{INDEX}.png",
+        format="png",
+        bbox_inches="tight",
+        pad_inches=0.05,
+        transparent=True,
+        dpi=1500,
+    )
+
+    # Plot the absorptance as a function of depth.
+    fig = plt.figure(figsize=(83 * MM, 50 * MM))
+    axis = plt.gca()
+    sns.lineplot(absorption_frame, ax=axis)
+    plt.xlabel("Depth / mm")
+    plt.ylabel("Absorption / %")
+
+    # Add the layer information.
+    xmin, xmax = plt.xlim()
+    ymin, ymax = plt.ylim()
+    current_x: float = 0
+    axis.fill_betweenx(
+        linspace(ymin, ymax, 1000),
+        xmin,
+        0,
+        color=BACKGROUND_PALETTE[0],
+        label="Air",
+        alpha=0.3,
+    )
+    for index, layer in enumerate(stack):
+        axis.fill_betweenx(
+            linspace(ymin, ymax, 1000),
+            current_x,
+            current_x + layer.thickness,
+            color=BACKGROUND_PALETTE[(index + 1) % len(BACKGROUND_PALETTE)],
+            hatch=_get_hatch(index, len(BACKGROUND_PALETTE)),
+            label=layer.material,
+            alpha=0.25,
+            edgecolor=BACKGROUND_PALETTE[(index + 1) % len(BACKGROUND_PALETTE)],
+        )
+        current_x += layer.thickness
+
+    # axis.fill_betweenx(linspace(ymin, ymax, 1000), current_x, xmax, 0, color="C0", alpha=0.3)
+    axis.tick_params(axis="both", which="major", labelsize=7)
+    handles, labels = axis.get_legend_handles_labels()
+    legend1 = plt.legend(
+        handles[: len(wavelengths)],
+        labels[: len(wavelengths)],
+        loc=2,
+        fontsize=7,
+        title="Wavelength / nm",
+        title_fontsize=7,
+    )
+    material_labels = [_sanitise_label(label) for label in labels]
+    plt.legend(
+        handles[len(wavelengths) :],
+        material_labels,
+        loc=1,
+        fontsize=7,
+        ncols=1,
+        title="Layer",
+        title_fontsize=7,
+    )
+    axis.add_artist(legend1)
+
+    plt.savefig(
+        f"absorption_with_wavelengths_nm_small_{INDEX}.pdf",
+        format="pdf",
+        bbox_inches="tight",
+        pad_inches=0.05,
+        transparent=True,
+    )
+    plt.savefig(
+        f"absorption_with_wavelengths_nm_small_{INDEX}.png",
+        format="png",
+        bbox_inches="tight",
+        pad_inches=0.05,
+        transparent=True,
+        dpi=1500,
+    )
+
+    # plt.show()
+
+    # Plot the absorptance as a function of depth where the glass layers are not shown.
+    sns.set_palette(
+        [
+            "#3455CC",
+            "#557BF9",
+            "#9FB0FC",
+            "#D1C3A7",
+            "#FBC412",
+            "#FE8224",
+            "#E03944",
+        ]
+    )
+
+    fig = plt.figure(figsize=(171 * MM, 100 * MM))
+    axis = plt.gca()
+    sns.lineplot(absorption_frame, ax=axis)
+    plt.xlabel("Depth / mm")
+    plt.ylabel("Absorption / %")
+
+    # Add the layer information.
+    xmin, xmax = plt.xlim(
+        stack[0].thickness + absorption_frame.index[0],
+        absorption_frame.index[-1] - stack[-1].thickness,
+    )
+    ymin, ymax = plt.ylim()
+    axis.fill_betweenx(
+        linspace(ymin, ymax, 1000),
+        xmin,
+        stack[0].thickness,
+        color=BACKGROUND_PALETTE[0],
+        label=stack[0].material,
+        alpha=0.3,
+    )
+    color_index: int = 0
+    current_x: float = stack[0].thickness
+    for index, layer in enumerate(stack[1:-1]):
+        axis.fill_betweenx(
+            linspace(ymin, ymax, 1000),
+            current_x,
+            current_x + layer.thickness,
+            color=BACKGROUND_PALETTE[(color_index + 1) % len(BACKGROUND_PALETTE)],
+            hatch=_get_hatch(index, len(BACKGROUND_PALETTE)),
+            label=layer.material,
+            alpha=0.25,
+            edgecolor=BACKGROUND_PALETTE[(color_index + 1) % len(BACKGROUND_PALETTE)],
+        )
+        color_index += 1
+        current_x += layer.thickness
+
+    axis.fill_betweenx(
+        linspace(ymin, ymax, 1000),
+        sum([entry.thickness for entry in stack]) - stack[-1].thickness,
+        xmax,
+        color=BACKGROUND_PALETTE[0],
+        label=stack[0].material,
+        alpha=0.3,
+    )
+    # axis.fill_betweenx(linspace(ymin, ymax, 1000), current_x, xmax, 0, color="C0", alpha=0.3)
+    axis.tick_params(axis="both", which="major", labelsize=7)
+    handles, labels = axis.get_legend_handles_labels()
+    legend1 = plt.legend(
+        handles[: len(wavelengths)],
+        labels[: len(wavelengths)],
+        loc=2,
+        fontsize=7,
+        title="Wavelength / nm",
+        title_fontsize=7,
+    )
     material_labels = (
-        labels[len(wavelengths) : len(wavelengths) + 4]
-        + ["Active layer"]
-        + labels[len(wavelengths) + 5 :]
+        labels[len(wavelengths) : len(wavelengths) + 3]
+        + [ACTIVE_LAYER]
+        + labels[len(wavelengths) + 4 :]
     )
     plt.legend(
         handles[len(wavelengths) :],
@@ -337,14 +591,14 @@ def tmm(
     axis.add_artist(legend1)
 
     plt.savefig(
-        f"absorption_with_wavelengths_nm.pdf",
+        f"absorption_no_glass_with_wavelengths_nm_{INDEX}.pdf",
         format="pdf",
         bbox_inches="tight",
         pad_inches=0.05,
         transparent=True,
     )
     plt.savefig(
-        f"absorption_with_wavelengths_nm.png",
+        f"absorption_no_glass_with_wavelengths_nm_{INDEX}.png",
         format="png",
         bbox_inches="tight",
         pad_inches=0.05,
@@ -352,10 +606,405 @@ def tmm(
         dpi=1500,
     )
 
+    fig = plt.figure(figsize=(83 * MM, 50 * MM))
+    axis = plt.gca()
+    sns.lineplot(absorption_frame, ax=axis)
+    plt.xlabel("Depth / mm")
+    plt.ylabel("Absorption / %")
+
+    # Add the layer information.
+    xmin, xmax = plt.xlim(
+        stack[0].thickness + absorption_frame.index[0],
+        absorption_frame.index[-1] - stack[-1].thickness,
+    )
+    ymin, ymax = plt.ylim()
+    axis.fill_betweenx(
+        linspace(ymin, ymax, 1000),
+        xmin,
+        stack[0].thickness,
+        color=BACKGROUND_PALETTE[0],
+        label=stack[0].material,
+        alpha=0.3,
+    )
+    color_index: int = 0
+    current_x: float = stack[0].thickness
+    for index, layer in enumerate(stack[1:-1]):
+        axis.fill_betweenx(
+            linspace(ymin, ymax, 1000),
+            current_x,
+            current_x + layer.thickness,
+            color=BACKGROUND_PALETTE[(color_index + 1) % len(BACKGROUND_PALETTE)],
+            hatch=_get_hatch(index, len(BACKGROUND_PALETTE)),
+            label=layer.material,
+            alpha=0.25,
+            edgecolor=BACKGROUND_PALETTE[(color_index + 1) % len(BACKGROUND_PALETTE)],
+        )
+        color_index += 1
+        current_x += layer.thickness
+
+    axis.fill_betweenx(
+        linspace(ymin, ymax, 1000),
+        sum([entry.thickness for entry in stack]) - stack[-1].thickness,
+        xmax,
+        color=BACKGROUND_PALETTE[0],
+        label=stack[0].material,
+        alpha=0.3,
+    )
+    # axis.fill_betweenx(linspace(ymin, ymax, 1000), current_x, xmax, 0, color="C0", alpha=0.3)
+    axis.tick_params(axis="both", which="major", labelsize=7)
+    handles, labels = axis.get_legend_handles_labels()
+    legend1 = plt.legend(
+        handles[: len(wavelengths)],
+        labels[: len(wavelengths)],
+        loc=2,
+        fontsize=7,
+        title="Wavelength / nm",
+        title_fontsize=7,
+    )
+    material_labels = (
+        labels[len(wavelengths) : len(wavelengths) + 3]
+        + [ACTIVE_LAYER]
+        + labels[len(wavelengths) + 4 :]
+    )
+    plt.legend(
+        handles[len(wavelengths) :],
+        material_labels,
+        loc=1,
+        fontsize=7,
+        ncols=1,
+        title="Layer",
+        title_fontsize=7,
+    )
+    axis.add_artist(legend1)
+
+    plt.savefig(
+        f"absorption_no_glass_with_wavelengths_nm_small_{INDEX}.pdf",
+        format="pdf",
+        bbox_inches="tight",
+        pad_inches=0.05,
+        transparent=True,
+    )
+    plt.savefig(
+        f"absorption_no_glass_with_wavelengths_nm_small_{INDEX}.png",
+        format="png",
+        bbox_inches="tight",
+        pad_inches=0.05,
+        transparent=True,
+        dpi=1500,
+    )
+
+    # plt.show()
+
+    # Plot the spectra but ignore the next layer (ITO).
+    fig = plt.figure(figsize=(171 * MM, 100 * MM))
+    axis = plt.gca()
+    sns.lineplot(absorption_frame, ax=axis)
+    plt.xlabel("Depth / mm")
+    plt.ylabel("Absorption / %")
+
+    # Add the layer information.
+    xmin, xmax = plt.xlim(
+        sum([entry.thickness for entry in stack[:2]]) + absorption_frame.index[0],
+        absorption_frame.index[-1] - stack[-1].thickness,
+    )
+    ymin, ymax = plt.ylim()
+    axis.fill_betweenx(
+        linspace(ymin, ymax, 1000),
+        xmin,
+        (current_x := sum([entry.thickness for entry in stack[:2]])),
+        color=BACKGROUND_PALETTE[1],
+        label=stack[1].material,
+        alpha=0.3,
+    )
+    color_index: int = 1
+    for index, layer in enumerate(stack[2:-1]):
+        axis.fill_betweenx(
+            linspace(ymin, ymax, 1000),
+            current_x,
+            current_x + layer.thickness,
+            color=BACKGROUND_PALETTE[(color_index + 1) % len(BACKGROUND_PALETTE)],
+            hatch=_get_hatch(index, len(BACKGROUND_PALETTE)),
+            label=layer.material,
+            alpha=0.25,
+            edgecolor=BACKGROUND_PALETTE[(color_index + 1) % len(BACKGROUND_PALETTE)],
+        )
+        color_index += 1
+        current_x += layer.thickness
+
+    axis.fill_betweenx(
+        linspace(ymin, ymax, 1000),
+        sum([entry.thickness for entry in stack]) - stack[-1].thickness,
+        xmax,
+        color=BACKGROUND_PALETTE[0],
+        label=stack[0].material,
+        alpha=0.3,
+    )
+    # axis.fill_betweenx(linspace(ymin, ymax, 1000), current_x, xmax, 0, color="C0", alpha=0.3)
+    axis.tick_params(axis="both", which="major", labelsize=7)
+    handles, labels = axis.get_legend_handles_labels()
+    legend1 = plt.legend(
+        handles[: len(wavelengths)],
+        labels[: len(wavelengths)],
+        loc=2,
+        fontsize=7,
+        title="Wavelength / nm",
+        title_fontsize=7,
+    )
+    material_labels = (
+        labels[len(wavelengths) : len(wavelengths) + 2]
+        + [ACTIVE_LAYER]
+        + labels[len(wavelengths) + 3 :]
+    )
+    plt.legend(
+        handles[len(wavelengths) :],
+        material_labels,
+        loc=1,
+        fontsize=7,
+        ncols=1,
+        title="Layer",
+        title_fontsize=7,
+    )
+    axis.add_artist(legend1)
+
+    plt.savefig(
+        f"absorption_no_glass_or_ito_with_wavelengths_nm_{INDEX}.pdf",
+        format="pdf",
+        bbox_inches="tight",
+        pad_inches=0.05,
+        transparent=True,
+    )
+    plt.savefig(
+        f"absorption_no_glass_or_ito_with_wavelengths_nm_{INDEX}.png",
+        format="png",
+        bbox_inches="tight",
+        pad_inches=0.05,
+        transparent=True,
+        dpi=1500,
+    )
+
+    # Plot the spectra but ignore the next layer (ITO).
+    fig = plt.figure(figsize=(83 * MM, 50 * MM))
+    axis = plt.gca()
+    sns.lineplot(absorption_frame, ax=axis)
+    plt.xlabel("Depth / mm")
+    plt.ylabel("Absorption / %")
+
+    # Add the layer information.
+    xmin, xmax = plt.xlim(
+        sum([entry.thickness for entry in stack[:2]]) + absorption_frame.index[0],
+        absorption_frame.index[-1] - stack[-1].thickness,
+    )
+    ymin, ymax = plt.ylim()
+    axis.fill_betweenx(
+        linspace(ymin, ymax, 1000),
+        xmin,
+        (current_x := sum([entry.thickness for entry in stack[:2]])),
+        color=BACKGROUND_PALETTE[1],
+        label=stack[1].material,
+        alpha=0.3,
+    )
+    color_index: int = 1
+    for index, layer in enumerate(stack[2:-1]):
+        axis.fill_betweenx(
+            linspace(ymin, ymax, 1000),
+            current_x,
+            current_x + layer.thickness,
+            color=BACKGROUND_PALETTE[(color_index + 1) % len(BACKGROUND_PALETTE)],
+            hatch=_get_hatch(index, len(BACKGROUND_PALETTE)),
+            label=layer.material,
+            alpha=0.25,
+            edgecolor=BACKGROUND_PALETTE[(color_index + 1) % len(BACKGROUND_PALETTE)],
+        )
+        color_index += 1
+        current_x += layer.thickness
+
+    axis.fill_betweenx(
+        linspace(ymin, ymax, 1000),
+        sum([entry.thickness for entry in stack]) - stack[-1].thickness,
+        xmax,
+        color=BACKGROUND_PALETTE[0],
+        label=stack[0].material,
+        alpha=0.3,
+    )
+    # axis.fill_betweenx(linspace(ymin, ymax, 1000), current_x, xmax, 0, color="C0", alpha=0.3)
+    axis.tick_params(axis="both", which="major", labelsize=7)
+    handles, labels = axis.get_legend_handles_labels()
+    legend1 = plt.legend(
+        handles[: len(wavelengths)],
+        labels[: len(wavelengths)],
+        loc=2,
+        fontsize=7,
+        title="Wavelength / nm",
+        title_fontsize=7,
+    )
+    material_labels = (
+        labels[len(wavelengths) : len(wavelengths) + 2]
+        + [ACTIVE_LAYER]
+        + labels[len(wavelengths) + 3 :]
+    )
+    plt.legend(
+        handles[len(wavelengths) :],
+        material_labels,
+        loc=1,
+        fontsize=7,
+        ncols=1,
+        title="Layer",
+        title_fontsize=7,
+    )
+    axis.add_artist(legend1)
+
+    plt.savefig(
+        f"absorption_no_glass_or_ito_with_wavelengths_nm_small_{INDEX}.pdf",
+        format="pdf",
+        bbox_inches="tight",
+        pad_inches=0.05,
+        transparent=True,
+    )
+    plt.savefig(
+        f"absorption_no_glass_or_ito_with_wavelengths_nm_small_{INDEX}.png",
+        format="png",
+        bbox_inches="tight",
+        pad_inches=0.05,
+        transparent=True,
+        dpi=1500,
+    )
+
+    # plt.show()
+
+    # Compute the absorption within the active layer as a function of wavelength.
+
+    # Determine the index of the active layer in the stack.
+    active_layer_index: int = {
+        _sanitise_label(layer.material): index for index, layer in enumerate(stack)
+    }[ACTIVE_LAYER]
+
+    # Run the computation to determine the absorptance for each wavelength.
+    layerwise_absorption: dict[int, list[float]] = {}
+    for wavelength in tqdm(
+        range(300, 1000), desc="Active-layer absorption calculation", unit="nm"
+    ):
+        # Save the absorptance as a function of depth
+        coh_tmm_data = coh_tmm("p", _stack_nk, _stack_thicknesses, 0, wavelength)
+        layerwise_absorption[wavelength] = absorp_in_each_layer(coh_tmm_data)[1:-1]
+
+    layerwise_absorption_frame = pd.DataFrame(layerwise_absorption).transpose()
+    layerwise_absorption_frame.columns = pd.Index(
+        [_sanitise_label(layer.material) for layer in stack]
+    )
+
+    plt.figure(figsize=(171 * MM, 120 * MM))
+    sns.lineplot(
+        layerwise_absorption_frame, palette=BACKGROUND_PALETTE, ax=(axis := plt.gca())
+    )
+    axis.set_xlabel("Wavelength / nm", fontsize=7)
+    axis.set_ylabel("Absorptance", fontsize=7)
+    axis.tick_params(axis="both", which="major", labelsize=7)
+    axis.legend(fontsize=7)
+
+    plt.savefig(
+        f"absorptance_in_layers_{INDEX}.pdf",
+        format="pdf",
+        bbox_inches="tight",
+        pad_inches=0.05,
+    )
+
+    plt.figure(figsize=(83 * MM, 60 * MM))
+    sns.lineplot(
+        layerwise_absorption_frame, palette=BACKGROUND_PALETTE, ax=(axis := plt.gca())
+    )
+    axis.set_xlabel("Wavelength / nm", fontsize=7)
+    axis.set_ylabel("Absorptance", fontsize=7)
+    axis.tick_params(axis="both", which="major", labelsize=7)
+    axis.legend(fontsize=7)
+
+    plt.savefig(
+        f"absorptance_in_layers_small_{INDEX}.pdf",
+        format="pdf",
+        bbox_inches="tight",
+        pad_inches=0.05,
+    )
+
+    sns.set_palette(sns.color_palette([BACKGROUND_PALETTE[active_layer_index]]))
+    plt.figure(figsize=(171 * MM, 120 * MM))
+    sns.lineplot(
+        x=layerwise_absorption_frame.index,
+        y=layerwise_absorption_frame[ACTIVE_LAYER],
+        ax=(axis := plt.gca()),
+        label=ACTIVE_LAYER,
+    )
+    axis.set_xlabel("Wavelength / nm", fontsize=7)
+    axis.set_ylabel("Absorptance", fontsize=7)
+    axis.tick_params(axis="both", which="major", labelsize=7)
+    axis.legend(fontsize=7)
+
+    plt.savefig(
+        f"absorptance_in_active_layer_{INDEX}.pdf",
+        format="pdf",
+        bbox_inches="tight",
+        pad_inches=0.05,
+    )
+
+    plt.figure(figsize=(83 * MM, 60 * MM))
+    sns.lineplot(
+        x=layerwise_absorption_frame.index,
+        y=layerwise_absorption_frame[ACTIVE_LAYER],
+        ax=(axis := plt.gca()),
+        label=ACTIVE_LAYER,
+    )
+    axis.set_xlabel("Wavelength / nm", fontsize=7)
+    axis.set_ylabel("Absorptance", fontsize=7)
+    axis.tick_params(axis="both", which="major", labelsize=7)
+    axis.legend(fontsize=7)
+
+    plt.savefig(
+        f"absorptance_in_active_layer_small_{INDEX}.pdf",
+        format="pdf",
+        bbox_inches="tight",
+        pad_inches=0.05,
+    )
+
+    sns.set_palette(sns.color_palette(["#440154"]))
+    plt.figure(figsize=(171 * MM, 120 * MM))
+    sns.lineplot(
+        x=layerwise_absorption_frame.index,
+        y=layerwise_absorption_frame[ACTIVE_LAYER],
+        ax=(axis := plt.gca()),
+    )
+    axis.set_xlabel("Wavelength / nm", fontsize=7)
+    axis.set_ylabel("Absorptance", fontsize=7)
+    axis.tick_params(axis="both", which="major", labelsize=7)
+    axis.legend(fontsize=7)
+
+    plt.savefig(
+        f"absorptance_in_active_layer_purple_{INDEX}.pdf",
+        format="pdf",
+        bbox_inches="tight",
+        pad_inches=0.05,
+    )
+
+    plt.figure(figsize=(83 * MM, 60 * MM))
+    sns.lineplot(
+        x=layerwise_absorption_frame.index,
+        y=layerwise_absorption_frame[ACTIVE_LAYER],
+        ax=(axis := plt.gca()),
+    )
+    axis.set_xlabel("Wavelength / nm", fontsize=7)
+    axis.set_ylabel("Absorptance", fontsize=7)
+    axis.tick_params(axis="both", which="major", labelsize=7)
+    axis.legend(fontsize=7)
+
+    plt.savefig(
+        f"absorptance_in_active_layer_purple_small_{INDEX}.pdf",
+        format="pdf",
+        bbox_inches="tight",
+        pad_inches=0.05,
+    )
     plt.show()
+
     import pdb
 
     pdb.set_trace()
+    return
 
     for depth in depths:
         layer, d_in_layer = find_in_structure_with_inf(_stack_thicknesses, depth)
@@ -370,7 +1019,7 @@ def tmm(
     plt.xlabel("depth (nm)")
     plt.ylabel("AU")
     plt.title("Local absorption (purple), Poynting vector (blue)")
-    plt.show()
+    # plt.show()
 
     import pdb
 
@@ -399,7 +1048,7 @@ def tmm(
     # plt.xlabel('depth (nm)')
     # plt.ylabel('AU')
     # plt.title('Local absorption (purple), Poynting vector (blue)')
-    # plt.show()
+    # # plt.show()
 
 
 if __name__ == "__main__":
