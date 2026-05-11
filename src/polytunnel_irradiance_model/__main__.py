@@ -35,6 +35,7 @@ from typing import Any, Callable, Generator, Iterator, Match, Pattern
 
 import json
 import matplotlib.colors as m_colors
+import matplotlib.lines as mlines
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -44,6 +45,7 @@ import yaml
 
 from matplotlib import rc, rcParams
 from numpy import inf
+from scipy import constants
 from scipy.integrate import trapezoid
 from scipy.interpolate import interp1d
 from tqdm import tqdm
@@ -357,6 +359,34 @@ def code_print(string_to_print: str, end: str = "") -> None:
     """
 
     print(string_to_print + "." * (64 - len(string_to_print)), end="")
+
+
+def spectrum_to_flux(
+    spectrum: pd.Series | np.ndarray, wavelength_series: pd.Series | np.ndarray
+) -> pd.Series | np.ndarray:
+    """
+    Convert a solar spectrum into a photon flux.
+
+    :param: spectrum:
+        The power spectrum in W/m^2.
+
+    :param: wavelength_series:
+        The wavelength data in nm.
+
+    :returns:
+        The spectrum as a photon flux spectrum in micro-moles per cm^2.
+
+    """
+
+    energy_series = constants.h * constants.c / (wavelength_series * (10 ** (-9)))
+    if isinstance(spectrum, pd.Series):
+        return (
+            spectrum.divide(energy_series, axis=0)
+            / (10**4 * constants.N_A)  # Convert to micro-moles per cm2
+            * 10**6
+        )
+
+    return spectrum * 10**6 / (energy_series * 10**4 * constants.N_A)
 
 
 def _yield_time(
@@ -1774,195 +1804,9 @@ def main(args: list[Any]) -> None:
 
         pdb.set_trace()
 
-        from matplotlib import colors as mcolors
-
-        # Plot the spectra at a specific hour for each element within the ground mesh.
-        # NOTE: Colours indicate the index of the element providing surface irradiation.
-
-        # Determine the number of non-zero elements
-        _hour: int = 12
-        num_grid_indices: int = 0
-        for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
-            if (
-                clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][_hour]
-                > 0
-            ):
-                num_grid_indices += 1
-
-        sns.set_palette(
-            sns.cubehelix_palette(
-                start=0.4, rot=-1.2, n_colors=num_grid_indices, reverse=True
-            )
-        )
-        sns.set_palette("viridis", n_colors=num_grid_indices)
-
-        plt.figure(figsize=(171 * MM, 120 * MM))
-        dashes = Dashes()
-        _zorder = 0
-        grid_indices: list[int] = []
-        for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
-            if (
-                clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][_hour]
-                > 0
-            ):
-                _color = f"C{grid_index}"
-                _zorder += 1
-                grid_indices.append(grid_index)
-            else:
-                _color = "C0"
-            plt.plot(
-                wavelength_range,
-                clearsky_ground_direct_irradiance_map_with_pv_module_and_spectra[_hour][
-                    grid_index
-                ],
-                dashes=next(dashes),
-                label=f"#{_color}" if _color != "C0" else None,
-                color=_color,
-                zorder=0 if _color == "C0" else _zorder,
-            )
-
-        plt.legend().remove()
-
-        norm = plt.Normalize(
-            -0.5,
-            clearsky_ground_direct_irradiance_map_with_pv_module.shape[1] + 0.5,
-        )
-        scalar_mappable = plt.cm.ScalarMappable(
-            cmap=mcolors.LinearSegmentedColormap.from_list(
-                "Custom",
-                sns.color_palette().as_hex(),
-                num_grid_indices,
-            ),
-            norm=norm,
-        )
-
-        colorbar = (axis := plt.gca()).figure.colorbar(
-            scalar_mappable,
-            ax=axis,
-            label="Surface index illuminating",
-            pad=(_pad := 0.125),
-        )
-        colorbar.set_ticks(grid_indices)
-        colorbar.set_ticklabels(
-            [
-                entry if index % 3 == 0 else None
-                for index, entry in enumerate(grid_indices)
-            ]
-        )
-
-        axis.tick_params(axis="both", which="major", labelsize=7)
-        plt.xlabel("Wavelength / nm", fontsize=7)
-        plt.ylabel("Irradiance / W/m$^2$nm", fontsize=7)
-
-        (right_axis := axis.twinx()).plot(
-            wavelength_range,
-            pyranometer_adjusted_interpolated_spectra.direct.values,
-            "--",
-            color="C9",
-        )
-        right_axis.set_ylabel("Direct-irradiance response / normalised units")
-        right_axis.tick_params(axis="both", which="major", labelsize=7)
-
-        plt.savefig(
-            f"ground_through_pv_spectra_profiles_{_hour}_{INDEX}.pdf",
-            format="pdf",
-            bbox_inches="tight",
-            pad_inches=0.05,
-        )
-        plt.savefig(
-            f"ground_through_pv_spectra_profiles_{_hour}_{INDEX}.png",
-            format="png",
-            bbox_inches="tight",
-            pad_inches=0.05,
-            transparent=True,
-            dpi=1200,
-        )
-        plt.show()
-
-        plt.figure(figsize=(171 * MM, 120 * MM))
-        dashes = Dashes()
-        _zorder = 0
-        _hour = 12
-        grid_indices: list[int] = []
-        for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
-            if (
-                clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][_hour]
-                > 0
-            ):
-                _color = f"C{grid_index}"
-                _zorder += 1
-                grid_indices.append(grid_index)
-            else:
-                _color = "C0"
-            plt.plot(
-                wavelength_range,
-                clearsky_ground_direct_irradiance_map[_hour][grid_index],
-                dashes=next(dashes),
-                label=f"#{_color}" if _color != "C0" else None,
-                color=_color,
-                zorder=0 if _color == "C0" else _zorder,
-            )
-
-        plt.legend().remove()
-
-        norm = plt.Normalize(
-            -0.5,
-            clearsky_ground_direct_irradiance_map.shape[1] + 0.5,
-        )
-        scalar_mappable = plt.cm.ScalarMappable(
-            cmap=mcolors.LinearSegmentedColormap.from_list(
-                "Custom",
-                sns.color_palette().as_hex(),
-                clearsky_ground_direct_irradiance_map.shape[1] + 1,
-            ),
-            norm=norm,
-        )
-
-        colorbar = (axis := plt.gca()).figure.colorbar(
-            scalar_mappable,
-            ax=axis,
-            label="Surface index illuminating",
-            pad=(_pad := 0.125),
-        )
-        colorbar.set_ticks(grid_indices)
-        colorbar.set_ticklabels(
-            [
-                entry if index % 3 == 0 else None
-                for index, entry in enumerate(grid_indices)
-            ]
-        )
-
-        axis.tick_params(axis="both", which="major", labelsize=7)
-        plt.xlabel("Wavelength / nm", fontsize=7)
-        plt.ylabel("Irradiance / W/m$^2$nm", fontsize=7)
-
-        (right_axis := axis.twinx()).plot(
-            wavelength_range,
-            pyranometer_adjusted_interpolated_spectra.direct.values,
-            "--",
-            color="C9",
-        )
-        right_axis.set_ylabel("Direct-irradiance response / normalised units")
-        right_axis.tick_params(axis="both", which="major", labelsize=7)
-
-        plt.savefig(
-            f"ground_total_with_pv_spectra_profiles_{_hour}_{INDEX}.pdf",
-            format="pdf",
-            bbox_inches="tight",
-            pad_inches=0.05,
-        )
-        plt.savefig(
-            f"ground_total_with_pv_spectra_profiles_{_hour}_{INDEX}.png",
-            format="png",
-            bbox_inches="tight",
-            pad_inches=0.05,
-            transparent=True,
-            dpi=1200,
-        )
-        plt.show()
-
-        def spectrum_to_swatch(spectrum: np.ndarray) -> float:
-            pass
+        #######################
+        # Plotting code No. 4 #
+        #######################
 
         ########################
         # Plotting code No. 1b #
@@ -5402,6 +5246,408 @@ def main(args: list[Any]) -> None:
 #     ax=axis,
 #     label="Surface-mesh index",
 #     pad=(_pad := 0.025),
+# )
+# plt.show()
+
+# #######################
+# # Plotting code No. 4 #
+# #######################
+
+# from matplotlib import colors as mcolors
+
+# # Plot the spectra at a specific hour for each element within the ground mesh.
+# # NOTE: Colours indicate the index of the element providing surface irradiation.
+
+# # Determine the number of non-zero elements
+# _hour: int = 12
+# num_grid_indices: int = 0
+# for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
+#     if (
+#         clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][_hour]
+#         > 0
+#     ):
+#         num_grid_indices += 1
+
+# sns.set_palette(
+#     sns.cubehelix_palette(
+#         start=0.4, rot=-1.2, n_colors=num_grid_indices, reverse=True
+#     )
+# )
+# sns.set_palette("viridis", n_colors=num_grid_indices)
+
+# plt.figure(figsize=(171 * MM, 120 * MM))
+# dashes = Dashes()
+# _zorder = 0
+# grid_indices: list[int] = []
+# for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
+#     if (
+#         clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][_hour]
+#         > 0
+#     ):
+#         _color = f"C{grid_index}"
+#         _zorder += 1
+#         grid_indices.append(grid_index)
+#     else:
+#         _color = "C0"
+#     plt.plot(
+#         wavelength_range,
+#         clearsky_ground_direct_irradiance_map_with_pv_module_and_spectra[_hour][
+#             grid_index
+#         ],
+#         dashes=next(dashes),
+#         label=f"#{_color}" if _color != "C0" else None,
+#         color=_color,
+#         zorder=0 if _color == "C0" else _zorder,
+#     )
+
+# plt.legend().remove()
+
+# norm = plt.Normalize(
+#     -0.5,
+#     clearsky_ground_direct_irradiance_map_with_pv_module.shape[1] + 0.5,
+# )
+# scalar_mappable = plt.cm.ScalarMappable(
+#     cmap=mcolors.LinearSegmentedColormap.from_list(
+#         "Custom",
+#         sns.color_palette().as_hex(),
+#         num_grid_indices,
+#     ),
+#     norm=norm,
+# )
+
+# colorbar = (axis := plt.gca()).figure.colorbar(
+#     scalar_mappable,
+#     ax=axis,
+#     label="Surface index illuminating",
+#     pad=(_pad := 0.125),
+# )
+# colorbar.set_ticks(grid_indices)
+# colorbar.set_ticklabels(
+#     [
+#         entry if index % 3 == 0 else None
+#         for index, entry in enumerate(grid_indices)
+#     ]
+# )
+
+# axis.tick_params(axis="both", which="major", labelsize=7)
+# plt.xlabel("Wavelength / nm", fontsize=7)
+# plt.ylabel("Irradiance / W/m$^2$nm", fontsize=7)
+
+# (right_axis := axis.twinx()).plot(
+#     wavelength_range,
+#     pyranometer_adjusted_interpolated_spectra.direct.values,
+#     "--",
+#     color="C9",
+# )
+# right_axis.set_ylabel("Direct-irradiance response / normalised units")
+# right_axis.tick_params(axis="both", which="major", labelsize=7)
+
+# plt.savefig(
+#     f"ground_through_pv_spectra_profiles_{_hour}_{INDEX}.pdf",
+#     format="pdf",
+#     bbox_inches="tight",
+#     pad_inches=0.05,
+# )
+# plt.savefig(
+#     f"ground_through_pv_spectra_profiles_{_hour}_{INDEX}.png",
+#     format="png",
+#     bbox_inches="tight",
+#     pad_inches=0.05,
+#     transparent=True,
+#     dpi=1200,
+# )
+# plt.show()
+
+# # Plot the total irradiance where spectra are coloured based on whether they passed
+# # through PV modules (green) or not (yellow) from viridis to match the colours used
+# # in the JULIA tmm.
+
+# sns.set_palette(sns.color_palette(["#FDE725", "#21908C", "#31688E", "#440154"]))
+# plt.figure(figsize=(171 * MM, 120 * MM))
+# _zorder = 0
+# _hour = 12
+# grid_indices: list[int] = []
+# for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
+#     if (
+#         clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][_hour]
+#         > 0
+#     ):
+#         _color: str = "C1"
+#         _dashes: str = "--"
+#         _label: str = "Through-PV"
+#         grid_indices.append(grid_index)
+#     elif sum(clearsky_ground_direct_irradiance_map[_hour][grid_index]) == 0:
+#         _color: str = "C3"
+#         _dashes = ":"
+#         _label = "No direct sunlight"
+#     else:
+#         _color = "C0"
+#         _dashes = ""
+#         _label = "Through-polytunnel"
+#     plt.plot(
+#         wavelength_range,
+#         clearsky_ground_direct_irradiance_map[_hour][grid_index],
+#         _dashes,
+#         label=_label,
+#         color=_color,
+#         zorder=0 if _color == "C0" else 1,
+#         alpha=0.3,
+#     )
+
+# # Determine unique labels and only keep these.
+# handles, labels = (axis := plt.gca()).get_legend_handles_labels()
+# unique_handles_labels: list[tuple[mlines.Line2D]] = []
+# unique_labels: set[str] = set()
+# for handle, label in zip(handles, labels):
+#     if label not in unique_labels:
+#         unique_handles_labels.append((handle, label))
+#         unique_labels.add(label)
+
+# plt.legend().remove()
+# plt.legend(
+#     [entry[0] for entry in unique_handles_labels],
+#     [entry[1] for entry in unique_handles_labels],
+#     fontsize=7,
+# )
+
+# axis.tick_params(axis="both", which="major", labelsize=7)
+# plt.xlabel("Wavelength / nm", fontsize=7)
+# plt.ylabel("Irradiance / W/m$^2$nm", fontsize=7)
+
+# (right_axis := axis.twinx()).plot(
+#     wavelength_range,
+#     pyranometer_adjusted_interpolated_spectra.direct.values,
+#     "--",
+#     color="C9",
+# )
+# right_axis.set_ylabel("Direct-irradiance response / normalised units")
+# right_axis.tick_params(axis="both", which="major", labelsize=7)
+
+# plt.savefig(
+#     f"ground_total_with_pv_spectra_profiles_{_hour}_{INDEX}.pdf",
+#     format="pdf",
+#     bbox_inches="tight",
+#     pad_inches=0.05,
+# )
+# plt.savefig(
+#     f"ground_total_with_pv_spectra_profiles_{_hour}_{INDEX}.png",
+#     format="png",
+#     bbox_inches="tight",
+#     pad_inches=0.05,
+#     transparent=True,
+#     dpi=1200,
+# )
+# plt.show()
+
+# sns.set_palette(sns.color_palette(["#FDE725", "#21908C", "#31688E", "#440154"]))
+# plt.figure(figsize=(171 * MM, 120 * MM))
+# _zorder = 0
+# _hour = 12
+# grid_indices: list[int] = []
+# for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
+#     if (
+#         clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][_hour]
+#         > 0
+#     ):
+#         _color: str = "C1"
+#         _dashes: str = "--"
+#         _label: str = "Through-PV"
+#         grid_indices.append(grid_index)
+#     elif sum(clearsky_ground_direct_irradiance_map[_hour][grid_index]) == 0:
+#         _color: str = "C3"
+#         _dashes = ":"
+#         _label = "No direct sunlight"
+#     else:
+#         _color = "C0"
+#         _dashes = ""
+#         _label = "Through-polytunnel"
+#     plt.plot(
+#         wavelength_range,
+#         spectrum_to_flux(
+#             clearsky_ground_direct_irradiance_map[_hour][grid_index],
+#             wavelength_range,
+#         ),
+#         _dashes,
+#         label=_label,
+#         color=_color,
+#         zorder=0 if _color == "C0" else 1,
+#         alpha=0.3,
+#     )
+
+# # Determine unique labels and only keep these.
+# handles, labels = (axis := plt.gca()).get_legend_handles_labels()
+# unique_handles_labels: list[tuple[mlines.Line2D]] = []
+# unique_labels: set[str] = set()
+# for handle, label in zip(handles, labels):
+#     if label not in unique_labels:
+#         unique_handles_labels.append((handle, label))
+#         unique_labels.add(label)
+
+# axis.tick_params(axis="both", which="major", labelsize=7)
+# plt.xlabel("Wavelength / nm", fontsize=7)
+# plt.ylabel("Photon flux ($\Phi$) / $\mu$mol/cm$^2$nm", fontdict={"size": 7})
+
+# # (right_axis := axis.twinx()).plot(
+# #     wavelength_range,        sns.set_palette(sns.color_palette(["#FDE725", "#21908C", "#31688E", "#440154"]))
+# plt.figure(figsize=(171 * MM, 120 * MM))
+# _zorder = 0
+# _hour = 12
+# grid_indices: list[int] = []
+# for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
+#     if (
+#         clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][_hour]
+#         > 0
+#     ):
+#         _color: str = "C1"
+#         _dashes: str = "--"
+#         _label: str = "Through-PV"
+#         grid_indices.append(grid_index)
+#     elif sum(clearsky_ground_direct_irradiance_map[_hour][grid_index]) == 0:
+#         _color: str = "C3"
+#         _dashes = ":"
+#         _label = "No direct sunlight"
+#     else:
+#         _color = "C0"
+#         _dashes = ""
+#         _label = "Through-polytunnel"
+#     plt.plot(
+#         wavelength_range,
+#         spectrum_to_flux(
+#             clearsky_ground_direct_irradiance_map[_hour][grid_index],
+#             wavelength_range,
+#         ),
+#         _dashes,
+#         label=_label,
+#         color=_color,
+#         zorder=0 if _color == "C0" else 1,
+#         alpha=0.3,
+#     )
+
+# # Determine unique labels and only keep these.
+# handles, labels = (axis := plt.gca()).get_legend_handles_labels()
+# unique_handles_labels: list[tuple[mlines.Line2D]] = []
+# unique_labels: set[str] = set()
+# for handle, label in zip(handles, labels):
+#     if label not in unique_labels:
+#         unique_handles_labels.append((handle, label))
+#         unique_labels.add(label)
+
+# axis.tick_params(axis="both", which="major", labelsize=7)
+# plt.xlabel("Wavelength / nm", fontsize=7)
+# plt.ylabel("Photon flux ($\Phi$) / $\mu$mol/cm$^2$nm", fontdict={"size": 7})
+
+# # (right_axis := axis.twinx()).plot(
+# #     wavelength_range,
+# #     spectrum_to_flux(pyranometer_adjusted_interpolated_spectra.direct.values, wavelength_range),
+# #     "--",
+# #     color="C2",
+# #     label="Incident spectrum"
+# # )
+# # right_axis.set_ylabel("Direct-irradiance response / normalised units")
+# # right_axis.tick_params(axis="both", which="major", labelsize=7)
+# # right_labels, right_handles = right_axis.get_legend_handles_labels()
+
+# plt.legend().remove()
+# plt.legend(
+#     [entry[0] for entry in unique_handles_labels], # + right_labels,
+#     [entry[1] for entry in unique_handles_labels], # + right_handles,
+#     fontsize=7,
+# )
+
+# plt.savefig(
+#     f"ground_total_with_pv_flux_profiles_{_hour}_{INDEX}.pdf",
+#     format="pdf",
+#     bbox_inches="tight",
+#     pad_inches=0.05,
+# )
+# plt.savefig(
+#     f"ground_total_with_pv_flux_profiles_{_hour}_{INDEX}.png",
+#     format="png",
+#     bbox_inches="tight",
+#     pad_inches=0.05,
+#     transparent=True,
+#     dpi=1200,
+# )
+# plt.show()
+
+# plt.figure(figsize=(73 * MM, 60 * MM))
+# _zorder = 0
+# _hour = 12
+# grid_indices: list[int] = []
+# for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
+#     if (
+#         clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][_hour]
+#         > 0
+#     ):
+#         _color: str = "C1"
+#         _dashes: str = "--"
+#         _label: str = "Through-PV"
+#         grid_indices.append(grid_index)
+#     elif sum(clearsky_ground_direct_irradiance_map[_hour][grid_index]) == 0:
+#         _color: str = "C3"
+#         _dashes = ":"
+#         _label = "No direct sunlight"
+#     else:
+#         _color = "C0"
+#         _dashes = ""
+#         _label = "Through-polytunnel"
+#     plt.plot(
+#         wavelength_range,
+#         spectrum_to_flux(
+#             clearsky_ground_direct_irradiance_map[_hour][grid_index],
+#             wavelength_range,
+#         ),
+#         _dashes,
+#         label=_label,
+#         color=_color,
+#         zorder=0 if _color == "C0" else 1,
+#         alpha=0.3,
+#     )
+
+# # Determine unique labels and only keep these.
+# handles, labels = (axis := plt.gca()).get_legend_handles_labels()
+# unique_handles_labels: list[tuple[mlines.Line2D]] = []
+# unique_labels: set[str] = set()
+# for handle, label in zip(handles, labels):
+#     if label not in unique_labels:
+#         unique_handles_labels.append((handle, label))
+#         unique_labels.add(label)
+
+# axis.tick_params(axis="both", which="major", labelsize=7)
+# plt.xlabel("Wavelength / nm", fontsize=7)
+# plt.ylabel("Photon flux ($\Phi$) / $\mu$mol/cm$^2$nm", fontdict={"size": 7})
+
+# # (right_axis := axis.twinx()).plot(
+# #     wavelength_range,
+# #     spectrum_to_flux(pyranometer_adjusted_interpolated_spectra.direct.values, wavelength_range),
+# #     "--",
+# #     color="C2",
+# #     label="Incident spectrum"
+# # )
+# # right_axis.set_ylabel("Direct-irradiance response / normalised units")
+# # right_axis.tick_params(axis="both", which="major", labelsize=7)
+# # right_labels, right_handles = right_axis.get_legend_handles_labels()
+
+# plt.legend().remove()
+# plt.legend(
+#     [entry[0] for entry in unique_handles_labels], # + right_labels,
+#     [entry[1] for entry in unique_handles_labels], # + right_handles,
+#     fontsize=7,
+# )
+
+# plt.savefig(
+#     f"ground_total_with_pv_flux_profiles_small_{_hour}_{INDEX}.pdf",
+#     format="pdf",
+#     bbox_inches="tight",
+#     pad_inches=0.05,
+# )
+# plt.savefig(
+#     f"ground_total_with_pv_flux_profiles_small_{_hour}_{INDEX}.png",
+#     format="png",
+#     bbox_inches="tight",
+#     pad_inches=0.05,
+#     transparent=True,
+#     dpi=1200,
 # )
 # plt.show()
 
