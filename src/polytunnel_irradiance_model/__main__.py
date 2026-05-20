@@ -84,6 +84,7 @@ import numpy as np
 warnings.filterwarnings(
     "ignore", category=UserWarning, module=r".*vectorized_tmm_dispersive_multistack.*"
 )
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 __all__ = ("compute_surface_grid", "main")
 
@@ -1604,7 +1605,7 @@ def main(args: list[Any]) -> None:
     # both as diffuse and direct components.
 
     # Compute the amount of direct light reaching the ground.
-    with time_execution("Direct on-the-ground calculation"):
+    with time_execution("Clearsky direct on-the-ground calculation"):
         # Code without spectra
         clearsky_ground_direct_irradiance_map: pd.DataFrame = pd.DataFrame(
             [
@@ -1627,7 +1628,7 @@ def main(args: list[Any]) -> None:
                 ]
                 for time_index, solar_position in tqdm(
                     enumerate(solar_positions),
-                    desc="Direct ground irradiance calculation",
+                    desc="Clearsky direct ground irradiance calculation",
                     leave=False,
                     total=len(solar_positions),
                 )
@@ -1659,7 +1660,7 @@ def main(args: list[Any]) -> None:
                     ]
                     for time_index, solar_position in tqdm(
                         enumerate(solar_positions),
-                        desc="Direct ground irradiance calculation",
+                        desc="Non-PV direct ground irradiance calculation",
                         leave=False,
                         total=len(solar_positions),
                     )
@@ -1710,13 +1711,15 @@ def main(args: list[Any]) -> None:
                     ]
                     for time_index, solar_position in tqdm(
                         enumerate(solar_positions),
-                        desc="Direct ground irradiance calculation",
+                        desc="Through-PV direct ground irradiance calculation",
                         leave=False,
                         total=len(solar_positions),
                     )
                 ]
             )
         ).clip(0, None)
+
+    with time_execution("TMM-based direct on-the-ground calculation"):
         surface_index_of_illuminating_meshpoint: pd.DataFrame = (
             pd.DataFrame(
                 [
@@ -1742,7 +1745,7 @@ def main(args: list[Any]) -> None:
                     ]
                     for time_index, solar_position in tqdm(
                         enumerate(solar_positions),
-                        desc="Direct ground irradiance calculation",
+                        desc="Surface-index of PV calculation",
                         leave=False,
                         total=len(solar_positions),
                     )
@@ -1969,24 +1972,24 @@ def main(args: list[Any]) -> None:
     with time_execution("Diffuse on-the-ground calculation"):
         # Compute the diffuse irradiance on the ground.
         # Code without spectra.
-        clearsky_ground_diffuse_irradiance_map: pd.DataFrame = pd.DataFrame(
-            {
-                ground_index: (
-                    clearsky_total_diffuse_surface_irradiance.reset_index(drop=True)
-                    * polytunnel.transmissivity
-                    * polytunnel_surface_pv_uncovered_fraction_mask.reset_index(
-                        drop=True
-                    )
-                    * ground_to_surface_projection_frame.iloc[ground_index]
-                ).sum(axis=1)
-                for ground_index, _ in tqdm(
-                    enumerate(polytunnel.ground_mesh),
-                    desc="Ground diffuse-irradiance calculation",
-                    leave=False,
-                    total=len(polytunnel.ground_mesh),
-                )
-            }
-        )
+        # clearsky_ground_diffuse_irradiance_map: pd.DataFrame = pd.DataFrame(
+        #     {
+        #         ground_index: (
+        #             clearsky_total_diffuse_surface_irradiance.reset_index(drop=True)
+        #             * polytunnel.transmissivity
+        #             * polytunnel_surface_pv_uncovered_fraction_mask.reset_index(
+        #                 drop=True
+        #             )
+        #             * ground_to_surface_projection_frame.iloc[ground_index]
+        #         ).sum(axis=1)
+        #         for ground_index, _ in tqdm(
+        #             enumerate(polytunnel.ground_mesh),
+        #             desc="Ground diffuse-irradiance calculation",
+        #             leave=False,
+        #             total=len(polytunnel.ground_mesh),
+        #         )
+        #     }
+        # )
         # diffuse_day_ground_diffuse_irradiance_map: pd.DataFrame = pd.DataFrame(
         #     {
         #         ground_index: (
@@ -2023,7 +2026,7 @@ def main(args: list[Any]) -> None:
         #             total=len(polytunnel.ground_mesh),
         #         )
         #     }
-        # )
+        # )sly
 
         # Code with spectra.
         # Compute the diffuse irradiance on the ground for clearsky conditions whereby
@@ -2106,8 +2109,7 @@ def main(args: list[Any]) -> None:
     with time_execution("Global on-the-ground calculation"):
         # Compute a generalised on-the-ground map for clearsky conditions.
         clearsky_total_ground_irradiance_map: np.ndarray = (
-            clearsky_ground_direct_irradiance_map
-            + clearsky_ground_diffuse_irradiance_map
+            clearsky_ground_direct_irradiance_map + clearsky_ground_diffuse_irradiance
         )
 
         # Store a generalised cloudy-day on-the-ground map where all irradiance is
@@ -2166,6 +2168,10 @@ def main(args: list[Any]) -> None:
         )
     except (AttributeError, NameError):
         pass
+
+    import pdb
+
+    pdb.set_trace()
 
     if alternative_weather_data is not None:
         diffusivity_series = (
