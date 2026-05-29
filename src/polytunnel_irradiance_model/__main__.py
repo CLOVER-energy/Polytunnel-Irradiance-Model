@@ -27,6 +27,7 @@ import sys
 import time
 
 from collections import defaultdict
+from collections.abc import Sequence
 from colour import SpectralDistribution, XYZ_to_sRGB, sd_to_XYZ
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -52,6 +53,7 @@ from tqdm import tqdm
 
 from src.polytunnel_irradiance_model.__utils__ import *
 from src.polytunnel_irradiance_model.functions import *
+from src.polytunnel_irradiance_model.plotting import *
 from src.polytunnel_irradiance_model.polytunnel import (
     calculate_adjacent_polytunnel_shading,
     calculate_adjacent_polytunnel_solid_angle_as_function_of_theta,
@@ -279,6 +281,71 @@ class Dashes(Iterator):
         return (self.dash_length, self.space)
 
 
+class DummyTMM(Sequence):
+    """
+    Represents a TMM when no TMM is required.
+
+    .. attribute:: length:
+        The length of the TMM.
+
+    .. attribute:: transmittance:
+        The transmittance through the TMM for all wavelengths.
+
+    """
+
+    def __init__(self, length: int, transmittance: float = 0.0):
+        """
+        Instantiate a :class:`DummyTMM` instance.
+
+        :param: length:
+            The length of the TMM.
+
+        :param: transmittance:
+            The transmittance through the TMM to use for all wavelengths.
+
+        """
+
+        self.length = length
+        self._series: pd.Series | None = None
+        self.transmittance: float = transmittance
+        super().__init__()
+
+    def __getitem__(self, i):
+        """Returns a series mocking the item."""
+        if self._series is None:
+            self._series = pd.Series([self.transmittance] * len(self))
+        return self._series
+
+    def __len__(self) -> int:
+        return self.length
+
+    def __str__(self) -> str:
+        """
+        Return a nice-looking string representing the TMM.
+
+        :returns:
+            A nice-looking string representing the TMM.
+
+        """
+
+        return f"DummyTmm(transmittance={self.transmittance})"
+
+    def __repr__(self) -> str:
+        return str(self)
+
+    @property
+    def columns(self) -> pd.Index:
+        """
+        Return mocked columns.
+
+        :returns:
+            Mocked columns.
+
+        """
+
+        return pd.Index([0])
+
+
 class ValidationColumns(enum.Enum):
     """
     Contains the names of the column headers in the validationd data.
@@ -360,34 +427,6 @@ def code_print(string_to_print: str, end: str = "") -> None:
     """
 
     print(string_to_print + "." * (64 - len(string_to_print)), end="")
-
-
-def spectrum_to_flux(
-    spectrum: pd.Series | np.ndarray, wavelength_series: pd.Series | np.ndarray
-) -> pd.Series | np.ndarray:
-    """
-    Convert a solar spectrum into a photon flux.
-
-    :param: spectrum:
-        The power spectrum in W/m^2.
-
-    :param: wavelength_series:
-        The wavelength data in nm.
-
-    :returns:
-        The spectrum as a photon flux spectrum in micro-moles per cm^2.
-
-    """
-
-    energy_series = constants.h * constants.c / (wavelength_series * (10 ** (-9)))
-    if isinstance(spectrum, pd.Series):
-        return (
-            spectrum.divide(energy_series, axis=0)
-            / (10**4 * constants.N_A)  # Convert to micro-moles per cm2
-            * 10**6
-        )
-
-    return spectrum * 10**6 / (energy_series * 10**4 * constants.N_A)
 
 
 def _yield_time(
@@ -585,6 +624,13 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
         default=1,
         help="Resolution to use for TMM and wavelength calculations in nm.",
     )
+    tmm_and_spectral_arguments.add_argument(
+        "--regenerate-tmm",
+        "-rtm",
+        default=False,
+        action="store_true",
+        help="Regenerate the polytunnel solar TMMs.",
+    )
 
     parser.add_argument(
         "--regenerate",
@@ -743,30 +789,37 @@ def main(args: list[Any]) -> None:
     _tmm_angular_resolution: float | int = 1
     if float(wavelength_step_nm) == int(wavelength_step_nm):
         wavelength_step_nm = int(wavelength_step_nm)
-    if polytunnel.pv_module.stack is not None:
+    if polytunnel.pv_module is not None and polytunnel.pv_module.stack is not None:
         # If there is no stack file, then compute in Julia.
-        if not os.path.isfile(
-            stack_filename := f"{polytunnel.pv_module.stack_name}.csv"
+        if (
+            not os.path.isfile(
+                stack_filename := f"{polytunnel.pv_module.stack_name}.csv"
+            )
+            or parsed_args.regenerate_tmm
         ):
             code_print("Running JULIA computation for stack")
             run = subprocess.run(
-                f"julia tmm_ppv_script.jl -s {polytunnel.pv_module.stack_name} -t "
-                f"0:{_tmm_angular_resolution}:90 "
-                f"-f {polytunnel.pv_module.stack_name} -w {wavelength_step_nm}".split(
-                    " "
-                )
+                command := (
+                    f"julia tmm_ppv_script.jl -s {polytunnel.pv_module.stack_name} -t "
+                    f"0:{_tmm_angular_resolution}:90 "
+                    f"-f {polytunnel.pv_module.stack_name} -w {wavelength_step_nm}"
+                ).split(" ")
             )
             if run.returncode != 0:
-                raise Exception("TMM code failed: check STDOUT.")
+                raise Exception(
+                    "TMM code failed: check STDOUT. "
+                    f"Command sent to Julia: {command}"
+                )
             print(DONE)
 
         with open(stack_filename, "r", encoding="UTF-8") as stack_tmm_file:
-            stack_tmm: pd.DataFrame | None = pd.read_csv(stack_tmm_file)
+            stack_tmm: pd.DataFrame | DummyTMM | None = pd.read_csv(stack_tmm_file)
+
+        stack_tmm = stack_tmm.set_index(WAVELENGTH)
+        stack_tmm.columns = pd.Index([float(entry) for entry in stack_tmm.columns])
+
     else:
         stack_tmm = None
-
-    stack_tmm = stack_tmm.set_index(WAVELENGTH)
-    stack_tmm.columns = pd.Index([float(entry) for entry in stack_tmm.columns])
 
     # Load the solar spectra from the data files.
     try:
@@ -822,11 +875,23 @@ def main(args: list[Any]) -> None:
     # calculation.
     import numpy as np
 
-    wavelength_range = np.arange(
-        _min_wavelength := stack_tmm.index[0],
-        _max_wavelength := stack_tmm.index[-1] + wavelength_step_nm,
-        wavelength_step_nm,
-    )
+    if isinstance(stack_tmm, pd.DataFrame):
+        wavelength_range = np.arange(
+            stack_tmm.index[0],
+            stack_tmm.index[-1] + wavelength_step_nm,
+            wavelength_step_nm,
+        )
+
+    # If no TMMs are needed, because no PV modules are included, then use the reference
+    # limits on spectra.
+    else:
+        wavelength_range = np.arange(
+            reference_day_spectra.index[0],
+            reference_day_spectra.index[-1] + wavelength_step_nm,
+            wavelength_step_nm,
+        )
+        stack_tmm = DummyTMM(len(wavelength_range))
+
     global_spectrum = [
         interp1d(
             reference_day_spectra.index,
@@ -1421,7 +1486,11 @@ def main(args: list[Any]) -> None:
                 * pyranometer_adjusted_interpolated_spectra.direct.values
                 for angle in row
             ]
-            for _, row in solar_angles.iterrows()
+            for _, row in tqdm(
+                solar_angles.iterrows(),
+                desc="Post-TMM direct spectra calculation",
+                total=len(solar_angles),
+            )
         ]
     )
 
@@ -1489,13 +1558,7 @@ def main(args: list[Any]) -> None:
             polytunnel_surface_pv_uncovered_fraction_mask.reset_index(drop=True)
             * (
                 diffuse_surface_irradiance.reset_index(drop=True)
-                + (
-                    polytunnel_diffusivity := (
-                        parsed_args.diffusivity
-                        if parsed_args.diffusivity is not None
-                        else polytunnel.diffusivity
-                    )
-                )  # [Dimensionless]
+                + polytunnel_diffusivity  # [Dimensionless]
                 * direct_surface_irradiance.reset_index(drop=True)  # [W/m^2]
             )
             * dni_to_weather_adjustment_factor.reset_index(drop=True)  # [W/m^2 / W/m^2]
@@ -1510,7 +1573,7 @@ def main(args: list[Any]) -> None:
         direct_day_total_diffuse_surface_irradiance_with_pv = (
             # The contribution from direct light which passes through at its incident
             # angle and is then diffused.
-            parsed_args.diffusivity
+            polytunnel_diffusivity
             * (1 - polytunnel_surface_pv_uncovered_fraction_mask.reset_index(drop=True))
             * (
                 direct_surface_irradiance.reset_index(drop=True)  # [W/m^2]
@@ -1617,7 +1680,6 @@ def main(args: list[Any]) -> None:
                         (
                             surface_shaded_map.loc[time_index]
                             * clearsky_irradiance["dni"].iloc[time_index]
-                            * (1 - polytunnel_diffusivity)
                         ).reset_index(drop=True)
                         * polytunnel_surface_pv_uncovered_fraction_mask.iloc[
                             time_index
@@ -1626,6 +1688,12 @@ def main(args: list[Any]) -> None:
                         diffusivity=parsed_args.diffusivity,
                     )
                 ]
+                # for time_index, solar_position in tqdm(
+                #     list(enumerate(solar_positions))[11:],
+                #     desc="Clearsky direct ground irradiance calculation",
+                #     leave=False,
+                #     total=len(solar_positions[11:]),
+                # )
                 for time_index, solar_position in tqdm(
                     enumerate(solar_positions),
                     desc="Clearsky direct ground irradiance calculation",
@@ -1648,7 +1716,6 @@ def main(args: list[Any]) -> None:
                             (
                                 surface_shaded_map.loc[time_index]
                                 * clearsky_irradiance["dni"].iloc[time_index]
-                                * (1 - polytunnel_diffusivity)
                             ).reset_index(drop=True)
                             * polytunnel_surface_pv_uncovered_fraction_mask.iloc[
                                 time_index
@@ -1696,7 +1763,6 @@ def main(args: list[Any]) -> None:
                             (
                                 surface_shaded_map.loc[time_index]
                                 * clearsky_irradiance["dni"].iloc[time_index]
-                                * (1 - polytunnel_diffusivity)
                             ).reset_index(drop=True)
                             * (
                                 1
@@ -1719,7 +1785,6 @@ def main(args: list[Any]) -> None:
             )
         ).clip(0, None)
 
-    with time_execution("TMM-based direct on-the-ground calculation"):
         surface_index_of_illuminating_meshpoint: pd.DataFrame = (
             pd.DataFrame(
                 [
@@ -1731,7 +1796,6 @@ def main(args: list[Any]) -> None:
                             (
                                 surface_shaded_map.loc[time_index]
                                 * clearsky_irradiance["dni"].iloc[time_index]
-                                * (1 - polytunnel_diffusivity)
                             ).reset_index(drop=True)
                             * (
                                 1
@@ -1757,21 +1821,6 @@ def main(args: list[Any]) -> None:
         # Plotting code No. 3 #
         #######################
 
-        # Compute the incident angles for each element to compute spectra.
-        solar_angles: pd.DataFrame = round_nearest(
-            np.degrees(np.acos(dot_product_map)), _tmm_angular_resolution
-        )
-        post_tmm_spectra: np.ndarray = np.array(
-            [
-                [
-                    stack_tmm[min(angle, max(stack_tmm.columns))]
-                    * pyranometer_adjusted_interpolated_spectra.direct.values
-                    for angle in row
-                ]
-                for _, row in solar_angles.iterrows()
-            ]
-        )
-
         # Extract the surface spectra based on the meshpoint shining onto the ground.
         null_spectrum = 0 * np.array(pyranometer_adjusted_interpolated_spectra.direct)
 
@@ -1790,7 +1839,7 @@ def main(args: list[Any]) -> None:
             """
             if surface_index is None or np.isnan(surface_index):
                 return null_spectrum
-            return post_tmm_spectra[time_index, int(surface_index), :]
+            return surface_post_tmm_direct_spectra[time_index, int(surface_index), :]
 
         ground_direct_irradiance_spectra = np.array(
             [
@@ -1857,10 +1906,6 @@ def main(args: list[Any]) -> None:
                     ]
                 ).astype(float)
 
-                clearsky_ground_direct_irradiance_map += end_direct_irradiance_map.clip(
-                    0, None
-                )
-
                 with open(
                     os.path.join(
                         AUTO_GENERATED,
@@ -1881,68 +1926,22 @@ def main(args: list[Any]) -> None:
                 # Plotting code No. 1b #
                 #######################
 
-        direct_day_ground_direct_irradiance = (
+        clearsky_ground_direct_irradiance_map = (
             clearsky_ground_direct_irradiance_map
-            * dni_to_weather_adjustment_factor.reset_index(drop=True).to_numpy()[
-                :, :, None
-            ]
             * pd.DataFrame(
                 [cos(position.theta_spherical) for position in solar_positions]
             )
             .reset_index(drop=True)
             .to_numpy()[:, :, None]
+            + end_direct_irradiance_map.clip(0, None)
         )
 
-        # FIXME: Units in end irradiance not matching correctly.
-        # import matplotlib.pyplot as plt
-        # import matplotlib.animation as animation
-        # import seaborn as sns
-        # import numpy as np
-
-        # fig, ax = plt.subplots(figsize=(171*MM, 120*MM))
-
-        # # Create initial heatmap with dummy data
-        # initial_data = np.reshape(
-        #     spectrum_to_flux(direct_day_ground_direct_irradiance[0], wavelength_range).sum(axis=1),
-        #     (
-        #         _dim_x := polytunnel.meshgrid_resolution,
-        #         _dim_y := polytunnel.length_wise_meshgrid_resolution,
-        #     ),
-        # )
-        # vmin = 0
-        # vmax = spectrum_to_flux(direct_day_ground_direct_irradiance, wavelength_range).sum(axis=2).max()
-        # heatmap = sns.heatmap(
-        #     initial_data, vmin=vmin, vmax=vmax, cmap="viridis", cbar=True, ax=ax, cbar_kws={"label": "Photon flux ($\Phi$) / $\mu$mol/cm$^2$"}
-        # )
-        # heatmap.figure.axes[-1].tick_params(which="both", labelsize=7)
-
-        # _ten_minutes: int = int(
-        #     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
-        # )
-
-        # def update(time_index: int):
-        #     ax.clear()  # clear previous heatmap
-        #     data = np.reshape(
-        #         spectrum_to_flux(direct_day_ground_direct_irradiance[time_index], wavelength_range).sum(axis=1), (_dim_x, _dim_y)
-        #     )
-        #     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
-        #     ax.set_title(
-        #         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
-        #     )
-
-        # plt.xlabel("Depth index", fontsize=7)
-        # plt.ylabel("Width index", fontsize=7)
-
-        # # Create the animation
-        # ani = animation.FuncAnimation(
-        #     fig,
-        #     update,
-        #     frames=direct_day_ground_direct_irradiance.shape[0],
-        #     interval=300,
-        #     repeat=False,
-        # )
-        # ani.save(f"direct_day_ground_direct_irradiance_{INDEX}.gif", writer="pillow", fps=5)
-        # plt.show()
+        direct_day_ground_direct_irradiance = (
+            clearsky_ground_direct_irradiance_map
+            * dni_to_weather_adjustment_factor.reset_index(drop=True).to_numpy()[
+                :, :, None
+            ]
+        )
 
         ########################
         # Plotting code No. 1b #
@@ -2032,23 +2031,27 @@ def main(args: list[Any]) -> None:
         # Compute the diffuse irradiance on the ground for clearsky conditions whereby
         # the spectra are determined based on clearsky conditions and no adjustment for
         # DHI or DNI is done.
-        clearsky_ground_diffuse_irradiance: np.ndarray = np.stack(
-            [
-                (
-                    clearsky_total_diffuse_surface_irradiance
-                    * (
-                        ground_to_surface_projection_frame.iloc[ground_index].to_numpy()
-                        * polytunnel.transmissivity
-                    )[np.newaxis, :, np.newaxis]
-                ).sum(axis=1)
-                for ground_index, _ in tqdm(
-                    enumerate(polytunnel.ground_mesh),
-                    desc="Diffuse day ground-irradiance calculation",
-                    leave=False,
-                    total=len(polytunnel.ground_mesh),
-                )
-            ],
-            axis=1,
+        clearsky_ground_diffuse_irradiance: np.ndarray = np.nan_to_num(
+            np.stack(
+                [
+                    (
+                        clearsky_total_diffuse_surface_irradiance
+                        * (
+                            ground_to_surface_projection_frame.iloc[
+                                ground_index
+                            ].to_numpy()
+                            * polytunnel.transmissivity
+                        )[np.newaxis, :, np.newaxis]
+                    ).sum(axis=1)
+                    for ground_index, _ in tqdm(
+                        enumerate(polytunnel.ground_mesh),
+                        desc="Diffuse day ground-irradiance calculation",
+                        leave=False,
+                        total=len(polytunnel.ground_mesh),
+                    )
+                ],
+                axis=1,
+            )
         )
 
         # Compute the diffuse irradiance on the ground given diffuse and direct
@@ -2168,6 +2171,96 @@ def main(args: list[Any]) -> None:
         )
     except (AttributeError, NameError):
         pass
+
+    with tqdm(desc="Plotting animations", total=8, leave=True) as pbar:
+        plot_animation(
+            direct_day_ground_diffuse_irradiance,
+            polytunnel,
+            wavelength_range,
+            index=INDEX,
+            modelling_temporal_resolution=parsed_args.modelling_temporal_resolution,
+            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+            show=False,
+            title=f"par_direct_day_ground_diffuse_irradiance_{polytunnel.name}",
+        )
+        pbar.update(1)
+        plot_animation(
+            direct_day_ground_direct_irradiance,
+            polytunnel,
+            wavelength_range,
+            index=INDEX,
+            modelling_temporal_resolution=parsed_args.modelling_temporal_resolution,
+            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+            show=False,
+            title=f"par_direct_day_ground_direct_irradiance_{polytunnel.name}",
+        )
+        pbar.update(1)
+        plot_animation(
+            diffuse_day_ground_diffuse_irradiance,
+            polytunnel,
+            wavelength_range,
+            index=INDEX,
+            modelling_temporal_resolution=parsed_args.modelling_temporal_resolution,
+            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+            show=False,
+            title=f"par_diffuse_day_ground_diffuse_irradiance_{polytunnel.name}",
+        )
+        pbar.update(1)
+        plot_animation(
+            clearsky_ground_diffuse_irradiance,
+            polytunnel,
+            wavelength_range,
+            index=INDEX,
+            modelling_temporal_resolution=parsed_args.modelling_temporal_resolution,
+            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+            show=False,
+            title=f"par_clearsky_ground_diffuse_irradiance_{polytunnel.name}",
+        )
+        pbar.update(1)
+        plot_animation(
+            clearsky_ground_direct_irradiance_map,
+            polytunnel,
+            wavelength_range,
+            index=INDEX,
+            modelling_temporal_resolution=parsed_args.modelling_temporal_resolution,
+            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+            show=False,
+            title=f"par_clearsky_ground_direct_irradiance_{polytunnel.name}",
+        )
+        pbar.update(1)
+        plot_animation(
+            clearsky_total_ground_irradiance_map,
+            polytunnel,
+            wavelength_range,
+            index=INDEX,
+            modelling_temporal_resolution=parsed_args.modelling_temporal_resolution,
+            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+            show=False,
+            title=f"par_clearsky_total_ground_irradiance_{polytunnel.name}",
+        )
+        pbar.update(1)
+        plot_animation(
+            direct_day_total_ground_irradiance_map,
+            polytunnel,
+            wavelength_range,
+            index=INDEX,
+            modelling_temporal_resolution=parsed_args.modelling_temporal_resolution,
+            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+            show=False,
+            title=f"par_direct_day_total_ground_irradiance_{polytunnel.name}",
+        )
+        pbar.update(1)
+        plot_animation(
+            cloudysky_total_ground_irradiance_map,
+            polytunnel,
+            wavelength_range,
+            index=INDEX,
+            modelling_temporal_resolution=parsed_args.modelling_temporal_resolution,
+            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+            show=False,
+            title=f"par_cloudysky_total_ground_irradiance_map_{polytunnel.name}",
+        )
+        pbar.update(1)
 
     import pdb
 

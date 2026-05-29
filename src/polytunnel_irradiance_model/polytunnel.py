@@ -2987,7 +2987,7 @@ def calculate_adjacent_polytunnel_solid_angle_as_function_of_theta(
             _calculate_meshpoint_adjacent_polytunnel_solid_angle(meshpoint)
             for meshpoint in tqdm(
                 meshpoints,
-                desc="Solid-angle calculation",
+                desc="Adjacent-polytunnel solid-angle calculation",
                 leave=False,
                 total=len(meshpoints),
             )

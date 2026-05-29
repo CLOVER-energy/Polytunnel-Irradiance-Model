@@ -76,7 +76,7 @@ def ground_direct_irradiance(
 
     def _single_meshpoint_ground_direct_irradiance(
         meshpoint: MeshPoint,
-    ) -> tuple[float, int]:
+    ) -> tuple[float | int, int | None]:
         """
         Compute the ground irradiance falling on a single meshpoint.
 
@@ -108,13 +108,13 @@ def ground_direct_irradiance(
         _b: float = 2 * (_m.x * _v.x + _m_z * _v.z)
         _c: float = _m.x**2 + _m_z**2 - polytunnel.curve.radius_of_curvature**2
 
-        _descriminant: float = _b**2 - 4 * _a * _c
+        _discriminant: float = _b**2 - 4 * _a * _c
         # If no intercept, then return 0
-        if _descriminant < 0:
+        if _discriminant < 0:
             return 0, None
 
-        _t: float = (-_b + sqrt(_descriminant)) / (2 * _a)
-        _u: float = (-_b - sqrt(_descriminant)) / (2 * _a)
+        _t: float = (-_b + sqrt(_discriminant)) / (2 * _a)
+        _u: float = (-_b - sqrt(_discriminant)) / (2 * _a)
 
         # Only accept positive values
         _t_value = max(_t, _u)

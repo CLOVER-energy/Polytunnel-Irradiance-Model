@@ -42,7 +42,7 @@ rcParams["ps.fonttype"] = 42
 plt.rcParams["font.size"] = 7
 
 sns.set_palette(
-    [
+    bright_palette := [
         "#3455CC",
         "#557BF9",
         "#9FB0FC",
@@ -78,7 +78,7 @@ BACKGROUND_PALETTE = [
 
 # INDEX:
 #   Variable for labelling plots.
-INDEX: int = 2
+INDEX: int = 5
 
 # MM:
 #   Conversion factor from mm to inches.
@@ -244,6 +244,29 @@ def tmm(
         for lambda_vac in wavelength_series
     ]
     transmittance = [entry["T"] for entry in coh_tmm_data]
+    reflectance = [entry["R"] for entry in coh_tmm_data]
+    absorptance = [1 - (entry["R"] + entry["T"]) for entry in coh_tmm_data]
+
+    # Plot the TMM
+    plt.figure(figsize=(171 * MM, 120 * MM))
+    sns.set_style("whitegrid")
+    data = pd.DataFrame(
+        {
+            "Reflectance": reflectance,
+            "Transmittance": transmittance,
+            "Absorptance": absorptance,
+        }
+    )
+    data.index = wavelength_series
+    sns.lineplot(data, palette=sns.color_palette(["#FDE725", "#21908C", "#440154"]))
+    plt.xlabel("Wavelength / nm")
+    plt.ylabel("Fraction reflected, transmitted or absorbed")
+    plt.ylim(0, 1)
+    plt.legend(loc="upper right")
+    plt.savefig(
+        f"python_tmm_{INDEX}.pdf", format="pdf", bbox_inches="tight", pad_inches=0.05
+    )
+    sns.set_style("ticks")
 
     absorption: dict[int, list[float]] = {}
     poynting_vector: dict[int, list[float]] = {}
@@ -1001,9 +1024,6 @@ def tmm(
     )
     plt.show()
 
-    import pdb
-
-    pdb.set_trace()
     return
 
     for depth in depths:

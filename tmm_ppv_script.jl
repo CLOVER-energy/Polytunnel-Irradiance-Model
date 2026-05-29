@@ -12,17 +12,24 @@ using ArgParse
 include("tmm_ppv.jl")
 
 # Enable parsing of unit range
-function ArgParse.parse_item(
-    ::Type{Union{Number,UnitRange,Vector{<:Number}}},
-    x::AbstractString,
-)
+function ArgParse.parse_item(::Type{Union{Vector{<:Number},Number}}, x::AbstractString)
     # If a colon is present, then try to parse as a unit range.
     if occursin(":", x)
         bounds = split(x, ":")
-        if length(bounds) != 2
-            throw(BoundsError("Unit range must have one colon"))
+        if length(bounds) > 3
+            throw(
+                BoundsError(
+                    "Unit range must have one or two colons. Bounds: " *
+                    string(bounds) *
+                    "; Len(bounds): " *
+                    string(length(bounds)),
+                ),
+            )
         end
-        return parse(Int, bounds[1]):parse(Int, bounds[2])
+        if length(bounds) == 3
+            return Vector(parse(Int, bounds[1]):parse(Int, bounds[2]):parse(Int, bounds[3]))
+        end
+        return Vector(parse(Int, bounds[1]):parse(Int, bounds[2]))
     end
 
     # If a comma is present, try to parse as a vector.
@@ -32,7 +39,7 @@ function ArgParse.parse_item(
     end
 
     # Else, parse as a number.
-    return parse(Number, x)
+    return parse(Float64, x)
 end
 
 
@@ -58,7 +65,7 @@ function parse_commandline()
         arg_type = String
         "--theta", "-t"
         help = "The angle(s) to use."
-        arg_type = Union{Vector{<:Number},Number,UnitRange}
+        arg_type = Union{Vector{<:Number},Number}
         default = 0
         "--wavelength-resolution", "-w"
         help = "The unit to use for the wavealength."
@@ -97,7 +104,7 @@ function main()
                 parsed_args["stack-name"],
                 parsed_args["theta"],
                 parsed_args["to-file"],
-                parsed_args["wavelength-resolution"]
+                parsed_args["wavelength-resolution"],
             )
         catch err
             println("TMM script failed.")
