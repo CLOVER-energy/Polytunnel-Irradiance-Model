@@ -2262,6 +2262,169 @@ def main(args: list[Any]) -> None:
         )
         pbar.update(1)
 
+    with tqdm(desc="Plotting spectra", total=4, leave=True) as pbar:
+        plot_spectrum(
+            [
+                (
+                    adjusted_global_spectrum,
+                    f"Global response ({sum(adjusted_global_spectrum):.4g}×)",
+                    5,
+                ),
+                (
+                    adjusted_direct_spectrum,
+                    f"Direct response ({sum(adjusted_direct_spectrum):.4g}×)",
+                    4,
+                ),
+                (
+                    adjusted_diffuse_spectrum,
+                    f"Diffuse response ({sum(adjusted_diffuse_spectrum):.4g}×)",
+                    2,
+                ),
+                (
+                    adjusted_cloudy_spectrum,
+                    f"Cloudy-day response ({sum(adjusted_cloudy_spectrum):.4g}×)",
+                    0,
+                ),
+            ],
+            pyranometer_wavelength_range,
+            index=INDEX,
+            show=False,
+            title="pyranometer_response",
+        )
+        pbar.update(1)
+
+        plot_spectrum(
+            [
+                (
+                    adjusted_global_spectrum,
+                    f"Global response ({sum(adjusted_global_spectrum):.4g}×)",
+                    5,
+                ),
+                (
+                    adjusted_direct_spectrum,
+                    f"Direct response ({sum(adjusted_direct_spectrum):.4g}×)",
+                    4,
+                ),
+                (
+                    adjusted_diffuse_spectrum,
+                    f"Diffuse response ({sum(adjusted_diffuse_spectrum):.4g}×)",
+                    2,
+                ),
+                (
+                    adjusted_cloudy_spectrum,
+                    f"Cloudy-day response ({sum(adjusted_cloudy_spectrum):.4g}×)",
+                    0,
+                ),
+            ],
+            pyranometer_wavelength_range,
+            index=INDEX,
+            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+            show=True,
+            spectral_units=SpectralUnits.PAR_FLUX,
+            title="pyranometer_response_par_flux",
+        )
+        pbar.update(1)
+
+    #######################
+    # Plotting code No. 4 #
+    #######################
+
+    from matplotlib import colors as m_colors
+
+    # Plot the spectra at a specific hour for each element within the ground mesh.
+    # NOTE: Colours indicate the index of the element providing surface irradiation.
+
+    # Determine the number of non-zero elements
+    _hour: int = 12
+    num_grid_indices: int = 0
+    for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
+        if clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][_hour] > 0:
+            num_grid_indices += 1
+
+    sns.set_palette(
+        sns.cubehelix_palette(
+            start=0.4, rot=-1.2, n_colors=num_grid_indices, reverse=True
+        )
+    )
+    sns.set_palette("viridis", n_colors=num_grid_indices)
+
+    plt.figure(figsize=(171 * MM, 120 * MM))
+    dashes = Dashes()
+    _zorder = 0
+    grid_indices: list[int] = []
+    for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
+        if clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][_hour] > 0:
+            _color = f"C{grid_index}"
+            _zorder += 1
+            grid_indices.append(grid_index)
+        else:
+            _color = "C0"
+        plt.plot(
+            wavelength_range,
+            clearsky_ground_direct_irradiance_map_with_pv_module_and_spectra[_hour][
+                grid_index
+            ],
+            dashes=next(dashes),
+            label=f"#{_color}" if _color != "C0" else None,
+            color=_color,
+            zorder=0 if _color == "C0" else _zorder,
+        )
+
+    plt.legend().remove()
+
+    norm = plt.Normalize(
+        -0.5,
+        clearsky_ground_direct_irradiance_map_with_pv_module.shape[1] + 0.5,
+    )
+    scalar_mappable = plt.cm.ScalarMappable(
+        cmap=m_colors.LinearSegmentedColormap.from_list(
+            "Custom",
+            sns.color_palette().as_hex(),
+            num_grid_indices,
+        ),
+        norm=norm,
+    )
+
+    colorbar = (axis := plt.gca()).figure.colorbar(
+        scalar_mappable,
+        ax=axis,
+        label="Surface index illuminating",
+        pad=(_pad := 0.125),
+    )
+    colorbar.set_ticks(grid_indices)
+    colorbar.set_ticklabels(
+        [entry if index % 3 == 0 else None for index, entry in enumerate(grid_indices)]
+    )
+
+    axis.tick_params(axis="both", which="major", labelsize=7)
+    plt.xlabel("Wavelength / nm", fontsize=7)
+    plt.ylabel("Irradiance / W/m$^2$nm", fontsize=7)
+
+    (right_axis := axis.twinx()).plot(
+        wavelength_range,
+        pyranometer_adjusted_interpolated_spectra.direct.values,
+        "--",
+        color="C9",
+    )
+    right_axis.set_ylabel("Direct-irradiance response / normalised units")
+    right_axis.tick_params(axis="both", which="major", labelsize=7)
+
+    plt.savefig(
+        f"ground_through_pv_spectra_profiles_{_hour}_{INDEX}.pdf",
+        format="pdf",
+        bbox_inches="tight",
+        pad_inches=0.05,
+    )
+    plt.savefig(
+        f"ground_through_pv_spectra_profiles_{_hour}_{INDEX}.png",
+        format="png",
+        bbox_inches="tight",
+        pad_inches=0.05,
+        transparent=True,
+        dpi=1200,
+    )
+    plt.show()
+
     import pdb
 
     pdb.set_trace()
