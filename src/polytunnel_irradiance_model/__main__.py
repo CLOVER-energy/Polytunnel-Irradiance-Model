@@ -2172,7 +2172,7 @@ def main(args: list[Any]) -> None:
     except (AttributeError, NameError):
         pass
 
-    with tqdm(desc="Plotting animations", total=8, leave=True) as pbar:
+    """with tqdm(desc="Plotting animations", total=8, leave=True) as pbar:
         plot_animation(
             direct_day_ground_diffuse_irradiance,
             polytunnel,
@@ -2260,9 +2260,10 @@ def main(args: list[Any]) -> None:
             show=False,
             title=f"par_cloudysky_total_ground_irradiance_map_{polytunnel.name}",
         )
-        pbar.update(1)
+        pbar.update(1)"""
 
-    with tqdm(desc="Plotting spectra", total=4, leave=True) as pbar:
+    with tqdm(desc="Plotting spectra", total=6, leave=True) as pbar:
+        # Plot the pyranometer response
         plot_spectrum(
             [
                 (
@@ -2319,11 +2320,170 @@ def main(args: list[Any]) -> None:
             pyranometer_wavelength_range,
             index=INDEX,
             plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
-            show=True,
             spectral_units=SpectralUnits.PAR_FLUX,
             title="pyranometer_response_par_flux",
         )
         pbar.update(1)
+
+        # Plot the received irradiance and photon flux on the ground:
+        # - Plot the direct irradiance which was received;
+        # - Plot the diffuse irradiance which was received.
+
+        # Construct a palette based on the number of non-zero illuminated ground squares
+        _hour: int = 12
+        num_grid_indices: int = 0
+        for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
+            if (
+                clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][_hour]
+                > 0
+            ):
+                num_grid_indices += 1
+
+        import seaborn as sns
+
+        _palette = sns.cubehelix_palette(
+            start=0.4, rot=-1.2, n_colors=num_grid_indices, reverse=True
+        )
+
+        plot_spectrum(
+            [
+                (
+                    clearsky_ground_direct_irradiance_map_with_pv_module_and_spectra[
+                        _hour
+                    ][grid_index],
+                    f"{grid_index}",
+                )
+                for grid_index in range(
+                    len(clearsky_ground_direct_irradiance_map[_hour])
+                )
+                if clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][
+                    _hour
+                ]
+                > 0
+            ],
+            wavelength_range,
+            index=INDEX,
+            palette=_palette,
+            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+            show=False,
+            small=False,
+            spectral_units=SpectralUnits.PAR_FLUX,
+            title="par_on_the_ground_spectra_v1",
+            unique_legend=True,
+        )
+        pbar.update(1)
+
+        # Plot the spectra using a different method.
+        _palette = sns.color_palette(["#FDE725", "#21908C", "#31688E", "#440154"])
+        _hour = 12
+        plotting_data: list[tuple[np.ndarray | pd.Series, str, float]] = []
+        for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
+            if (
+                clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][_hour]
+                > 0
+            ):
+                plotting_data.append(
+                    (
+                        clearsky_ground_direct_irradiance_map[_hour][grid_index],
+                        "Through-PV",
+                        1,
+                        "--",
+                    )
+                )
+            elif sum(clearsky_ground_direct_irradiance_map[_hour][grid_index]) == 0:
+                plotting_data.append(
+                    (
+                        clearsky_ground_direct_irradiance_map[_hour][grid_index],
+                        "No direct sunlight",
+                        3,
+                        ":",
+                    )
+                )
+            else:
+                plotting_data.append(
+                    (
+                        clearsky_ground_direct_irradiance_map[_hour][grid_index],
+                        "Through-polytunnel",
+                        0,
+                        "-",
+                    )
+                )
+
+        plot_spectrum(
+            plotting_data,
+            wavelength_range,
+            index=INDEX,
+            palette=_palette,
+            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+            right_axis_data=[
+                (
+                    pyranometer_adjusted_interpolated_spectra.direct.values,
+                    "Direct-irradiance response",
+                    2,
+                    "-.",
+                )
+            ],
+            show=False,
+            small=False,
+            spectral_units=SpectralUnits.PAR_FLUX,
+            title="par_on_the_ground_spectra_v2_with_reference",
+            unique_legend=True,
+        )
+        pbar.update(1)
+
+        plot_spectrum(
+            plotting_data,
+            wavelength_range,
+            index=INDEX,
+            palette=_palette,
+            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+            right_axis_data=[
+                (
+                    pyranometer_adjusted_interpolated_spectra.direct.values,
+                    "Direct-irradiance response",
+                    2,
+                    "-.",
+                )
+            ],
+            show=False,
+            small=True,
+            spectral_units=SpectralUnits.PAR_FLUX,
+            title="par_on_the_ground_spectra_v2_with_reference_small",
+            unique_legend=True,
+        )
+        pbar.update(1)
+
+        plot_spectrum(
+            plotting_data,
+            wavelength_range,
+            index=INDEX,
+            palette=_palette,
+            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+            show=False,
+            small=False,
+            spectral_units=SpectralUnits.PAR_FLUX,
+            title="par_on_the_ground_spectra_v2_sans_reference",
+            unique_legend=True,
+        )
+        pbar.update(1)
+
+        plot_spectrum(
+            plotting_data,
+            wavelength_range,
+            index=INDEX,
+            palette=_palette,
+            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+            show=False,
+            small=True,
+            spectral_units=SpectralUnits.PAR_FLUX,
+            title="par_on_the_ground_spectra_v2_sans_reference_small",
+            unique_legend=True,
+        )
+        pbar.update(1)
+
+        import pdb
+
+        pdb.set_trace()
 
     #######################
     # Plotting code No. 4 #
@@ -2425,9 +2585,7 @@ def main(args: list[Any]) -> None:
     )
     plt.show()
 
-    import pdb
-
-    pdb.set_trace()
+    return
 
     if alternative_weather_data is not None:
         diffusivity_series = (

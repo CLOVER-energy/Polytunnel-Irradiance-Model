@@ -146,7 +146,9 @@ def spectrum_to_par(
     if isinstance(spectrum, pd.Series):
         raise NotImplementedError("Not implemented for pandas")
 
-    if len(spectrum.shape) == 2:
+    if len(spectrum.shape) == 1:
+        par_spectrum = spectrum[np.isin(wavelength_series, par_wavelength_series)]
+    elif len(spectrum.shape) == 2:
         par_spectrum = spectrum[:, np.isin(wavelength_series, par_wavelength_series)]
     elif len(spectrum.shape) == 3:
         par_spectrum = spectrum[:, :, np.isin(wavelength_series, par_wavelength_series)]
