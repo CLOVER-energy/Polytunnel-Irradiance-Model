@@ -2374,7 +2374,21 @@ def main(args: list[Any]) -> None:
         pbar.update(1)
 
         # Plot the spectra using a different method.
-        _palette = sns.color_palette(["#FDE725", "#21908C", "#31688E", "#440154"])
+        _palette = sns.color_palette(
+            list(
+                reversed(
+                    [
+                        "#423252",
+                        "#4A688B",
+                        "#779FB1",
+                        "#36C7B8",
+                        "#FBC412",
+                        "#FE8224",
+                        "#E03944",
+                    ]
+                )
+            )
+        )
         _hour = 12
         plotting_data: list[tuple[np.ndarray | pd.Series, str, float]] = []
         for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
@@ -2386,7 +2400,7 @@ def main(args: list[Any]) -> None:
                     (
                         clearsky_ground_direct_irradiance_map[_hour][grid_index],
                         "Through-PV",
-                        1,
+                        5,
                         "--",
                     )
                 )
@@ -2395,8 +2409,17 @@ def main(args: list[Any]) -> None:
                     (
                         clearsky_ground_direct_irradiance_map[_hour][grid_index],
                         "No direct sunlight",
-                        3,
+                        6,
                         ":",
+                    )
+                )
+            elif sum(end_direct_irradiance_map[_hour][grid_index]) > 0:
+                plotting_data.append(
+                    (
+                        clearsky_ground_direct_irradiance_map[_hour][grid_index],
+                        "Through-open ends",
+                        1,
+                        "-.",
                     )
                 )
             else:
@@ -2404,7 +2427,7 @@ def main(args: list[Any]) -> None:
                     (
                         clearsky_ground_direct_irradiance_map[_hour][grid_index],
                         "Through-polytunnel",
-                        0,
+                        3,
                         "-",
                     )
                 )
@@ -2481,9 +2504,11 @@ def main(args: list[Any]) -> None:
         )
         pbar.update(1)
 
-        import pdb
+    return
 
-        pdb.set_trace()
+    import pdb
+
+    pdb.set_trace()
 
     #######################
     # Plotting code No. 4 #
