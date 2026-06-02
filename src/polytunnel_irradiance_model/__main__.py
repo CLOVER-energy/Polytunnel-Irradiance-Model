@@ -151,7 +151,7 @@ INCOMING_SHORTWAVE_DIRECT: str = "SWIN_LEVEL3_DIRECT"
 
 # INDEX:
 #   Integer for storing index of plots.
-INDEX: int = 4
+INDEX: int = 5
 
 # MODULES:
 #   Keyword for parsing PV-module information.
@@ -599,6 +599,13 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
         action="store_true",
         default=False,
         help="Use the alternative weather-data file for diffusivity data only.",
+    )
+    parser.add_argument(
+        "--hadlow-weather-filename",
+        "-hwf",
+        type=str,
+        default=HADLOW_WEATHER_FILENAME,
+        help=argparse.SUPPRESS,
     )
 
     tmm_and_spectral_arguments = parser.add_argument_group("solar-spectra arguments")
@@ -1098,7 +1105,7 @@ def main(args: list[Any]) -> None:
         # Read the Hadlow weather data if available.
         try:
             with open(
-                os.path.join(HADLOW_WEATHER_FILENAME), "r", encoding="UTF-8"
+                os.path.join(parsed_args.hadlow_weather_filename), "r", encoding="UTF-8"
             ) as hadlow_weather_file:
                 hadlow_weather_data: pd.DataFrame = (
                     pd.read_csv(hadlow_weather_file)
@@ -1107,10 +1114,11 @@ def main(args: list[Any]) -> None:
                 )
         except FileNotFoundError:
             raise FileNotFoundError(
-                f"Could not find weather file: {HADLOW_WEATHER_FILENAME}"
+                f"Could not find weather file: {parsed_args.hadlow_weather_filename}"
             ) from None
 
         hadlow_weather_data.index = pd.DatetimeIndex(hadlow_weather_data.index)
+        hadlow_weather_data = hadlow_weather_data.tz_localize(None)
 
         # Slice using the start and end weather values.
         hadlow_dni_slice: pd.DataFrame = hadlow_weather_data[
@@ -1129,7 +1137,7 @@ def main(args: list[Any]) -> None:
 
         # If the CLI has been used to specify an additional weather file, use this in
         # addition to locally-obtained data.
-        if parsed_args.weather_file != HADLOW_WEATHER_FILENAME:
+        if parsed_args.weather_file != parsed_args.hadlow_weather_filename:
             try:
                 with open(
                     os.path.join(parsed_args.weather_file), "r", encoding="UTF-8"
@@ -1161,7 +1169,7 @@ def main(args: list[Any]) -> None:
 
         # If the weather data file is to be used only for diffusivity data, then
         # use the Hadlow data for the real weather values. Otherwise, use these data
-        if (parsed_args.weather_file != HADLOW_WEATHER_FILENAME) and (
+        if (parsed_args.weather_file != parsed_args.hadlow_weather_filename) and (
             not parsed_args.weather_as_diffusivity_only
         ):
             dhi_to_weather_adjustment_factor: pd.DataFrame = pd.concat(
@@ -2172,7 +2180,7 @@ def main(args: list[Any]) -> None:
     except (AttributeError, NameError):
         pass
 
-    """with tqdm(desc="Plotting animations", total=8, leave=True) as pbar:
+    with tqdm(desc="Plotting animations", total=8, leave=True) as pbar:
         plot_animation(
             direct_day_ground_diffuse_irradiance,
             polytunnel,
@@ -2260,7 +2268,7 @@ def main(args: list[Any]) -> None:
             show=False,
             title=f"par_cloudysky_total_ground_irradiance_map_{polytunnel.name}",
         )
-        pbar.update(1)"""
+        pbar.update(1)
 
     with tqdm(desc="Plotting spectra", total=6, leave=True) as pbar:
         # Plot the pyranometer response

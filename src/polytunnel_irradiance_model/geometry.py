@@ -560,6 +560,7 @@ class MeshPoint(Point):
         """
         return self._normal_vector
 
+
 class CurveType(enum.Enum):
     """
     Denotes the type of curve. Useful in constructing curves.
@@ -744,7 +745,9 @@ class Curve(ABC):
         """
 
         if self._azimuth_rotation_matrix is None:
-            self._azimuth_rotation_matrix = RotationMatrix.from_rotation_angle_and_axis(radians(self.zenith_rotation_angle), CartesianAxis.Z)
+            self._azimuth_rotation_matrix = RotationMatrix.from_rotation_angle_and_axis(
+                radians(self.zenith_rotation_angle), CartesianAxis.Z
+            )
 
         return self._azimuth_rotation_matrix
 
@@ -771,7 +774,9 @@ class Curve(ABC):
         """
 
         if self._tilt_rotation_matrix is None:
-            self._tilt_rotation_matrix = RotationMatrix.from_rotation_angle_and_axis(radians(self.tilt_rotation_angle), CartesianAxis.X)
+            self._tilt_rotation_matrix = RotationMatrix.from_rotation_angle_and_axis(
+                radians(self.tilt_rotation_angle), CartesianAxis.X
+            )
 
         return self._tilt_rotation_matrix
 
@@ -1452,9 +1457,6 @@ class Polytunnel:
         dz = np.gradient(Z, axis=0)
 
         # Compute normal vectors using the cross product of the gradients
-        normals = np.cross(
-            np.array(
-  adients
         normals = np.cross(
             np.array(
                 [np.gradient(X, axis=1), np.gradient(Y, axis=1), np.gradient(Z, axis=1)]
