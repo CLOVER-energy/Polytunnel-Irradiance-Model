@@ -512,6 +512,13 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
         "the day.",
     )
     simulation_arguments.add_argument(
+        "--skip-plots",
+        "-sp",
+        action="store_true",
+        default=False,
+        help="Flag to skip plotting and exit.",
+    )
+    simulation_arguments.add_argument(
         "--validation-filename",
         "-vf",
         type=str,
@@ -2179,6 +2186,10 @@ def main(args: list[Any]) -> None:
         )
     except (AttributeError, NameError):
         pass
+
+    # Skip and stop if no plots to plot.
+    if parsed_args.skip_plots:
+        return
 
     with tqdm(desc="Plotting animations", total=8, leave=True) as pbar:
         plot_animation(
