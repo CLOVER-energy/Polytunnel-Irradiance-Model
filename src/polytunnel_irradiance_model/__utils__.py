@@ -24,11 +24,12 @@ import pvlib
 from scipy import constants
 
 __all__ = (
+    "integrate_spectrum",
     "Location",
     "NAME",
     "NotInterceptError",
-    "spectrum_to_flux",
-    "spectrum_to_par",
+    "power_spectrum_to_flux_spectrum",
+    "power_spectrum_to_par_spectrum",
 )
 
 # NAME:
@@ -86,7 +87,27 @@ class NotInterceptError(Exception):
     """Raised when a vector does not intercept a plane."""
 
 
-def spectrum_to_flux(
+def integrate_spectrum(
+    spectrum: pd.Series | np.ndarray, wavelength_step_nm: float
+) -> float:
+    """
+    Integrate a spectrum with a given wavelength step in nm.
+
+    :param: spectrum:
+        The spectrum to integrate.
+
+    :param: wavelength_step_nm:
+        The size of the wavelength step, in nm.
+
+    :returns:
+        The integrated value of the spectrum.
+
+    """
+
+    return spectrum.sum(axis=-1) * wavelength_step_nm
+
+
+def power_spectrum_to_flux_spectrum(
     spectrum: pd.Series | np.ndarray, wavelength_series: pd.Series | np.ndarray
 ) -> pd.Series | np.ndarray:
     """
@@ -114,7 +135,7 @@ def spectrum_to_flux(
     return spectrum * 10**6 / (energy_series * 10**4 * constants.N_A)
 
 
-def spectrum_to_par(
+def power_spectrum_to_par_spectrum(
     spectrum: pd.Series | np.ndarray,
     par_wavelength_series: pd.Series | np.ndarray,
     wavelength_series: pd.Series | np.ndarray,
@@ -133,7 +154,7 @@ def spectrum_to_par(
 
     :returns:
         The spectrum as a photosnthetically-active photon flux spectrum in micro-moles
-        per cm^2.
+        per cm^2 per nm.
 
     """
 

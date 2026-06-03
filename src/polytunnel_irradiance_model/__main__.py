@@ -2194,10 +2194,107 @@ def main(args: list[Any]) -> None:
     except (AttributeError, NameError):
         pass
 
-    # Save output files
-    # import pdb
+    # Save output files for on-the-ground information:
+    # Save the maps of PAR on the ground for each hour.
+    clearsky_par = 10000 * integrate_spectrum(
+        power_spectrum_to_par_spectrum(
+            clearsky_total_ground_irradiance_map, PAR_WAVELENGTH_RANGE, wavelength_range
+        ),
+        wavelength_step_nm,
+    )
+    with open(
+        f"clearsky_par_umol_m2_{polytunnel.name}_"
+        f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+        f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+        "w",
+        encoding="UTF-8",
+    ) as csv_file:
+        (clearsky_frame:=pd.DataFrame(clearsky_par)).to_csv(csv_file)
 
-    # pdb.set_trace()
+    direct_sky_par = 10000 * integrate_spectrum(
+        power_spectrum_to_par_spectrum(
+            direct_day_total_ground_irradiance_map, PAR_WAVELENGTH_RANGE, wavelength_range
+        ),
+        wavelength_step_nm,
+    )
+    with open(
+        f"direct_sky_par_umol_m2_{polytunnel.name}_"
+        f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+        f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+        "w",
+        encoding="UTF-8",
+    ) as csv_file:
+        (direct_frame:=pd.DataFrame(direct_sky_par)).to_csv(csv_file)
+
+    cloudy_sky_par = 10000 * integrate_spectrum(
+        power_spectrum_to_par_spectrum(
+            cloudysky_total_ground_irradiance_map, PAR_WAVELENGTH_RANGE, wavelength_range
+        ),
+        wavelength_step_nm,
+    )
+    with open(
+        f"cloudy_sky_par_umol_m2_{polytunnel.name}_"
+        f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+        f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+        "w",
+        encoding="UTF-8",
+    ) as csv_file:
+        (cloudy_frame:=pd.DataFrame(cloudy_sky_par)).to_csv(csv_file)
+
+    # Save the mean PAR and stddev in the PAR across the ground at each hour.
+    with open(
+        f"clearsky_mean_par_umol_m2_{polytunnel.name}_"
+        f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+        f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+        "w",
+        encoding="UTF-8",
+    ) as csv_file:
+        clearsky_frame.mean(axis=1).to_csv(csv_file)
+
+    with open(
+        f"clearsky_stddev_par_umol_m2_{polytunnel.name}_"
+        f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+        f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+        "w",
+        encoding="UTF-8",
+    ) as csv_file:
+        clearsky_frame.std(axis=1).to_csv(csv_file)
+
+    with open(
+        f"direct_sky_mean_par_umol_m2_{polytunnel.name}_"
+        f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+        f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+        "w",
+        encoding="UTF-8",
+    ) as csv_file:
+        direct_frame.mean(axis=1).to_csv(csv_file)
+
+    with open(
+        f"direct_sky_stddev_par_umol_m2_{polytunnel.name}_"
+        f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+        f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+        "w",
+        encoding="UTF-8",
+    ) as csv_file:
+        direct_frame.std(axis=1).to_csv(csv_file)
+
+    with open(
+        f"cloudy_sky_mean_par_umol_m2_{polytunnel.name}_"
+        f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+        f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+        "w",
+        encoding="UTF-8",
+    ) as csv_file:
+        cloudy_frame.mean(axis=1).to_csv(csv_file)
+
+    with open(
+        f"cloudy_sky_stddev_par_umol_m2_{polytunnel.name}_"
+        f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+        f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+        "w",
+        encoding="UTF-8",
+    ) as csv_file:
+        cloudy_frame.std(axis=1).to_csv(csv_file)
 
     # Skip and stop if no plots to plot.
     if parsed_args.skip_plots:

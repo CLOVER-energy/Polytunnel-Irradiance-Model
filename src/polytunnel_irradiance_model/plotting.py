@@ -27,7 +27,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
-from .__utils__ import spectrum_to_flux, spectrum_to_par
+from .__utils__ import power_spectrum_to_flux_spectrum, power_spectrum_to_par_spectrum
 from .polytunnel import Polytunnel
 
 __all__ = (
@@ -83,8 +83,8 @@ class SpectralUnits(enum.Enum):
     """
 
     IRRADIANCE = "Irradiance ($G$) / W/m$^{2}$-nm"
-    PAR_FLUX = r"PAR flux ($\Phi_{\rm{PAR}}$) / $\mu$mol/cm$^2$-nm"
-    PAR_IRRADIANCE = "PAR irradiance ($G_{\rm{PAR}}$) / W/m$^{2}$-nm"
+    PAR_FLUX = r"PPFD ($\Phi_{\rm{PAR}}$) / $\mu$mol/cm$^2$-nm"
+    PAR_IRRADIANCE = "PPFD ($G_{\rm{PAR}}$) / W/m$^{2}$-nm"
     PHOTON_FLUX = r"Photon flux ($\Phi_{\gamma}$) / $\mu$mol/cm$^2$-nm"
 
 
@@ -132,12 +132,13 @@ def plot_animation(
 
     if plotting_wavelength_range is None:
         plotting_wavelength_range = wavelength_range
-        spectral_function: callable = spectrum_to_flux
+        spectral_function: callable = power_spectrum_to_flux_spectrum
         label_kwarg: str = "Photon"
 
     else:
         spectral_function = functools.partial(
-            spectrum_to_par, par_wavelength_series=plotting_wavelength_range
+            power_spectrum_to_par_spectrum,
+            par_wavelength_series=plotting_wavelength_range,
         )
         label_kwarg = "PAR"
 
@@ -319,11 +320,11 @@ def plot_spectrum(
 
     if spectral_units == SpectralUnits.PHOTON_FLUX:
         spectral_function: callable = functools.partial(
-            spectrum_to_flux, wavelength_series=wavelength_range
+            power_spectrum_to_flux_spectrum, wavelength_series=wavelength_range
         )
     elif spectral_units == SpectralUnits.PAR_FLUX:
         spectral_function = functools.partial(
-            spectrum_to_par,
+            power_spectrum_to_par_spectrum,
             par_wavelength_series=plotting_wavelength_range,
             wavelength_series=wavelength_range,
         )
