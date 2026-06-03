@@ -512,6 +512,13 @@ def parse_args(args: list[Any]) -> argparse.Namespace:
         "the day.",
     )
     simulation_arguments.add_argument(
+        "--skip-animations",
+        "-sa",
+        action="store_true",
+        default=False,
+        help="Flag to skip plotting animations.",
+    )
+    simulation_arguments.add_argument(
         "--skip-plots",
         "-sp",
         action="store_true",
@@ -2187,101 +2194,108 @@ def main(args: list[Any]) -> None:
     except (AttributeError, NameError):
         pass
 
+    # Save output files
+    # import pdb
+
+    # pdb.set_trace()
+
     # Skip and stop if no plots to plot.
     if parsed_args.skip_plots:
         return
 
-    with tqdm(desc="Plotting animations", total=8, leave=True) as pbar:
-        plot_animation(
-            direct_day_ground_diffuse_irradiance,
-            polytunnel,
-            wavelength_range,
-            index=INDEX,
-            modelling_temporal_resolution=parsed_args.modelling_temporal_resolution,
-            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
-            show=False,
-            title=f"par_direct_day_ground_diffuse_irradiance_{polytunnel.name}",
-        )
-        pbar.update(1)
-        plot_animation(
-            direct_day_ground_direct_irradiance,
-            polytunnel,
-            wavelength_range,
-            index=INDEX,
-            modelling_temporal_resolution=parsed_args.modelling_temporal_resolution,
-            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
-            show=False,
-            title=f"par_direct_day_ground_direct_irradiance_{polytunnel.name}",
-        )
-        pbar.update(1)
-        plot_animation(
-            diffuse_day_ground_diffuse_irradiance,
-            polytunnel,
-            wavelength_range,
-            index=INDEX,
-            modelling_temporal_resolution=parsed_args.modelling_temporal_resolution,
-            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
-            show=False,
-            title=f"par_diffuse_day_ground_diffuse_irradiance_{polytunnel.name}",
-        )
-        pbar.update(1)
-        plot_animation(
-            clearsky_ground_diffuse_irradiance,
-            polytunnel,
-            wavelength_range,
-            index=INDEX,
-            modelling_temporal_resolution=parsed_args.modelling_temporal_resolution,
-            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
-            show=False,
-            title=f"par_clearsky_ground_diffuse_irradiance_{polytunnel.name}",
-        )
-        pbar.update(1)
-        plot_animation(
-            clearsky_ground_direct_irradiance_map,
-            polytunnel,
-            wavelength_range,
-            index=INDEX,
-            modelling_temporal_resolution=parsed_args.modelling_temporal_resolution,
-            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
-            show=False,
-            title=f"par_clearsky_ground_direct_irradiance_{polytunnel.name}",
-        )
-        pbar.update(1)
-        plot_animation(
-            clearsky_total_ground_irradiance_map,
-            polytunnel,
-            wavelength_range,
-            index=INDEX,
-            modelling_temporal_resolution=parsed_args.modelling_temporal_resolution,
-            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
-            show=False,
-            title=f"par_clearsky_total_ground_irradiance_{polytunnel.name}",
-        )
-        pbar.update(1)
-        plot_animation(
-            direct_day_total_ground_irradiance_map,
-            polytunnel,
-            wavelength_range,
-            index=INDEX,
-            modelling_temporal_resolution=parsed_args.modelling_temporal_resolution,
-            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
-            show=False,
-            title=f"par_direct_day_total_ground_irradiance_{polytunnel.name}",
-        )
-        pbar.update(1)
-        plot_animation(
-            cloudysky_total_ground_irradiance_map,
-            polytunnel,
-            wavelength_range,
-            index=INDEX,
-            modelling_temporal_resolution=parsed_args.modelling_temporal_resolution,
-            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
-            show=False,
-            title=f"par_cloudysky_total_ground_irradiance_map_{polytunnel.name}",
-        )
-        pbar.update(1)
+    # Create and save plots if requested.
+    if not parsed_args.skip_animations:
+        with tqdm(desc="Plotting animations", total=8, leave=True) as pbar:
+            plot_animation(
+                direct_day_ground_diffuse_irradiance,
+                polytunnel,
+                wavelength_range,
+                index=INDEX,
+                modelling_temporal_resolution=parsed_args.modelling_temporal_resolution,
+                plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+                show=False,
+                title=f"par_direct_day_ground_diffuse_irradiance_{polytunnel.name}",
+            )
+            pbar.update(1)
+            plot_animation(
+                direct_day_ground_direct_irradiance,
+                polytunnel,
+                wavelength_range,
+                index=INDEX,
+                modelling_temporal_resolution=parsed_args.modelling_temporal_resolution,
+                plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+                show=False,
+                title=f"par_direct_day_ground_direct_irradiance_{polytunnel.name}",
+            )
+            pbar.update(1)
+            plot_animation(
+                diffuse_day_ground_diffuse_irradiance,
+                polytunnel,
+                wavelength_range,
+                index=INDEX,
+                modelling_temporal_resolution=parsed_args.modelling_temporal_resolution,
+                plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+                show=False,
+                title=f"par_diffuse_day_ground_diffuse_irradiance_{polytunnel.name}",
+            )
+            pbar.update(1)
+            plot_animation(
+                clearsky_ground_diffuse_irradiance,
+                polytunnel,
+                wavelength_range,
+                index=INDEX,
+                modelling_temporal_resolution=parsed_args.modelling_temporal_resolution,
+                plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+                show=False,
+                title=f"par_clearsky_ground_diffuse_irradiance_{polytunnel.name}",
+            )
+            pbar.update(1)
+            plot_animation(
+                clearsky_ground_direct_irradiance_map,
+                polytunnel,
+                wavelength_range,
+                index=INDEX,
+                modelling_temporal_resolution=parsed_args.modelling_temporal_resolution,
+                plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+                show=False,
+                title=f"par_clearsky_ground_direct_irradiance_{polytunnel.name}",
+            )
+            pbar.update(1)
+            plot_animation(
+                clearsky_total_ground_irradiance_map,
+                polytunnel,
+                wavelength_range,
+                index=INDEX,
+                modelling_temporal_resolution=parsed_args.modelling_temporal_resolution,
+                plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+                show=False,
+                title=f"par_clearsky_total_ground_irradiance_{polytunnel.name}",
+            )
+            pbar.update(1)
+            plot_animation(
+                direct_day_total_ground_irradiance_map,
+                polytunnel,
+                wavelength_range,
+                index=INDEX,
+                modelling_temporal_resolution=parsed_args.modelling_temporal_resolution,
+                plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+                show=False,
+                title=f"par_direct_day_total_ground_irradiance_{polytunnel.name}",
+            )
+            pbar.update(1)
+            plot_animation(
+                cloudysky_total_ground_irradiance_map,
+                polytunnel,
+                wavelength_range,
+                index=INDEX,
+                modelling_temporal_resolution=parsed_args.modelling_temporal_resolution,
+                plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+                show=False,
+                title=f"par_cloudysky_total_ground_irradiance_map_{polytunnel.name}",
+            )
+            pbar.update(1)
 
-    with tqdm(desc="Plotting spectra", total=6, leave=True) as pbar:
+    with tqdm(desc="Plotting spectra", total=7, leave=True) as pbar:
         # Plot the pyranometer response
         plot_spectrum(
             [
