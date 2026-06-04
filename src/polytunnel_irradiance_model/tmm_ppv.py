@@ -915,6 +915,10 @@ def tmm(
         [_sanitise_label(layer.material) for layer in stack]
     )
 
+    import pdb
+
+    pdb.set_trace()
+
     plt.figure(figsize=(171 * MM, 120 * MM))
     sns.lineplot(
         layerwise_absorption_frame, palette=BACKGROUND_PALETTE, ax=(axis := plt.gca())
@@ -1022,7 +1026,7 @@ def tmm(
         bbox_inches="tight",
         pad_inches=0.05,
     )
-    plt.show()
+    # plt.show()
 
     return
 
