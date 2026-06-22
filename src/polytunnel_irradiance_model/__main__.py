@@ -2405,6 +2405,10 @@ def main(args: list[Any]) -> None:
     if parsed_args.skip_plots:
         return
 
+    ###########################################################
+    # Note: All following code is for plotting purposes only. #
+    ###########################################################
+
     # Create and save plots if requested.
     if not parsed_args.skip_animations:
         with tqdm(desc="Plotting animations", total=8, leave=True) as pbar:
@@ -2580,272 +2584,286 @@ def main(args: list[Any]) -> None:
             start=0.4, rot=-1.2, n_colors=num_grid_indices, reverse=True
         )
 
-        plot_spectrum(
-            [
-                (
+        # Only attempt to plot if non-zero light was received at this hour.
+        if len(_palette) > 0:
+            plot_spectrum(
+                [
+                    (
+                        clearsky_ground_direct_irradiance_map_with_pv_module_and_spectra[
+                            _hour
+                        ][
+                            grid_index
+                        ],
+                        f"{grid_index}",
+                    )
+                    for grid_index in range(
+                        len(clearsky_ground_direct_irradiance_map[_hour])
+                    )
+                    if clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][
+                        _hour
+                    ]
+                    > 0
+                ],
+                wavelength_range,
+                index=INDEX,
+                palette=_palette,
+                plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+                show=False,
+                small=False,
+                spectral_units=SpectralUnits.PAR_FLUX,
+                title="par_on_the_ground_spectra_v1",
+                unique_legend=True,
+            )
+            pbar.update(1)
+
+            # Plot the spectra using a different method.
+            _palette = sns.color_palette(
+                list(
+                    reversed(
+                        [
+                            "#423252",
+                            "#4A688B",
+                            "#779FB1",
+                            "#36C7B8",
+                            "#FBC412",
+                            "#FE8224",
+                            "#E03944",
+                        ]
+                    )
+                )
+            )
+            _hour = 12
+            plotting_data: list[tuple[np.ndarray | pd.Series, str, float]] = []
+            for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
+                if (
+                    clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][
+                        _hour
+                    ]
+                    > 0
+                ):
+                    plotting_data.append(
+                        (
+                            clearsky_ground_direct_irradiance_map[_hour][grid_index],
+                            "Through-PV",
+                            5,
+                            "--",
+                        )
+                    )
+                elif sum(clearsky_ground_direct_irradiance_map[_hour][grid_index]) == 0:
+                    plotting_data.append(
+                        (
+                            clearsky_ground_direct_irradiance_map[_hour][grid_index],
+                            "No direct sunlight",
+                            6,
+                            ":",
+                        )
+                    )
+                elif sum(end_direct_irradiance_map[_hour][grid_index]) > 0:
+                    plotting_data.append(
+                        (
+                            clearsky_ground_direct_irradiance_map[_hour][grid_index],
+                            "Through-open ends",
+                            1,
+                            "-.",
+                        )
+                    )
+                else:
+                    plotting_data.append(
+                        (
+                            clearsky_ground_direct_irradiance_map[_hour][grid_index],
+                            "Through-polytunnel",
+                            3,
+                            "-",
+                        )
+                    )
+
+            plot_spectrum(
+                plotting_data,
+                wavelength_range,
+                index=INDEX,
+                palette=_palette,
+                plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+                right_axis_data=[
+                    (
+                        pyranometer_adjusted_interpolated_spectra.direct.values,
+                        "Direct-irradiance response",
+                        2,
+                        "-.",
+                    )
+                ],
+                show=False,
+                small=False,
+                spectral_units=SpectralUnits.PAR_FLUX,
+                title="par_on_the_ground_spectra_v2_with_reference",
+                unique_legend=True,
+            )
+            pbar.update(1)
+
+            plot_spectrum(
+                plotting_data,
+                wavelength_range,
+                index=INDEX,
+                palette=_palette,
+                plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+                right_axis_data=[
+                    (
+                        pyranometer_adjusted_interpolated_spectra.direct.values,
+                        "Direct-irradiance response",
+                        2,
+                        "-.",
+                    )
+                ],
+                show=False,
+                small=True,
+                spectral_units=SpectralUnits.PAR_FLUX,
+                title="par_on_the_ground_spectra_v2_with_reference_small",
+                unique_legend=True,
+            )
+            pbar.update(1)
+
+            plot_spectrum(
+                plotting_data,
+                wavelength_range,
+                index=INDEX,
+                palette=_palette,
+                plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+                show=False,
+                small=False,
+                spectral_units=SpectralUnits.PAR_FLUX,
+                title="par_on_the_ground_spectra_v2_sans_reference",
+                unique_legend=True,
+            )
+            pbar.update(1)
+
+            plot_spectrum(
+                plotting_data,
+                wavelength_range,
+                index=INDEX,
+                palette=_palette,
+                plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
+                show=False,
+                small=True,
+                spectral_units=SpectralUnits.PAR_FLUX,
+                title="par_on_the_ground_spectra_v2_sans_reference_small",
+                unique_legend=True,
+            )
+            pbar.update(1)
+        else:
+            pbar.update(5)
+
+        #######################
+        # Plotting code No. 4 #
+        #######################
+
+        if not isinstance(stack_tmm, DummyTMM):
+            from matplotlib import colors as m_colors
+
+            # Plot the spectra at a specific hour for each element within the ground mesh.
+            # NOTE: Colours indicate the index of the element providing surface irradiation.
+
+            # Determine the number of non-zero elements
+            _hour: int = 12
+            num_grid_indices: int = 0
+            for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
+                if (
+                    clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][
+                        _hour
+                    ]
+                    > 0
+                ):
+                    num_grid_indices += 1
+
+            sns.set_palette(
+                sns.cubehelix_palette(
+                    start=0.4, rot=-1.2, n_colors=num_grid_indices, reverse=True
+                )
+            )
+            sns.set_palette("viridis", n_colors=num_grid_indices)
+
+            plt.figure(figsize=(171 * MM, 120 * MM))
+            dashes = Dashes()
+            _zorder = 0
+            grid_indices: list[int] = []
+            for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
+                if (
+                    clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][
+                        _hour
+                    ]
+                    > 0
+                ):
+                    _color = f"C{grid_index}"
+                    _zorder += 1
+                    grid_indices.append(grid_index)
+                else:
+                    _color = "C0"
+                plt.plot(
+                    wavelength_range,
                     clearsky_ground_direct_irradiance_map_with_pv_module_and_spectra[
                         _hour
                     ][grid_index],
-                    f"{grid_index}",
+                    dashes=next(dashes),
+                    label=f"#{_color}" if _color != "C0" else None,
+                    color=_color,
+                    zorder=0 if _color == "C0" else _zorder,
                 )
-                for grid_index in range(
-                    len(clearsky_ground_direct_irradiance_map[_hour])
-                )
-                if clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][
-                    _hour
-                ]
-                > 0
-            ],
-            wavelength_range,
-            index=INDEX,
-            palette=_palette,
-            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
-            show=False,
-            small=False,
-            spectral_units=SpectralUnits.PAR_FLUX,
-            title="par_on_the_ground_spectra_v1",
-            unique_legend=True,
-        )
-        pbar.update(1)
 
-        # Plot the spectra using a different method.
-        _palette = sns.color_palette(
-            list(
-                reversed(
-                    [
-                        "#423252",
-                        "#4A688B",
-                        "#779FB1",
-                        "#36C7B8",
-                        "#FBC412",
-                        "#FE8224",
-                        "#E03944",
-                    ]
-                )
+            plt.legend().remove()
+
+            norm = plt.Normalize(
+                -0.5,
+                clearsky_ground_direct_irradiance_map_with_pv_module.shape[1] + 0.5,
             )
-        )
-        _hour = 12
-        plotting_data: list[tuple[np.ndarray | pd.Series, str, float]] = []
-        for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
-            if (
-                clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][_hour]
-                > 0
-            ):
-                plotting_data.append(
-                    (
-                        clearsky_ground_direct_irradiance_map[_hour][grid_index],
-                        "Through-PV",
-                        5,
-                        "--",
-                    )
-                )
-            elif sum(clearsky_ground_direct_irradiance_map[_hour][grid_index]) == 0:
-                plotting_data.append(
-                    (
-                        clearsky_ground_direct_irradiance_map[_hour][grid_index],
-                        "No direct sunlight",
-                        6,
-                        ":",
-                    )
-                )
-            elif sum(end_direct_irradiance_map[_hour][grid_index]) > 0:
-                plotting_data.append(
-                    (
-                        clearsky_ground_direct_irradiance_map[_hour][grid_index],
-                        "Through-open ends",
-                        1,
-                        "-.",
-                    )
-                )
-            else:
-                plotting_data.append(
-                    (
-                        clearsky_ground_direct_irradiance_map[_hour][grid_index],
-                        "Through-polytunnel",
-                        3,
-                        "-",
-                    )
-                )
+            scalar_mappable = plt.cm.ScalarMappable(
+                cmap=m_colors.LinearSegmentedColormap.from_list(
+                    "Custom",
+                    sns.color_palette().as_hex(),
+                    num_grid_indices,
+                ),
+                norm=norm,
+            )
 
-        plot_spectrum(
-            plotting_data,
-            wavelength_range,
-            index=INDEX,
-            palette=_palette,
-            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
-            right_axis_data=[
-                (
-                    pyranometer_adjusted_interpolated_spectra.direct.values,
-                    "Direct-irradiance response",
-                    2,
-                    "-.",
-                )
-            ],
-            show=False,
-            small=False,
-            spectral_units=SpectralUnits.PAR_FLUX,
-            title="par_on_the_ground_spectra_v2_with_reference",
-            unique_legend=True,
-        )
-        pbar.update(1)
+            colorbar = (axis := plt.gca()).figure.colorbar(
+                scalar_mappable,
+                ax=axis,
+                label="Surface index illuminating",
+                pad=(_pad := 0.125),
+            )
+            colorbar.set_ticks(grid_indices)
+            colorbar.set_ticklabels(
+                [
+                    entry if index % 3 == 0 else None
+                    for index, entry in enumerate(grid_indices)
+                ]
+            )
 
-        plot_spectrum(
-            plotting_data,
-            wavelength_range,
-            index=INDEX,
-            palette=_palette,
-            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
-            right_axis_data=[
-                (
-                    pyranometer_adjusted_interpolated_spectra.direct.values,
-                    "Direct-irradiance response",
-                    2,
-                    "-.",
-                )
-            ],
-            show=False,
-            small=True,
-            spectral_units=SpectralUnits.PAR_FLUX,
-            title="par_on_the_ground_spectra_v2_with_reference_small",
-            unique_legend=True,
-        )
-        pbar.update(1)
+            axis.tick_params(axis="both", which="major", labelsize=7)
+            plt.xlabel("Wavelength / nm", fontsize=7)
+            plt.ylabel("Irradiance / W/m$^2$nm", fontsize=7)
 
-        plot_spectrum(
-            plotting_data,
-            wavelength_range,
-            index=INDEX,
-            palette=_palette,
-            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
-            show=False,
-            small=False,
-            spectral_units=SpectralUnits.PAR_FLUX,
-            title="par_on_the_ground_spectra_v2_sans_reference",
-            unique_legend=True,
-        )
-        pbar.update(1)
+            (right_axis := axis.twinx()).plot(
+                wavelength_range,
+                pyranometer_adjusted_interpolated_spectra.direct.values,
+                "--",
+                color="C9",
+            )
+            right_axis.set_ylabel("Direct-irradiance response / normalised units")
+            right_axis.tick_params(axis="both", which="major", labelsize=7)
 
-        plot_spectrum(
-            plotting_data,
-            wavelength_range,
-            index=INDEX,
-            palette=_palette,
-            plotting_wavelength_range=PAR_WAVELENGTH_RANGE,
-            show=False,
-            small=True,
-            spectral_units=SpectralUnits.PAR_FLUX,
-            title="par_on_the_ground_spectra_v2_sans_reference_small",
-            unique_legend=True,
-        )
-        pbar.update(1)
-
-    return
-
-    import pdb
-
-    pdb.set_trace()
-
-    #######################
-    # Plotting code No. 4 #
-    #######################
-
-    from matplotlib import colors as m_colors
-
-    # Plot the spectra at a specific hour for each element within the ground mesh.
-    # NOTE: Colours indicate the index of the element providing surface irradiation.
-
-    # Determine the number of non-zero elements
-    _hour: int = 12
-    num_grid_indices: int = 0
-    for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
-        if clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][_hour] > 0:
-            num_grid_indices += 1
-
-    sns.set_palette(
-        sns.cubehelix_palette(
-            start=0.4, rot=-1.2, n_colors=num_grid_indices, reverse=True
-        )
-    )
-    sns.set_palette("viridis", n_colors=num_grid_indices)
-
-    plt.figure(figsize=(171 * MM, 120 * MM))
-    dashes = Dashes()
-    _zorder = 0
-    grid_indices: list[int] = []
-    for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
-        if clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][_hour] > 0:
-            _color = f"C{grid_index}"
-            _zorder += 1
-            grid_indices.append(grid_index)
-        else:
-            _color = "C0"
-        plt.plot(
-            wavelength_range,
-            clearsky_ground_direct_irradiance_map_with_pv_module_and_spectra[_hour][
-                grid_index
-            ],
-            dashes=next(dashes),
-            label=f"#{_color}" if _color != "C0" else None,
-            color=_color,
-            zorder=0 if _color == "C0" else _zorder,
-        )
-
-    plt.legend().remove()
-
-    norm = plt.Normalize(
-        -0.5,
-        clearsky_ground_direct_irradiance_map_with_pv_module.shape[1] + 0.5,
-    )
-    scalar_mappable = plt.cm.ScalarMappable(
-        cmap=m_colors.LinearSegmentedColormap.from_list(
-            "Custom",
-            sns.color_palette().as_hex(),
-            num_grid_indices,
-        ),
-        norm=norm,
-    )
-
-    colorbar = (axis := plt.gca()).figure.colorbar(
-        scalar_mappable,
-        ax=axis,
-        label="Surface index illuminating",
-        pad=(_pad := 0.125),
-    )
-    colorbar.set_ticks(grid_indices)
-    colorbar.set_ticklabels(
-        [entry if index % 3 == 0 else None for index, entry in enumerate(grid_indices)]
-    )
-
-    axis.tick_params(axis="both", which="major", labelsize=7)
-    plt.xlabel("Wavelength / nm", fontsize=7)
-    plt.ylabel("Irradiance / W/m$^2$nm", fontsize=7)
-
-    (right_axis := axis.twinx()).plot(
-        wavelength_range,
-        pyranometer_adjusted_interpolated_spectra.direct.values,
-        "--",
-        color="C9",
-    )
-    right_axis.set_ylabel("Direct-irradiance response / normalised units")
-    right_axis.tick_params(axis="both", which="major", labelsize=7)
-
-    plt.savefig(
-        f"ground_through_pv_spectra_profiles_{_hour}_{INDEX}.pdf",
-        format="pdf",
-        bbox_inches="tight",
-        pad_inches=0.05,
-    )
-    plt.savefig(
-        f"ground_through_pv_spectra_profiles_{_hour}_{INDEX}.png",
-        format="png",
-        bbox_inches="tight",
-        pad_inches=0.05,
-        transparent=True,
-        dpi=1200,
-    )
-    plt.show()
-
-    return
+            plt.savefig(
+                f"ground_through_pv_spectra_profiles_{_hour}_{INDEX}.pdf",
+                format="pdf",
+                bbox_inches="tight",
+                pad_inches=0.05,
+            )
+            plt.savefig(
+                f"ground_through_pv_spectra_profiles_{_hour}_{INDEX}.png",
+                format="png",
+                bbox_inches="tight",
+                pad_inches=0.05,
+                transparent=True,
+                dpi=1200,
+            )
+            pbar.update(1)
 
     if alternative_weather_data is not None:
         diffusivity_series = (
@@ -2854,13 +2872,7 @@ def main(args: list[Any]) -> None:
                 alternative_weather_data[INCOMING_SHORTWAVE_DIFFUSE]
                 + alternative_weather_data[INCOMING_SHORTWAVE_DIRECT]
             )
-        )[
-            [
-                entry
-                for entry in diffuse_day_total_ground_irradiance_map.index
-                if entry.minute % parsed_args.modelling_temporal_resolution == 0
-            ]
-        ]
+        )[hadlow_dni_slice.index]
 
         if parsed_args.weather_as_diffusivity_only:
             # If the weather data should be used only to compute the
@@ -2870,148 +2882,36 @@ def main(args: list[Any]) -> None:
 
             # Compute the on-the-ground irradiance based on the diffusivity
             # fraction.
-            predicted_day_ground_diffuse_map: (
-                pd.DataFrame
-            ) = diffuse_day_total_ground_irradiance_map.mul(
-                diffusivity_series, axis=0
-            ).fillna(
-                0
-            ) + direct_day_ground_diffuse_irradiance_map.mul(
-                1 - diffusivity_series, axis=0
-            ).fillna(
-                0
+            predicted_day_ground_diffuse_map: np.ndarray = (
+                cloudysky_total_ground_irradiance_map
+                * diffusivity_series.to_numpy()[:, None, None]
+                + direct_day_ground_diffuse_irradiance
+                * (1 - diffusivity_series).to_numpy()[:, None, None]
             )
 
-            predicted_day_ground_direct_map: pd.DataFrame = (
-                direct_day_ground_direct_beam_irradiance.mul(
-                    1 - diffusivity_series, axis=0
-                ).fillna(0)
+            predicted_day_ground_direct_beam_map: np.ndarray = (
+                direct_day_ground_direct_beam_irradiance
+                * (1 - diffusivity_series).to_numpy()[:, None, None]
             )
 
-            predicted_day_ground_total_map: (
-                pd.DataFrame
-            ) = diffuse_day_total_ground_irradiance_map.mul(
-                diffusivity_series, axis=0
-            ).fillna(
-                0
-            ) + direct_day_total_ground_irradiance_map.mul(
-                1 - diffusivity_series, axis=0
-            ).fillna(
-                0
+            predicted_day_ground_total_map: np.ndarray = (
+                predicted_day_ground_direct_beam_map + predicted_day_ground_diffuse_map
             )
 
         else:
-            predicted_day_ground_diffuse_map: pd.DataFrame = (
-                diffuse_day_total_ground_irradiance_map.fillna(0)
-                + direct_day_ground_diffuse_irradiance_map.fillna(0)
+            predicted_day_ground_diffuse_map = (
+                cloudysky_total_ground_irradiance_map
+                + direct_day_ground_diffuse_irradiance
             )
 
-            predicted_day_ground_direct_map: pd.DataFrame = (
-                direct_day_ground_direct_beam_irradiance.fillna(0)
+            predicted_day_ground_direct_beam_map = (
+                direct_day_ground_direct_beam_irradiance
             )
 
-            predicted_day_ground_total_map: pd.DataFrame = (
-                diffuse_day_total_ground_irradiance_map.fillna(0)
-                + direct_day_total_ground_irradiance_map.fillna(0)
+            predicted_day_ground_total_map = (
+                predicted_day_ground_direct_beam_map
+                + predicted_day_ground_direct_beam_map
             )
-
-    # Save the output profiles
-    with time_execution("Saving output CSV maps"):
-        with tqdm(
-            desc="Saving output irradiance maps",
-            leave=False,
-            total=5 + (3 if alternative_weather_data is not None else 0),
-        ) as pbar:
-            with open(
-                f"clearsky_map_{polytunnel_diffusivity}_{polytunnel.name}_"
-                f"{parsed_args.start_time.replace(':','_')}_"
-                f"{parsed_args.end_time.replace(':','_')}.csv",
-                "w",
-                encoding="UTF-8",
-            ) as clearsky_file:
-                clearsky_total_ground_irradiance_map.to_csv(clearsky_file)
-
-            pbar.update(1)
-            with open(
-                f"direct_day_direct_map_{polytunnel_diffusivity}_{polytunnel.name}_"
-                f"{parsed_args.start_time.replace(':','_')}_"
-                f"{parsed_args.end_time.replace(':','_')}.csv",
-                "w",
-                encoding="UTF-8",
-            ) as direct_day_direct_file:
-                direct_day_ground_direct_beam_irradiance.to_csv(direct_day_direct_file)
-
-            pbar.update(1)
-            with open(
-                f"direct_day_diffuse_map_{polytunnel_diffusivity}_{polytunnel.name}_"
-                f"{parsed_args.start_time.replace(':','_')}_"
-                f"{parsed_args.end_time.replace(':','_')}.csv",
-                "w",
-                encoding="UTF-8",
-            ) as direct_day_dif_file:
-                direct_day_ground_diffuse_irradiance_map.to_csv(direct_day_dif_file)
-
-            pbar.update(1)
-            with open(
-                f"direct_day_total_map_{polytunnel_diffusivity}_{polytunnel.name}_"
-                f"{parsed_args.start_time.replace(':','_')}_"
-                f"{parsed_args.end_time.replace(':','_')}.csv",
-                "w",
-                encoding="UTF-8",
-            ) as direct_day_tot_file:
-                direct_day_total_ground_with_beam_irradiance_map.to_csv(
-                    direct_day_tot_file
-                )
-
-            pbar.update(1)
-            with open(
-                f"diffuse_day_total_map_{polytunnel_diffusivity}_{polytunnel.name}_"
-                f"{parsed_args.start_time.replace(':','_')}_"
-                f"{parsed_args.end_time.replace(':','_')}.csv",
-                "w",
-                encoding="UTF-8",
-            ) as diffuse_day_file:
-                diffuse_day_total_ground_irradiance_map.to_csv(diffuse_day_file)
-
-            pbar.update(1)
-            if alternative_weather_data is None:
-                pbar.update(3)
-
-            else:
-                with open(
-                    f"predicted_day_diffuse_map_{polytunnel_diffusivity}_{polytunnel.name}_"
-                    f"{parsed_args.start_time.replace(':','_')}_"
-                    f"{parsed_args.end_time.replace(':','_')}.csv",
-                    "w",
-                    encoding="UTF-8",
-                ) as predicted_day_dif_file:
-                    predicted_day_ground_diffuse_map.to_csv(predicted_day_dif_file)
-
-                pbar.update(1)
-                with open(
-                    f"predicted_day_direct_map_{polytunnel_diffusivity}_{polytunnel.name}_"
-                    f"{parsed_args.start_time.replace(':','_')}_"
-                    f"{parsed_args.end_time.replace(':','_')}.csv",
-                    "w",
-                    encoding="UTF-8",
-                ) as predicted_day_dir_file:
-                    predicted_day_ground_direct_map.to_csv(predicted_day_dir_file)
-
-                pbar.update(1)
-                with open(
-                    f"predicted_day_total_map_{polytunnel_diffusivity}_{polytunnel.name}_"
-                    f"{parsed_args.start_time.replace(':','_')}_"
-                    f"{parsed_args.end_time.replace(':','_')}.csv",
-                    "w",
-                    encoding="UTF-8",
-                ) as predicted_day_tot_file:
-                    predicted_day_ground_total_map.to_csv(predicted_day_tot_file)
-
-                pbar.update(1)
-
-    import pdb
-
-    pdb.set_trace()
 
     # Parse the validation data if provided to compare against.
     if parsed_args.validation_filename is not None:
@@ -3063,26 +2963,46 @@ def main(args: list[Any]) -> None:
                 ]
 
                 dir_day_gnd_tot_val: pd.DataFrame = pd.merge(
-                    direct_day_total_ground_with_beam_irradiance_map,
+                    pd.DataFrame(
+                        integrate_spectrum(
+                            direct_day_total_ground_irradiance_map, wavelength_step_nm
+                        ),
+                        index=hadlow_dni_slice.index,
+                    ),
                     validation_data,
                     left_index=True,
                     right_index=True,
                 )
                 dir_day_gnd_dir_val: pd.DataFrame = pd.merge(
-                    direct_day_ground_direct_beam_irradiance,
+                    pd.DataFrame(
+                        integrate_spectrum(
+                            direct_day_ground_direct_beam_irradiance, wavelength_step_nm
+                        ),
+                        index=hadlow_dni_slice.index,
+                    ),
                     validation_data,
                     left_index=True,
                     right_index=True,
                 )
                 dir_day_gnd_dif_val: pd.DataFrame = pd.merge(
-                    direct_day_ground_diffuse_irradiance_map,
+                    pd.DataFrame(
+                        integrate_spectrum(
+                            direct_day_ground_diffuse_irradiance, wavelength_step_nm
+                        ),
+                        index=hadlow_dni_slice.index,
+                    ),
                     validation_data,
                     left_index=True,
                     right_index=True,
                 )
 
                 dif_day_gnd_tot_val: pd.DataFrame = pd.merge(
-                    diffuse_day_total_ground_irradiance_map,
+                    pd.DataFrame(
+                        integrate_spectrum(
+                            cloudysky_total_ground_irradiance_map, wavelength_step_nm
+                        ),
+                        index=hadlow_dni_slice.index,
+                    ),
                     validation_data,
                     left_index=True,
                     right_index=True,
@@ -3102,7 +3022,6 @@ def main(args: list[Any]) -> None:
                     )
                 except UnboundLocalError:
                     import seaborn as sns
-                    import matplotlib.pyplot as plt
 
                     sns.set_palette(
                         # ["#648FFF", "#785EF0", "#DC267F", "#FE6100", "#FFB000", "#0041C8"]
@@ -3115,6 +3034,12 @@ def main(args: list[Any]) -> None:
                             "#e04606",
                         ],
                     )
+
+                try:
+                    plt.close()
+
+                except UnboundLocalError:
+                    import matplotlib.pyplot as plt
 
                 #######################
                 # Plotting code No. 1 #
@@ -3856,409 +3781,6 @@ def main(args: list[Any]) -> None:
                 )
                 pbar.update(1)
 
-                # If weather data contained the diffusivity information, then use this to
-                # compute the on-the-ground diffuse irradiance.
-                if alternative_weather_data is None:
-                    pbar.update(3)
-
-                else:
-                    # Check that the weather-data file has the correct columns.
-                    if (
-                        INCOMING_SHORTWAVE_DIFFUSE
-                        not in alternative_weather_data.columns
-                        or INCOMING_SHORTWAVE_DIRECT
-                        not in alternative_weather_data.columns
-                    ):
-                        raise Exception(
-                            f"Alternative weather-data file does not have required columns: {INCOMING_SHORTWAVE_DIRECT} and {INCOMING_SHORTWAVE_DIFFUSE}."
-                        )
-
-                    diffusivity_series = (
-                        alternative_weather_data[INCOMING_SHORTWAVE_DIFFUSE]
-                        / (
-                            alternative_weather_data[INCOMING_SHORTWAVE_DIFFUSE]
-                            + alternative_weather_data[INCOMING_SHORTWAVE_DIRECT]
-                        )
-                    )[
-                        [
-                            entry
-                            for entry in diffuse_day_total_ground_irradiance_map.index
-                            if entry.minute % parsed_args.modelling_temporal_resolution
-                            == 0
-                        ]
-                    ]
-
-                    # Compute what the on-the-ground irradiance looks like based on the
-                    # diffuse and direct irradiance supplied using the weather-data file
-                    # provided.
-                    if parsed_args.weather_as_diffusivity_only:
-                        # If the weather data should be used only to compute the
-                        # diffusivity, then use the weather data file to predict the
-                        # weather based on the existing basis values and the diffusivity
-                        # provided.
-
-                        # Compute the on-the-ground irradiance based on the diffusivity
-                        # fraction.
-                        predicted_day_gnd_dif_val: pd.DataFrame = pd.merge(
-                            diffuse_day_total_ground_irradiance_map.mul(
-                                diffusivity_series, axis=0
-                            ).dropna()
-                            + direct_day_ground_diffuse_irradiance_map.mul(
-                                1 - diffusivity_series, axis=0
-                            ).dropna(),
-                            validation_data,
-                            left_index=True,
-                            right_index=True,
-                        )
-                        predicted_day_gnd_dir_val: pd.DataFrame = pd.merge(
-                            direct_day_ground_direct_beam_irradiance.mul(
-                                1 - diffusivity_series, axis=0
-                            ).dropna(),
-                            validation_data,
-                            left_index=True,
-                            right_index=True,
-                        )
-                        predicted_day_gnd_tot_val: pd.DataFrame = pd.merge(
-                            diffuse_day_total_ground_irradiance_map.mul(
-                                diffusivity_series, axis=0
-                            ).dropna()
-                            + direct_day_total_ground_irradiance_map.mul(
-                                1 - diffusivity_series, axis=0
-                            ).dropna(),
-                            validation_data,
-                            left_index=True,
-                            right_index=True,
-                        )
-                        weather_file_error: float = parsed_args.weather_file_error
-
-                    else:
-                        predicted_day_gnd_dif_val: pd.DataFrame = pd.merge(
-                            diffuse_day_total_ground_irradiance_map
-                            + direct_day_ground_diffuse_irradiance_map,
-                            validation_data,
-                            left_index=True,
-                            right_index=True,
-                        )
-                        predicted_day_gnd_dir_val: pd.DataFrame = pd.merge(
-                            direct_day_ground_direct_beam_irradiance,
-                            validation_data,
-                            left_index=True,
-                            right_index=True,
-                        )
-                        predicted_day_gnd_tot_val: pd.DataFrame = pd.merge(
-                            diffuse_day_total_ground_irradiance_map
-                            + direct_day_total_ground_irradiance_map,
-                            validation_data,
-                            left_index=True,
-                            right_index=True,
-                        )
-                        weather_file_error = parsed_args.weather_file_error
-
-                    # Readjust the indices for plotting.
-                    diffusivity_series.index = pd.Index(
-                        [
-                            entry.time().strftime("%H")
-                            for entry in diffusivity_series.index
-                        ]
-                    )
-                    predicted_day_gnd_tot_val.index = pd.Index(
-                        [
-                            entry.time().strftime("%H")
-                            for entry in predicted_day_gnd_tot_val.index
-                        ]
-                    )
-                    predicted_day_gnd_dir_val.index = pd.Index(
-                        [
-                            entry.time().strftime("%H")
-                            for entry in predicted_day_gnd_dir_val.index
-                        ]
-                    )
-                    predicted_day_gnd_dif_val.index = pd.Index(
-                        [
-                            entry.time().strftime("%H")
-                            for entry in predicted_day_gnd_dif_val.index
-                        ]
-                    )
-
-                    # Compute the direct and diffuse irradiance predictions on the
-                    # ground.
-                    plt.figure(figsize=(83 * MM, 60 * MM))
-                    sns.scatterplot(
-                        x=predicted_day_gnd_tot_val.index,
-                        y=predicted_day_gnd_tot_val[parsed_args.validation_index],
-                        color="C1",
-                        label="Predicted total PAR",
-                        marker="h",
-                        s=40,
-                    )
-                    plt.plot(
-                        predicted_day_gnd_tot_val.index,
-                        predicted_day_gnd_tot_val[parsed_args.validation_index],
-                        color="C1",
-                    )
-                    plt.errorbar(
-                        predicted_day_gnd_tot_val.index,
-                        predicted_day_gnd_tot_val[parsed_args.validation_index],
-                        yerr=predicted_day_gnd_tot_val[parsed_args.validation_index]
-                        * weather_file_error,
-                        ls="none",
-                        color="C1",
-                    )
-
-                    sns.scatterplot(
-                        x=predicted_day_gnd_tot_val.index,
-                        y=predicted_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value]
-                        * 0.48,
-                        color="C0",
-                        label="Measured total PAR",
-                        marker="H",
-                        s=40,
-                    )
-                    plt.plot(
-                        predicted_day_gnd_tot_val.index,
-                        predicted_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value]
-                        * 0.48,
-                        color="C0",
-                    )
-                    plt.errorbar(
-                        predicted_day_gnd_tot_val.index,
-                        predicted_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value]
-                        * 0.48,
-                        yerr=predicted_day_gnd_tot_val[
-                            ValidationColumns.TOTAL_ERROR.value
-                        ]
-                        * 0.48,
-                        ls="none",
-                        color="C0",
-                    )
-                    plt.xlabel("Time / h")
-                    plt.ylabel("Irradiance / W/m$^2$")
-
-                    axis_right = (axis_left := plt.gca()).twinx()
-                    axis_left.tick_params(axis="both", which="major", labelsize=7)
-                    axis_right.tick_params(axis="both", which="major", labelsize=7)
-                    axis_right.set_ylabel("Diffusivity")
-                    sns.scatterplot(
-                        x=dir_day_gnd_tot_val.index,
-                        y=diffusivity_series[dir_day_gnd_tot_val.index],
-                        alpha=0.7,
-                        color="C1",
-                        label="Diffusivity",
-                        marker="D",
-                        s=40,
-                    )
-                    left_handles, left_labels = axis_left.get_legend_handles_labels()
-                    axis_left.legend().remove()
-                    right_handles, right_labels = axis_right.get_legend_handles_labels()
-                    axis_right.legend().remove()
-
-                    plt.legend(
-                        left_handles + right_handles,
-                        left_labels + right_labels,
-                        loc="upper right",
-                        fontsize=7,
-                    )
-                    axis_right.set_ylim(-0.05, 1.05)
-                    axis_left.set_ylim(-25, 825)
-
-                    plt.savefig(
-                        f"validation_{parsed_args.validation_index}_using_{alt_weather}"
-                        "total_"
-                        f"{polytunnel_diffusivity}_{polytunnel.name}_"
-                        f"{parsed_args.start_time.replace(':','_')}_"
-                        f"{parsed_args.end_time.replace(':','_')}_{INDEX}.pdf",
-                        format="pdf",
-                        bbox_inches="tight",
-                        pad_inches=0.05,
-                    )
-                    pbar.update(1)
-
-                    # Look at the direct irradiance on the ground
-                    plt.figure(figsize=(83 * MM, 60 * MM))
-                    sns.scatterplot(
-                        x=predicted_day_gnd_dir_val.index,
-                        y=predicted_day_gnd_dir_val[parsed_args.validation_index],
-                        color="C4",
-                        label="Predicted direct PAR",
-                        marker="h",
-                        s=40,
-                    )
-                    plt.plot(
-                        predicted_day_gnd_dir_val.index,
-                        predicted_day_gnd_dir_val[parsed_args.validation_index],
-                        color="C4",
-                    )
-                    plt.errorbar(
-                        predicted_day_gnd_dir_val.index,
-                        predicted_day_gnd_dir_val[parsed_args.validation_index],
-                        yerr=predicted_day_gnd_dir_val[parsed_args.validation_index]
-                        * weather_file_error,
-                        ls="none",
-                        color="C4",
-                    )
-
-                    sns.scatterplot(
-                        x=predicted_day_gnd_dir_val.index,
-                        y=predicted_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value]
-                        * 0.48,
-                        color="C0",
-                        label="Measured direct PAR",
-                        marker="H",
-                        s=40,
-                    )
-                    plt.plot(
-                        predicted_day_gnd_dir_val.index,
-                        predicted_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value]
-                        * 0.48,
-                        color="C0",
-                    )
-                    plt.errorbar(
-                        predicted_day_gnd_dir_val.index,
-                        predicted_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value]
-                        * 0.48,
-                        yerr=predicted_day_gnd_dir_val[
-                            ValidationColumns.DIRECT_ERROR.value
-                        ]
-                        * 0.48,
-                        ls="none",
-                        color="C0",
-                    )
-                    plt.xlabel("Time / h")
-                    plt.ylabel("Irradiance / W/m$^2$")
-
-                    axis_right = (axis_left := plt.gca()).twinx()
-                    axis_left.tick_params(axis="both", which="major", labelsize=7)
-                    axis_right.tick_params(axis="both", which="major", labelsize=7)
-                    axis_right.set_ylabel("Diffusivity")
-                    sns.scatterplot(
-                        x=dir_day_gnd_tot_val.index,
-                        y=diffusivity_series[dir_day_gnd_tot_val.index],
-                        alpha=0.7,
-                        color="C1",
-                        label="Diffusivity",
-                        marker="D",
-                        s=40,
-                    )
-                    left_handles, left_labels = axis_left.get_legend_handles_labels()
-                    axis_left.legend().remove()
-                    right_handles, right_labels = axis_right.get_legend_handles_labels()
-                    axis_right.legend().remove()
-
-                    plt.legend(
-                        left_handles + right_handles,
-                        left_labels + right_labels,
-                        loc="upper right",
-                        fontsize=7,
-                    )
-                    axis_right.set_ylim(-0.05, 1.05)
-                    axis_left.set_ylim(-25, 825)
-
-                    plt.savefig(
-                        f"validation_{parsed_args.validation_index}_using_{alt_weather}"
-                        "direct_"
-                        f"{polytunnel_diffusivity}_{polytunnel.name}_"
-                        f"{parsed_args.start_time.replace(':','_')}_"
-                        f"{parsed_args.end_time.replace(':','_')}_{INDEX}.pdf",
-                        format="pdf",
-                        bbox_inches="tight",
-                        pad_inches=0.05,
-                    )
-                    pbar.update(1)
-
-                    # Look at the diffuse irradiance on the ground
-                    plt.figure(figsize=(83 * MM, 60 * MM))
-                    sns.scatterplot(
-                        x=predicted_day_gnd_dif_val.index,
-                        y=predicted_day_gnd_dif_val[parsed_args.validation_index],
-                        color="C3",
-                        label="Predicted diffuse PAR",
-                        marker="h",
-                        s=40,
-                    )
-                    plt.plot(
-                        predicted_day_gnd_dif_val.index,
-                        predicted_day_gnd_dif_val[parsed_args.validation_index],
-                        color="C3",
-                    )
-                    plt.errorbar(
-                        predicted_day_gnd_dif_val.index,
-                        predicted_day_gnd_dif_val[parsed_args.validation_index],
-                        yerr=predicted_day_gnd_dif_val[parsed_args.validation_index]
-                        * weather_file_error,
-                        ls="none",
-                        color="C3",
-                    )
-
-                    sns.scatterplot(
-                        x=predicted_day_gnd_dif_val.index,
-                        y=predicted_day_gnd_dif_val[ValidationColumns.DIFFUSE_PAR.value]
-                        * 0.48,
-                        color="C0",
-                        label="Measured diffuse PAR",
-                        marker="H",
-                        s=40,
-                    )
-                    plt.plot(
-                        predicted_day_gnd_dif_val.index,
-                        predicted_day_gnd_dif_val[ValidationColumns.DIFFUSE_PAR.value]
-                        * 0.48,
-                        color="C0",
-                    )
-                    plt.errorbar(
-                        predicted_day_gnd_dif_val.index,
-                        predicted_day_gnd_dif_val[ValidationColumns.DIFFUSE_PAR.value]
-                        * 0.48,
-                        yerr=predicted_day_gnd_dif_val[
-                            ValidationColumns.DIFFUSE_ERROR.value
-                        ]
-                        * 0.48,
-                        ls="none",
-                        color="C0",
-                    )
-                    plt.xlabel("Time / h")
-                    plt.ylabel("Irradiance / W/m$^2$")
-
-                    axis_right = (axis_left := plt.gca()).twinx()
-                    axis_left.tick_params(axis="both", which="major", labelsize=7)
-                    axis_right.tick_params(axis="both", which="major", labelsize=7)
-                    axis_right.set_ylabel("Diffusivity")
-                    sns.scatterplot(
-                        x=dir_day_gnd_tot_val.index,
-                        y=diffusivity_series[dir_day_gnd_tot_val.index],
-                        alpha=0.7,
-                        color="C1",
-                        label="Diffusivity",
-                        marker="D",
-                        s=40,
-                    )
-                    left_handles, left_labels = axis_left.get_legend_handles_labels()
-                    axis_left.legend().remove()
-                    right_handles, right_labels = axis_right.get_legend_handles_labels()
-                    axis_right.legend().remove()
-
-                    plt.legend(
-                        left_handles + right_handles,
-                        left_labels + right_labels,
-                        loc="upper right",
-                        fontsize=7,
-                    )
-                    axis_right.set_ylim(-0.05, 1.05)
-                    axis_left.set_ylim(-25, 825)
-
-                    plt.savefig(
-                        f"validation_{parsed_args.validation_index}_using_{alt_weather}"
-                        "diffuse_"
-                        f"{polytunnel_diffusivity}_{polytunnel.name}_"
-                        f"{parsed_args.start_time.replace(':','_')}_"
-                        f"{parsed_args.end_time.replace(':','_')}_{INDEX}.pdf",
-                        format="pdf",
-                        bbox_inches="tight",
-                        pad_inches=0.05,
-                    )
-                    pbar.update(1)
-
-            # plt.show()
-
     # import pdb
 
     # pdb.set_trace()
@@ -4267,2940 +3789,6 @@ def main(args: list[Any]) -> None:
         plt.show()
 
     return
-
-    sns.scatterplot(
-        x=dif_day_gnd_tot_val.index,
-        y=dif_day_gnd_tot_val[parsed_args.validation_index],
-        marker="h",
-    )
-    sns.scatterplot(
-        x=dif_day_gnd_tot_val.index,
-        y=dif_day_gnd_tot_val[ValidationColumns.DIFFUSE_PAR.value],
-        marker="h",
-    )
-
-    # combined_frame = pd.merge()
-
-    import matplotlib.pyplot as plt
-    import matplotlib.animation as animation
-    import seaborn as sns
-    import numpy as np
-
-    fig, ax = plt.subplots()
-
-    # Create initial heatmap with dummy data
-    initial_data = np.reshape(
-        direct_day_total_ground_irradiance_map.iloc[0],
-        (
-            _dim_x := polytunnel.meshgrid_resolution,
-            _dim_y := polytunnel.length_wise_meshgrid_resolution,
-        ),
-    )
-    vmin = 0
-    vmax = max(direct_day_total_ground_irradiance_map.max(axis=0))
-    heatmap = sns.heatmap(
-        initial_data, vmin=vmin, vmax=vmax, cmap="viridis", cbar=True, ax=ax
-    )
-
-    _ten_minutes: int = int(
-        _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
-    )
-
-    def update(time_index: int):
-        ax.clear()  # clear previous heatmap
-        data = np.reshape(
-            direct_day_total_ground_irradiance_map.iloc[time_index], (_dim_x, _dim_y)
-        )
-        sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
-        ax.set_title(
-            f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
-        )
-
-    # Create the animation
-    ani = animation.FuncAnimation(
-        fig,
-        update,
-        frames=len(direct_day_total_ground_irradiance_map),
-        interval=300,
-        repeat=False,
-    )
-    ani.save("16_may_24_control_diffuse_ground_t_0.5.gif", writer="pillow", fps=5)
-
-    import matplotlib.pyplot as plt
-    import matplotlib.animation as animation
-    import seaborn as sns
-    import numpy as np
-
-    fig, ax = plt.subplots()
-
-    # Create initial heatmap with dummy data
-    initial_data = np.reshape(
-        direct_day_total_ground_irradiance_map.iloc[0],
-        (
-            _dim_x := polytunnel.meshgrid_resolution,
-            _dim_y := polytunnel.length_wise_meshgrid_resolution,
-        ),
-    )
-    vmin = 0
-    vmax = max(direct_day_total_ground_irradiance_map.max(axis=0))
-    heatmap = sns.heatmap(
-        initial_data, vmin=vmin, vmax=vmax, cmap="viridis", cbar=True, ax=ax
-    )
-
-    _ten_minutes: int = int(
-        _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
-    )
-
-    def update(time_index: int):
-        ax.clear()  # clear previous heatmap
-        data = np.reshape(
-            direct_day_total_ground_irradiance_map.iloc[time_index], (_dim_x, _dim_y)
-        )
-        sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
-        ax.set_title(
-            f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
-            f"Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
-        )
-
-    # Create the animation
-    ani = animation.FuncAnimation(
-        fig,
-        update,
-        frames=len(direct_day_total_ground_irradiance_map),
-        interval=300,
-        repeat=False,
-    )
-    ani.save("direct_day_total_ground_irradiance_map.gif", writer="pillow", fps=5)
-    plt.show()
-
-    fig, ax = plt.subplots()
-
-    # Create initial heatmap with dummy data
-    initial_data = np.reshape(
-        diffuse_day_total_ground_irradiance_map.iloc[0],
-        (
-            _dim_x := polytunnel.meshgrid_resolution,
-            _dim_y := polytunnel.length_wise_meshgrid_resolution,
-        ),
-    )
-    vmin = 0
-    vmax = max(diffuse_day_total_ground_irradiance_map.max(axis=0))
-    heatmap = sns.heatmap(
-        initial_data, vmin=vmin, vmax=vmax, cmap="viridis", cbar=True, ax=ax
-    )
-
-    _ten_minutes: int = int(
-        _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
-    )
-
-    def update(time_index: int):
-        ax.clear()  # clear previous heatmap
-        data = np.reshape(
-            diffuse_day_total_ground_irradiance_map.iloc[time_index], (_dim_x, _dim_y)
-        )
-        sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
-        ax.set_title(
-            f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
-        )
-
-    # Create the animation
-    ani = animation.FuncAnimation(
-        fig,
-        update,
-        frames=len(diffuse_day_total_ground_irradiance_map),
-        interval=300,
-        repeat=False,
-    )
-    ani.save("diffuse_day_total_ground_irradiance_map.gif", writer="pillow", fps=5)
-    plt.show()
-
-    import seaborn as sns
-    import matplotlib.pyplot as plt
-
-    sns.heatmap(surface_shaded_map)
-    plt.savefig(
-        "surface_shaded_unmodulatead_{INDEX}.pdf",
-        format="pdf",
-        bbox_inches="tight",
-        pad_inches=0,
-    )
-    plt.show()
-
-    sns.heatmap(direct_surface_irradiance, cmap="viridis")
-    plt.savefig(
-        "direct_surface_unmodulatead_{INDEX}.pdf",
-        format="pdf",
-        bbox_inches="tight",
-        pad_inches=0,
-    )
-    plt.show()
-
-    sns.heatmap(
-        np.reshape(
-            [meshpoint.covered_fraction for meshpoint in polytunnel.surface_mesh],
-            (parsed_args.meshgrid_resolution, parsed_args.meshgrid_resolution),
-        )
-    )
-    plt.savefig(
-        "polytunnel_positions_{INDEX}.pdf",
-        format="pdf",
-        bbox_inches="tight",
-        pad_inches=0,
-    )
-    plt.show()
-
-    sun_not_shaded = pd.DataFrame(
-        {
-            meshpoint_index: [
-                calculate_adjacent_polytunnel_shading(
-                    meshpoint, polytunnel, solar_position
-                )
-                for solar_position in solar_positions
-            ]
-            for meshpoint_index, meshpoint in enumerate(polytunnel.surface_mesh)
-        }
-    )
-
-    plt.figure()
-    plt.title("Sun not shaded")
-    sns.heatmap(sun_not_shaded)
-    plt.show()
-
-    for time_index, irradiance in direct_surface_irradiance.iterrows():
-        if irradiance.sum(axis=0) == 0:
-            continue
-        plt.figure()
-        sns.heatmap(
-            np.reshape(irradiance, (10, 10)),
-            cmap="viridis",
-            vmin=0,
-            vmax=max(direct_surface_irradiance.max(axis=0)),
-        )
-        plt.title(
-            f"Time index: {time_index}. Date: {time_index // (6 * 24)}; Time: {time_index // 6}:{time_index % 6}0"
-        )
-        plt.show()
-
-    for time_index, sun_not_shaded_row in sun_not_shaded.iterrows():
-        plt.figure()
-        sns.heatmap(
-            np.reshape(sun_not_shaded_row, (10, 10)),
-            cmap="viridis",
-            vmin=0,
-            vmax=1,
-        )
-        plt.title(
-            f"Time index: {time_index}. Date: {time_index // (6 * 24)}; Time: {time_index // 6}:{time_index % 6}0"
-        )
-        plt.show()
-
-    plt.figure()
-    plt.title("Sun above horizon")
-    sns.heatmap(
-        pd.DataFrame(
-            {
-                meshpoint_index: [
-                    (solar_position.z > 0) for solar_position in solar_positions
-                ]
-                for meshpoint_index, meshpoint in enumerate(polytunnel.surface_mesh)
-            }
-        )
-    )
-    plt.show()
-
-    plt.figure()
-    plt.title("Sun shining on polytunnel meshpoint")
-    sns.heatmap(
-        sun_shining := pd.DataFrame(
-            {
-                meshpoint_index: [
-                    ((meshpoint._normal_vector * solar_position) > 0)
-                    for solar_position in solar_positions
-                ]
-                for meshpoint_index, meshpoint in enumerate(polytunnel.surface_mesh)
-            }
-        )
-    )
-    plt.show()
-
-    plt.figure()
-    plt.scatter(range(144), [position.phi for position in solar_positions])
-    plt.axhline(
-        polytunnel.surface_mesh[0].intercept_plane._first_vector.phi, color="blue"
-    )
-    plt.axhline(
-        polytunnel.surface_mesh[0].intercept_plane._second_vector.phi, color="red"
-    )
-    plt.plot(range(144), sun_shining[0], "--")
-    plt.plot(range(144), sun_not_shaded[0], "-.")
-    plt.show()
-
-    plt.figure()
-    plt.scatter(range(144), [position.phi for position in solar_positions])
-    plt.axhline(
-        polytunnel.surface_mesh[-1].intercept_plane._first_vector.phi, color="blue"
-    )
-    plt.axhline(
-        polytunnel.surface_mesh[-1].intercept_plane._second_vector.phi, color="red"
-    )
-    plt.plot(range(144), sun_shining[99], "--")
-    plt.plot(range(144), sun_not_shaded[99], "-.")
-    plt.show()
-
-    d = 2 * semi_major_axis
-    # sun transits#
-    sun = Sun(
-        start_time=start_time_str,
-        end_time=end_time_str,
-        latitude=latitude,
-        longitude=longitude,
-        resolution_minutes=res_minutes,
-    )
-    altitude_array, azimuth_array = sun.generate_sun_positions()
-    time_array = sun.get_times()
-
-    sun_positions = list(zip(altitude_array, azimuth_array))
-    sun_vecs = sun.generate_sun_vecs(sun_positions)
-    sun_surface_grid, sun_incident = sun.sunvec_tilts_grid(
-        sun_vecs, normals_unit_surface
-    )
-
-    # Used for Diffuse Component
-    clear_sky = sun.get_clearsky_data_new(
-        start_time_str, end_time_str, latitude, longitude, res_minutes
-    )
-
-    sun_positions_calculation_time = time.time()
-    print(
-        f"Sun positions calculation time: { sun_positions_calculation_time - end_geometry_time } seconds"
-    )
-
-    # shading#
-    tracer = Tracing(
-        tunnel, sun_vecs, surface_grid, tilts_unit, semi_major_axis, semi_minor_axis
-    )
-    gradient_grid, angle_grid, surface_gradient_grid, surface_angle_grid = (
-        tracer.find_tangent_gradient()
-    )
-
-    shading_calculation_time = time.time()
-    print(
-        f"Shading calculation time: { shading_calculation_time - sun_positions_calculation_time } seconds"
-    )
-
-    irradiance = TunnelIrradiance(tunnel, semi_major_axis, semi_minor_axis, length)
-    shaded_exposure_map = irradiance.shading_exposure_map(
-        angle_grid, surface_angle_grid, sun_vecs
-    )
-
-    # zero tilt, PAR region: 400-700
-    # optical_wavelengths in nm
-    # optical intensities in W/m^2/nm
-    # spectra_frames units in W/m^2
-    optical_wavelengths, optical_intensities, spectra_frames = sun.get_spectra(400, 700)
-
-    wavelengths_intensities_spectra_frames_calculation_time = time.time()
-    print(
-        f"Wavelengths, Intensities and Spectral Frames calculation time: { wavelengths_intensities_spectra_frames_calculation_time - shading_calculation_time  } seconds"
-    )
-
-    # TMM#
-    print("Performing TMM calculation")
-
-    if multistack == 1:
-        # Active Layer: Bilayer Structure
-        material_list = material_list
-        material_thickness = np.array(["inf"] + material_thick + ["inf"])
-    elif multistack > 1:
-        # Active layer: Multistack Structure, Overlaping multistack times Donor And Acceptor Layers
-        # The thickness of the Active Layer will be donor thickness + acceptor thickness defined in
-        # parameters csv file
-        material_list = (
-            material_list[:2]
-            + [material_list[2], material_list[3]] * multistack
-            + material_list[4:]
-        )
-        material_thickness = np.array(
-            ["inf"]
-            + material_thick[:2]
-            + [material_thick[2] / multistack, material_thick[3] / multistack]
-            * multistack
-            + material_thick[4:]
-            + ["inf"]
-        )
-
-    tmm_calculation_time = time.time()
-    print(
-        f"TMM calculation time: { tmm_calculation_time - wavelengths_intensities_spectra_frames_calculation_time  } seconds"
-    )
-
-    # Performing TMM, complex array contains N,K values for every material in material list
-    complex_array = tracer.n_list_wavelength(material_list, optical_wavelengths)
-
-    # Transmitted ligth at every time
-    t_grid_frames = irradiance.t_grid(
-        sun_incident, optical_wavelengths, complex_array, material_thickness
-    )
-
-    # Solar Spectra#
-    print("Performing Solar Spectra calculation")
-    # Obtain the irradiance rays affected by transmittance and shading
-    # solar_cell_spectra has units of W/m^2/nm
-    # solar_cell_spectra_shaded has units of W/m^2/nm
-    solar_cell_spectra = irradiance.solar_cells_irradiance_rays(
-        optical_intensities, t_grid_frames, solar_cells
-    )
-    solar_cell_spectra_shaded = irradiance.shaded_irradiance_spectra(
-        solar_cell_spectra, shaded_exposure_map
-    )
-
-    solar_spectra_calculation_time = time.time()
-    print(
-        f"Solar spectra calculation time: { solar_spectra_calculation_time - tmm_calculation_time } seconds"
-    )
-
-    # Irradiance#
-    print("Performing Irradiance calculation")
-    # Calculate irradiance after roof of polytunnel by considering
-    # the roof cover by polyethene, in any other case, find N,K for
-    # material of the polytunnel
-    # Transmmited_frames contains irradiance in the interior of polytunnel
-    # transmitted_frames, absorbed_frames have units of W/m^2/nm
-    transmitted_frames, absorbed_frames = irradiance.transmitted_absorbed_spectra(
-        optical_wavelengths, solar_cell_spectra_shaded, sun_surface_grid
-    )
-
-    # scale data with spectral sensitivity of BF5 sensor:
-    transmitted_frames = irradiance.scaled_spectra_sensor_bf5(
-        optical_wavelengths, transmitted_frames
-    )
-    absorbed_frames = irradiance.scaled_spectra_sensor_bf5(
-        optical_wavelengths, absorbed_frames
-    )
-
-    # transmitted_int, absorbed_int have units of W/m^2
-    transmitted_int = irradiance.int_spectra(optical_wavelengths, transmitted_frames)
-    absorbed_int = irradiance.int_spectra(optical_wavelengths, absorbed_frames)
-
-    # Irradiance at interior of polytunel on every grid of polytunnel
-    # Absorbed irradiance at interior of polytunnel on every grid of polytunnel
-    _ = viz.every_grid_plot(
-        transmitted_frames,
-        time_array,
-        optical_wavelengths,
-        res_minutes,
-        f"figures/Date_{date_simulation}/transmited_ligth_{parameters_sim}.png",
-    )
-    _ = viz.every_grid_plot(
-        absorbed_frames,
-        time_array,
-        optical_wavelengths,
-        res_minutes,
-        f"figures/Date_{date_simulation}/absorbed_ligth_{parameters_sim}.png",
-    )
-
-    transmitted_spectra_calculation_time = time.time()
-    print(
-        f"Solar spectra calculation time: { transmitted_spectra_calculation_time - solar_spectra_calculation_time } seconds"
-    )
-
-    # Direct Irradiance (ground)#
-    print("Performing Solar Spectra calculation Direct")
-    # direct component of irradiance (ground) with units of W/m^2/nm
-    direct_ground_irradiance_frames = irradiance.direct_irradiance_spectra_ground(
-        ground_grid,
-        normals_unit_ground,
-        surface_grid,
-        distance_grid,
-        sun_vecs,
-        transmitted_frames,
-    )
-    # direct component of irradiance integrated over wavelengths, with unitsof W/m^2
-    direct_ground_int = irradiance.int_spectra(
-        optical_wavelengths, direct_ground_irradiance_frames
-    )
-
-    direct_irradiance_calculation_time = time.time()
-    print(
-        f"Direct ground irradiance calculation time: { direct_irradiance_calculation_time - transmitted_spectra_calculation_time  } seconds"
-    )
-
-    # Diffuse Irradiance (ground)#
-    print("Performing Solar Spectra calculation Diffuse")
-    # diffuse component of irradiance (ground) with units of W/m^2/nm
-    # obtained from absorbed frames on polyethene,
-    diffuse_ground_irradiance_frames = irradiance.diffuse_irradiance_spectra_ground(
-        distance_grid,
-        separation_unit_vector_grid,
-        normals_unit_ground,
-        normals_unit_surface,
-        areas_surface,
-        absorbed_frames,
-    )
-    # diffuse component of irradiance integrated over wavelengthswith units of W/m^2
-    diffuse_ground_int = irradiance.int_spectra(
-        optical_wavelengths, diffuse_ground_irradiance_frames
-    )
-
-    diffuse_irradiance_calculation_time = time.time()
-    print(
-        f"Diffuse ground irradiance calculation time: { diffuse_irradiance_calculation_time - transmitted_spectra_calculation_time  } seconds"
-    )
-
-    # Global Irradiance (ground)#
-    print("Performing Solar Spectra calculation GLOBAL GROUND")
-    # global component of irradiance (ground) with units of W/m^2/nm
-    global_ground_irradiance_frames = irradiance.global_irradiance_spectra_ground(
-        diffuse_ground_irradiance_frames, direct_ground_irradiance_frames
-    )
-    # global component of irradiance integrated over wavelengthswith units of W/m^2
-    global_ground_int = irradiance.int_spectra(
-        optical_wavelengths, global_ground_irradiance_frames
-    )
-
-    global_ground_irradiance_calculation_time = time.time()
-    print(
-        f"Global ground irradiance calculation time: { global_ground_irradiance_calculation_time  - diffuse_irradiance_calculation_time } seconds"
-    )
-
-    # Photon spectra PAR Direct#
-    print("Performing PAR calculation DIRECT")
-    direct_photon_spectra_frames = irradiance.power_to_photon_spectra(
-        optical_wavelengths, direct_ground_irradiance_frames
-    )
-    direct_photon_par_spectra = irradiance.par_spectra(
-        optical_wavelengths, direct_photon_spectra_frames
-    )
-    direct_photon_par = irradiance.int_spectra(
-        optical_wavelengths, direct_photon_par_spectra
-    )
-    par_direct_calculation_time = time.time()
-
-    print(
-        f"PAR Direct calculation time: { par_direct_calculation_time - global_ground_irradiance_calculation_time } seconds"
-    )
-
-    # avg_value, std_value, max_value = compute_region_means(direct_photon_par)
-
-    # avg_value_irr, std_value_irr, max_value_irr = compute_region_means(direct_ground_int)
-
-    # match_data = pd.DataFrame( { 'Time'           : time_array,
-    #                              'amax_par_direct' : max_value[3],
-    #                              'astd_par_direct'  : std_value[3],
-    #                              'aavg_par_direct'  : avg_value[3],
-    #                              'rmax_par_direct' : max_value[2],
-    #                              'rstd_par_direct'  : std_value[2],
-    #                              'ravg_par_direct'  : avg_value[2],
-    #                              'cmax_par_direct' : max_value[1],
-    #                              'cstd_par_direct'  : std_value[1],
-    #                              'cavg_par_direct'  : avg_value[1],
-    #                              'lmax_par_direct' : max_value[0],
-    #                              'lstd_par_direct'  : std_value[0],
-    #                              'lavg_par_direct'  : avg_value[0],
-    #                              'amax_irradiance_ground_direct' : max_value_irr[3],
-    #                              'astd_irradiance_ground_direct'  : std_value_irr[3],
-    #                              'aavg_irradiance_ground_direct'  : avg_value_irr[3],
-    #                              'rmax_irradiance_ground_direct' : max_value_irr[2],
-    #                              'rstd_irradiance_ground_direct'  : std_value_irr[2],
-    #                              'ravg_irradiance_ground_direct'  : avg_value_irr[2],
-    #                              'cmax_irradiance_ground_direct' : max_value_irr[1],
-    #                              'cstd_irradiance_ground_direct'  : std_value_irr[1],
-    #                              'cavg_irradiance_ground_direct'  : avg_value_irr[1],
-    #                              'lmax_irradiance_ground_direct' : max_value_irr[0],
-    #                              'lstd_irradiance_ground_direct'  : std_value_irr[0],
-    #                              'lavg_irradiance_ground_direct'  : avg_value_irr[0],
-    #                            } )
-
-    # match_data.to_csv(f'match_data_direct_photonpar_{parameters_sim}.csv', index = False )
-
-    # Photon spectra PAR Diffuse#
-    print("Performing PAR calculation DIFFUSE")
-    diffuse_photon_spectra_frames = irradiance.power_to_photon_spectra(
-        optical_wavelengths, diffuse_ground_irradiance_frames
-    )
-    diffuse_photon_par_spectra = irradiance.par_spectra(
-        optical_wavelengths, diffuse_photon_spectra_frames
-    )
-    diffuse_photon_par = irradiance.int_spectra(
-        optical_wavelengths, diffuse_photon_par_spectra
-    )
-
-    par_diffuse_calculation_time = time.time()
-    print(
-        f"PAR Diffuse calculation time: { par_diffuse_calculation_time -  par_direct_calculation_time } seconds"
-    )
-
-    # Photon spectra PAR Global (ground)#
-    print("Performing PAR calculation GLOBAL")
-    global_photon_spectra_frames = irradiance.power_to_photon_spectra(
-        optical_wavelengths, global_ground_irradiance_frames
-    )
-    global_photon_par_spectra = irradiance.par_spectra(
-        optical_wavelengths, global_photon_spectra_frames
-    )
-    global_photon_par = irradiance.int_spectra(
-        optical_wavelengths, global_photon_par_spectra
-    )
-
-    par_global_calculation_time = time.time()
-    print(
-        f"PAR Global calculation time: { par_global_calculation_time - par_diffuse_calculation_time  } seconds"
-    )
-
-    print("Photon PAR:")
-    direct_data = viz.every_grid_plot(
-        direct_photon_spectra_frames,
-        time_array,
-        optical_wavelengths,
-        res_minutes,
-        f"figures/Date_{date_simulation}/direct_photon_spectra_{parameters_sim}.png",
-    )
-    diffuse_data = viz.every_grid_plot(
-        diffuse_photon_spectra_frames,
-        time_array,
-        optical_wavelengths,
-        res_minutes,
-        f"figures/Date_{date_simulation}/diffuse_photon_spectra_{parameters_sim}.png",
-    )
-    global_data = viz.every_grid_plot(
-        global_photon_spectra_frames,
-        time_array,
-        optical_wavelengths,
-        res_minutes,
-        f"figures/Date_{date_simulation}/global_photon_spectra_{parameters_sim}.png",
-    )
-
-    par_direct_data = viz.every_grid_plot(
-        direct_photon_par_spectra,
-        time_array,
-        optical_wavelengths,
-        res_minutes,
-        f"figures/Date_{date_simulation}/par_direct_photon_spectra_{parameters_sim}.png",
-    )
-    par_diffuse_data = viz.every_grid_plot(
-        diffuse_photon_par_spectra,
-        time_array,
-        optical_wavelengths,
-        res_minutes,
-        f"figures/Date_{date_simulation}/par_diffuse_photon_spectra_{parameters_sim}.png",
-    )
-    par_global_data = viz.every_grid_plot(
-        global_photon_par_spectra,
-        time_array,
-        optical_wavelengths,
-        res_minutes,
-        f"figures/Date_{date_simulation}/par_global_photon_spectra_{parameters_sim}.png",
-    )
-
-    match_data = pd.DataFrame(
-        {
-            "Time": time_array,
-            "all_direct": direct_data[0],
-            "cen_direct": direct_data[1],
-            "lef_direct": direct_data[2],
-            "rig_direct": direct_data[3],
-            "all_diffuse": diffuse_data[0],
-            "cen_diffuse": diffuse_data[1],
-            "lef_diffuse": diffuse_data[2],
-            "rig_diffuse": diffuse_data[3],
-            "all_global": global_data[0],
-            "cen_global": global_data[1],
-            "lef_global": global_data[2],
-            "rig_global": global_data[3],
-            "all_par_direct": par_direct_data[0],
-            "cen_par_direct": par_direct_data[1],
-            "lef_par_direct": par_direct_data[2],
-            "rig_par_direct": par_direct_data[3],
-            "all_par_diffuse": par_diffuse_data[0],
-            "cen_par_diffuse": par_diffuse_data[1],
-            "lef_par_diffuse": par_diffuse_data[2],
-            "rig_par_diffuse": par_diffuse_data[3],
-            "all_par_global": par_global_data[0],
-            "cen_par_global": par_global_data[1],
-            "lef_par_global": par_global_data[2],
-            "rig_par_global": par_global_data[3],
-        }
-    )
-
-    match_data.to_csv(
-        f"Matched_Dates/match_data_direct_photonpar_{parameters_sim}.csv", index=False
-    )
-
-    # viz.animate_irradiance(time_array, surface_grid_x, surface_grid_y, global_photon_par_spectra, f"figures/Date_{date_simulation}/TESTGLOBALPARNOFRAMES-surface-animation_{parameters_sim}.mp4")
-    # viz.animate_irradiance(time_array, surface_grid_x, surface_grid_y, global_photon_spectra_frames, f"figures/Date_{date_simulation}/TESTGLOBALPAR-surface-animation_{parameters_sim}.mp4")
-
-    diffuse_irradiance_frames = irradiance.diffuse_irradiance_ground(
-        distance_grid,
-        separation_unit_vector_grid,
-        normals_unit_ground,
-        normals_unit_surface,
-        areas_surface,
-        diffuse_ground_irradiance_frames,
-        transmissivity,
-    )
-    direct_irradiance_frames = irradiance.direct_irradiance_ground(
-        normals_unit_ground, sun_vecs, direct_ground_irradiance_frames, transmissivity
-    )
-
-    power_total_ground_diffuse = irradiance.power(
-        areas_ground, diffuse_irradiance_frames
-    )
-    # power_total_surface = irradiance.power(areas_surface, irradiance_frames)
-    # power_total_surface = irradiance.power(areas_surface, direct_irradiance_frames)
-    power_total_ground_direct = irradiance.power(areas_ground, direct_irradiance_frames)
-    power_total_out = np.array(power_total_ground_diffuse) + np.array(
-        power_total_ground_direct
-    )
-
-    viz.plot_sun(
-        time_array,
-        altitude_array,
-        azimuth_array,
-        spectra_frames,
-        f"figures/Date_{date_simulation}/sun_{parameters_sim}.png",
-    )
-
-    # viz.plot_surface(surface_grid_x, surface_grid_y, surface_grid_z, normals_unit_surface, ground_grid_x, ground_grid_y, ground_grid_z, normals_unit_ground, sun_vec=sun_vecs[72])
-
-    # viz.plot_irradiance(surface_grid_x, surface_grid_y, irradiance_frames[60])
-
-    viz.animate_irradiance(
-        time_array,
-        surface_grid_x,
-        surface_grid_y,
-        transmitted_int,
-        "Irradiance [W/m^2]",
-        f"figures/Date_{date_simulation}/direct-irradiance-surface-animation_{parameters_sim}.mp4",
-    )
-
-    viz.animate_irradiance(
-        time_array,
-        ground_grid_x,
-        ground_grid_y,
-        direct_ground_int,
-        "Irradiance [W/m^2]",
-        f"figures/Date_{date_simulation}/direct-irradiance-ground-animation_{parameters_sim}.mp4",
-    )
-
-    # viz.animate_irradiance(time_array, ground_grid_x, ground_grid_y, diffuse_ground_int, f"figures/Date_{date_simulation}/diffuse-irradiance-ground-animation_{parameters_sim}.mp4")
-
-    # viz.animate_irradiance(time_array, ground_grid_x, ground_grid_y, global_ground_int, f"figures/Date_{date_simulation}/global-irradiance-ground-animation_{parameters_sim}.mp4")
-
-    # viz.animate_irradiance(time_array, ground_grid_x, ground_grid_y, photon_par, "figures/photon-par-animation.mp4")
-    viz.animate_irradiance(
-        time_array,
-        ground_grid_x,
-        ground_grid_y,
-        direct_photon_par,
-        "Irradiance [W/m^2]",
-        f"figures/Date_{date_simulation}/direct_photon_par-animation_{parameters_sim}.mp4",
-    )
-
-    total_time = time.time()
-    print(f"Total time { total_time - start_simulation_time }")
-
-    # viz.plot_power(time_array, power_total_ground_diffuse, power_total_ground_direct, power_total_out, f'figures/Date_{date_simulation}/power-received_{parameters_sim}.png')
-
-
-#######################
-# Plotting code No. 1 #
-#######################
-
-# import matplotlib.pyplot as plt
-# import matplotlib.animation as animation
-# import seaborn as sns
-# import numpy as np
-
-# sns.set_context("notebook")
-
-# fig, ax = plt.subplots(figsize=(171*MM, 120*MM))
-
-# # Create initial heatmap with dummy data
-# initial_data = np.reshape(
-#     clearsky_total_ground_irradiance_map.iloc[0],
-#     (
-#         _dim_x := polytunnel.meshgrid_resolution,
-#         _dim_y := polytunnel.length_wise_meshgrid_resolution,
-#     ),
-# )
-# vmin = 0
-# vmax = max(clearsky_total_ground_irradiance_map.max(axis=0))
-# heatmap = sns.heatmap(
-#     initial_data, vmin=vmin, vmax=vmax, cmap="viridis", cbar=True, ax=ax, cbar_kws={"label": "Irradiance / W/m$^2$"}
-# )
-
-# _ten_minutes: int = int(
-#     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
-# )
-
-
-# def update(time_index: int):
-#     ax.clear()  # clear previous heatmap
-#     data = np.reshape(
-#         clearsky_total_ground_irradiance_map.iloc[time_index], (_dim_x, _dim_y)
-#     )
-#     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
-#     ax.set_title(
-#         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
-#         f"Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
-#     )
-
-
-# # Create the animation
-# ani = animation.FuncAnimation(
-#     fig,
-#     update,
-#     frames=len(clearsky_total_ground_irradiance_map),
-#     interval=300,
-#     repeat=False,
-# )
-# ani.save(f"clearsky_total_ground_irradiance_map_{INDEX}.gif", writer="pillow", fps=5)
-# plt.show()
-
-
-#######################
-# Plotting code No. 0 #
-#######################
-#
-# try:
-#     sns.set_palette(
-#         # ["#648FFF", "#785EF0", "#DC267F", "#FE6100", "#FFB000", "#0041C8"]
-#         [
-#             "#423252",
-#             "#4A688B",
-#             "#779FB1",
-#             "#36C7B8",
-#             "#FBC412",
-#             "#e04606",
-#         ],
-#     )
-# except UnboundLocalError:
-#     import seaborn as sns
-#     import matplotlib.pyplot as plt
-
-#     sns.set_palette(
-#         # ["#648FFF", "#785EF0", "#DC267F", "#FE6100", "#FFB000", "#0041C8"]
-#         [
-#             "#423252",
-#             "#4A688B",
-#             "#779FB1",
-#             "#36C7B8",
-#             "#FBC412",
-#             "#e04606",
-#         ],
-#     )
-
-# plt.figure(figsize=(171 * MM, 120 * MM))
-# plt.plot(
-#     pyranometer_wavelength_range,
-#     adjusted_global_spectrum,
-#     label=f"Global response ({sum(adjusted_global_spectrum):.4g}×)",
-#     color="C5",
-# )
-# plt.plot(
-#     pyranometer_wavelength_range,
-#     adjusted_direct_spectrum,
-#     label=f"Direct response ({sum(adjusted_direct_spectrum):.4g}×)",
-#     color="C4",
-# )
-# plt.plot(
-#     pyranometer_wavelength_range,
-#     adjusted_diffuse_spectrum,
-#     label=f"Clearsky diffuse response ({sum(adjusted_diffuse_spectrum):.4g}×)",
-#     color="C2",
-# )
-# plt.plot(
-#     pyranometer_wavelength_range,
-#     adjusted_cloudy_spectrum,
-#     label=f"Cloudy-day response ({sum(adjusted_cloudy_spectrum):.4g}×)",
-#     color="C0",
-# )
-# # plt.plot(pyranometer_wavelength_range, _global_spectrum, dashes=(2,4), label="Global solar irradiance", color="C5")
-# (right_axis := (left_axis := plt.gca()).twinx()).plot(
-#     pyranometer_wavelength_range,
-#     pyranometer_response,
-#     ":",
-#     label="Raw pyranometer response",
-#     color="C1",
-# )
-
-# left_axis.set_ylabel("Normalised solar spectra")
-# right_axis.set_ylabel("Normalised pyranometer response")
-
-# left_axis.tick_params(axis="both", which="major", labelsize=7)
-# # right_axis.tick_params(axis="both", which="major", labelsize=7)
-# left_axis.set_xlim(0, 4000)
-
-# left_handles, left_labels = left_axis.get_legend_handles_labels()
-# right_handles, right_labels = right_axis.get_legend_handles_labels()
-# plt.legend(
-#     left_handles + right_handles,
-#     left_labels + right_labels,
-#     loc="upper right",
-#     fontsize=7,
-# )
-
-# plt.savefig(
-#     f"pyranometer_response_{INDEX}.pdf",
-#     format="pdf",
-#     bbox_inches="tight",
-#     pad_inches=0.05,
-# )
-
-# plt.figure(figsize=(83 * MM, 60 * MM))
-# plt.plot(
-#     pyranometer_wavelength_range,
-#     adjusted_global_spectrum,
-#     label=f"Global response ({sum(adjusted_global_spectrum):.4g}×)",
-#     color="C5",
-# )
-# plt.plot(
-#     pyranometer_wavelength_range,
-#     adjusted_direct_spectrum,
-#     label=f"Direct response ({sum(adjusted_direct_spectrum):.4g}×)",
-#     color="C4",
-# )
-# plt.plot(
-#     pyranometer_wavelength_range,
-#     adjusted_diffuse_spectrum,
-#     label=f"Clearsky diffuse response ({sum(adjusted_diffuse_spectrum):.4g}×)",
-#     color="C2",
-# )
-# plt.plot(
-#     pyranometer_wavelength_range,
-#     adjusted_cloudy_spectrum,
-#     label=f"Cloudy-day response ({sum(adjusted_cloudy_spectrum):.4g}×)",
-#     color="C0",
-# )
-# # plt.plot(pyranometer_wavelength_range, _global_spectrum, dashes=(2,4), label="Global solar irradiance", color="C5")
-# (right_axis := (left_axis := plt.gca()).twinx()).plot(
-#     pyranometer_wavelength_range,
-#     pyranometer_response,
-#     ":",
-#     label="Raw pyranometer response",
-#     color="C1",
-# )
-
-# left_axis.set_ylabel("Normalised solar spectra")
-# right_axis.set_ylabel("Normalised pyranometer response")
-
-# left_axis.tick_params(axis="both", which="major", labelsize=7)
-# right_axis.tick_params(axis="both", which="major", labelsize=7)
-# left_axis.set_xlim(0, 4000)
-
-# left_handles, left_labels = left_axis.get_legend_handles_labels()
-# right_handles, right_labels = right_axis.get_legend_handles_labels()
-# plt.legend(
-#     left_handles + right_handles,
-#     left_labels + right_labels,
-#     loc="upper right",
-#     fontsize=7,
-# )
-
-# plt.savefig(
-#     f"pyranometer_response_small_{INDEX}.pdf",
-#     format="pdf",
-#     bbox_inches="tight",
-#     pad_inches=0.05,
-# )
-# plt.show()
-
-
-########################
-# Plotting code No. 1a #
-########################
-
-# import matplotlib.pyplot as plt
-# import matplotlib.animation as animation
-# import seaborn as sns
-# import numpy as np
-
-# sns.set_context("notebook")
-
-# for _index in [40, 50, 60, 70, 80, 90, 100]:
-#     fig, ax = plt.subplots(figsize=(171*MM, 120*MM))
-#     # Create initial heatmap with dummy data
-#     initial_data = np.reshape(
-#         clearsky_total_ground_irradiance_map.iloc[_index],
-#         (
-#             _dim_x := polytunnel.meshgrid_resolution,
-#             _dim_y := polytunnel.length_wise_meshgrid_resolution,
-#         ),
-#     )
-#     vmin = 0
-#     vmax = max(clearsky_total_ground_irradiance_map.max(axis=0))
-#     heatmap = sns.heatmap(
-#         initial_data, vmin=vmin, vmax=vmax, cmap="viridis", cbar=True, ax=ax, cbar_kws={"label": "Irradiance / W/m$^2$"}
-#     )
-#     _ten_minutes: int = int(
-#         _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
-#     )
-#     ax.set_title(
-#         f"Time index: {_index}. Date: {_index // (_ten_minutes * 24)}; "
-#         f"Time: {_index // _ten_minutes}:{int((_index % _ten_minutes) * (6 / _ten_minutes))}0"
-#     )
-#     ax.set_xlabel("Length-wise index")
-#     ax.set_ylabel("Width-wise index")
-#     plt.savefig(f"clearsky_total_ground_irradiance_map_{_index}_{INDEX}.pdf", format="pdf", bbox_inches="tight", pad_inches=0.05)
-
-# plt.show()
-
-########################
-# Plotting code No. 1b #
-########################
-
-# import matplotlib.pyplot as plt
-# import matplotlib.animation as animation
-# import seaborn as sns
-# import numpy as np
-
-# sns.set_context("notebook")
-
-# fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
-
-# # Create initial heatmap with dummy data
-# initial_data = np.reshape(
-#     clearsky_ground_direct_irradiance_map_sans_pv_module[0].sum(axis=1),
-#     (
-#         _dim_x := polytunnel.meshgrid_resolution,
-#         _dim_y := polytunnel.length_wise_meshgrid_resolution,
-#     ),
-# )
-# vmin = 0
-# vmax = max(
-#     direct_day_ground_direct_irradiance.sum(axis=2).max(axis=1)
-# )
-# heatmap = sns.heatmap(
-#     initial_data,
-#     vmin=vmin,
-#     vmax=vmax,
-#     cmap="viridis",
-#     cbar=True,
-#     ax=ax,
-#     cbar_kws={"label": "Irradiance / W/m$^2$"},
-# )
-
-# _ten_minutes: int = int(
-#     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
-# )
-
-# def update(time_index: int):
-#     ax.clear()  # clear previous heatmap
-#     data = np.reshape(
-#         clearsky_ground_direct_irradiance_map_sans_pv_module[time_index].sum(
-#             axis=1
-#         ),
-#         (_dim_x, _dim_y),
-#     )
-#     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
-#     ax.set_title(
-#         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
-#         f"Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
-#     )
-
-# # Create the animation
-# ani = animation.FuncAnimation(
-#     fig,
-#     update,
-#     frames=len(clearsky_ground_direct_irradiance_map_sans_pv_module),
-#     interval=300,
-#     repeat=False,
-# )
-# ani.save(
-#     f"clearsky_ground_direct_irradiance_map_sans_pv_module_{INDEX}.gif",
-#     writer="pillow",
-#     fps=5,
-# )
-# plt.show()
-
-# fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
-
-# # Create initial heatmap with dummy data
-# initial_data = np.reshape(
-#     clearsky_ground_direct_irradiance_map_with_pv_module[0].sum(axis=1),
-#     (
-#         _dim_x := polytunnel.meshgrid_resolution,
-#         _dim_y := polytunnel.length_wise_meshgrid_resolution,
-#     ),
-# )
-# heatmap = sns.heatmap(
-#     initial_data,
-#     vmin=vmin,
-#     vmax=vmax,
-#     cmap="viridis",
-#     cbar=True,
-#     ax=ax,
-#     cbar_kws={"label": "Irradiance / W/m$^2$"},
-# )
-
-# _ten_minutes: int = int(
-#     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
-# )
-
-# def update(time_index: int):
-#     ax.clear()  # clear previous heatmap
-#     data = np.reshape(
-#         clearsky_ground_direct_irradiance_map_with_pv_module[time_index].sum(
-#             axis=1
-#         ),
-#         (_dim_x, _dim_y),
-#     )
-#     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
-#     ax.set_title(
-#         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
-#         f"Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
-#     )
-
-# # Create the animation
-# ani = animation.FuncAnimation(
-#     fig,
-#     update,
-#     frames=len(clearsky_ground_direct_irradiance_map_with_pv_module),
-#     interval=300,
-#     repeat=False,
-# )
-# ani.save(
-#     f"clearsky_ground_direct_irradiance_map_with_pv_module_{INDEX}.gif",
-#     writer="pillow",
-#     fps=5,
-# )
-# plt.show()
-
-# fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
-
-# # Create initial heatmap with dummy data
-# initial_data = np.reshape(
-#     end_direct_irradiance_map[0].sum(axis=1),
-#     (
-#         _dim_x := polytunnel.meshgrid_resolution,
-#         _dim_y := polytunnel.length_wise_meshgrid_resolution,
-#     ),
-# )
-# heatmap = sns.heatmap(
-#     initial_data,
-#     vmin=vmin,
-#     vmax=vmax,
-#     cmap="viridis",
-#     cbar=True,
-#     ax=ax,
-#     cbar_kws={"label": "Irradiance / W/m$^2$"},
-# )
-
-# _ten_minutes: int = int(
-#     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
-# )
-
-# def update(time_index: int):
-#     ax.clear()  # clear previous heatmap
-#     data = np.reshape(
-#         end_direct_irradiance_map[time_index].sum(axis=1),
-#         (_dim_x, _dim_y),
-#     )
-#     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
-#     ax.set_title(
-#         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
-#         f"Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
-#     )
-
-# # Create the animation
-# ani = animation.FuncAnimation(
-#     fig,
-#     update,
-#     frames=len(end_direct_irradiance_map),
-#     interval=300,
-#     repeat=False,
-# )
-# ani.save(
-#     f"end_direct_irradiance_map_{INDEX}.gif",
-#     writer="pillow",
-#     fps=5,
-# )
-# plt.show()
-
-# fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
-
-# # Create initial heatmap with dummy data
-# initial_data = np.reshape(
-#     direct_day_ground_direct_irradiance[0].sum(axis=1),
-#     (
-#         _dim_x := polytunnel.meshgrid_resolution,
-#         _dim_y := polytunnel.length_wise_meshgrid_resolution,
-#     ),
-# )
-# heatmap = sns.heatmap(
-#     initial_data,
-#     vmin=vmin,
-#     vmax=vmax,
-#     cmap="viridis",
-#     cbar=True,
-#     ax=ax,
-#     cbar_kws={"label": "Irradiance / W/m$^2$"},
-# )
-
-# _ten_minutes: int = int(
-#     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
-# )
-
-# def update(time_index: int):
-#     ax.clear()  # clear previous heatmap
-#     data = np.reshape(
-#         direct_day_ground_direct_irradiance[time_index].sum(axis=1),
-#         (_dim_x, _dim_y),
-#     )
-#     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
-#     ax.set_title(
-#         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
-#         f"Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
-#     )
-
-# # Create the animation
-# ani = animation.FuncAnimation(
-#     fig,
-#     update,
-#     frames=len(direct_day_ground_direct_irradiance),
-#     interval=300,
-#     repeat=False,
-# )
-# ani.save(
-#     f"direct_day_ground_direct_irradiance_{INDEX}.gif",
-#     writer="pillow",
-#     fps=5,
-# )
-# plt.show()
-
-########################
-# Plotting code No. 1c #
-########################
-
-# import matplotlib.pyplot as plt
-# import matplotlib.animation as animation
-# import seaborn as sns
-# import numpy as np
-
-# sns.set_context("notebook")
-
-# # Create a slice tool for the PAR wavelengths.
-# par_filter: list[bool] = [entry in PAR_WAVELENGTH_RANGE for entry in wavelength_range]
-
-# fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
-
-# # Create initial heatmap with dummy data
-# initial_data = np.reshape(
-#     clearsky_ground_direct_irradiance_map_sans_pv_module[0].sum(axis=1),
-#     (
-#         _dim_x := polytunnel.meshgrid_resolution,
-#         _dim_y := polytunnel.length_wise_meshgrid_resolution,
-#     ),
-# )
-# vmin = 0
-# vmax = max(
-#     (par_filter * direct_day_ground_direct_irradiance).sum(axis=2).max(axis=1)
-# )
-# heatmap = sns.heatmap(
-#     initial_data,
-#     vmin=vmin,
-#     vmax=vmax,
-#     cmap="viridis",
-#     cbar=True,
-#     ax=ax,
-#     cbar_kws={"label": "Irradiance / W/m$^2$"},
-# )
-
-# _ten_minutes: int = int(
-#     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
-# )
-
-# def update(time_index: int):
-#     ax.clear()  # clear previous heatmap
-#     data = np.reshape(
-#         (par_filter * clearsky_ground_direct_irradiance_map_sans_pv_module[time_index]).sum(
-#             axis=1
-#         ),
-#         (_dim_x, _dim_y),
-#     )
-#     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
-#     ax.set_title(
-#         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
-#         f"Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
-#     )
-
-# # Create the animation
-# ani = animation.FuncAnimation(
-#     fig,
-#     update,
-#     frames=len(clearsky_ground_direct_irradiance_map_sans_pv_module),
-#     interval=300,
-#     repeat=False,
-# )
-# ani.save(
-#     f"clearsky_ground_direct_par_wm2_map_sans_pv_module_{INDEX}.gif",
-#     writer="pillow",
-#     fps=5,
-# )
-# plt.show()
-
-# fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
-
-# # Create initial heatmap with dummy data
-# initial_data = np.reshape(
-#     clearsky_ground_direct_irradiance_map_with_pv_module[0].sum(axis=1),
-#     (
-#         _dim_x := polytunnel.meshgrid_resolution,
-#         _dim_y := polytunnel.length_wise_meshgrid_resolution,
-#     ),
-# )
-# heatmap = sns.heatmap(
-#     initial_data,
-#     vmin=vmin,
-#     vmax=vmax,
-#     cmap="viridis",
-#     cbar=True,
-#     ax=ax,
-#     cbar_kws={"label": "Irradiance / W/m$^2$"},
-# )
-
-# _ten_minutes: int = int(
-#     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
-# )
-
-# def update(time_index: int):
-#     ax.clear()  # clear previous heatmap
-#     data = np.reshape(
-#         (par_filter * clearsky_ground_direct_irradiance_map_with_pv_module[time_index]).sum(
-#             axis=1
-#         ),
-#         (_dim_x, _dim_y),
-#     )
-#     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
-#     ax.set_title(
-#         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
-#         f"Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
-#     )
-
-# # Create the animation
-# ani = animation.FuncAnimation(
-#     fig,
-#     update,
-#     frames=len(clearsky_ground_direct_irradiance_map_with_pv_module),
-#     interval=300,
-#     repeat=False,
-# )
-# ani.save(
-#     f"clearsky_ground_direct_par_wm2_map_with_pv_module_{INDEX}.gif",
-#     writer="pillow",
-#     fps=5,
-# )
-# plt.show()
-
-# fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
-
-# # Create initial heatmap with dummy data
-# initial_data = np.reshape(
-#     end_direct_irradiance_map[0].sum(axis=1),
-#     (
-#         _dim_x := polytunnel.meshgrid_resolution,
-#         _dim_y := polytunnel.length_wise_meshgrid_resolution,
-#     ),
-# )
-# heatmap = sns.heatmap(
-#     initial_data,
-#     vmin=vmin,
-#     vmax=vmax,
-#     cmap="viridis",
-#     cbar=True,
-#     ax=ax,
-#     cbar_kws={"label": "Irradiance / W/m$^2$"},
-# )
-
-# _ten_minutes: int = int(
-#     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
-# )
-
-# def update(time_index: int):
-#     ax.clear()  # clear previous heatmap
-#     data = np.reshape(
-#         (par_filter * end_direct_irradiance_map[time_index]).sum(axis=1),
-#         (_dim_x, _dim_y),
-#     )
-#     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
-#     ax.set_title(
-#         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
-#         f"Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
-#     )
-
-# # Create the animation
-# ani = animation.FuncAnimation(
-#     fig,
-#     update,
-#     frames=len(end_direct_irradiance_map),
-#     interval=300,
-#     repeat=False,
-# )
-# ani.save(
-#     f"end_direct_par_wm2_map_{INDEX}.gif",
-#     writer="pillow",
-#     fps=5,
-# )
-# plt.show()
-
-# fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
-
-# # Create initial heatmap with dummy data
-# initial_data = np.reshape(
-#     direct_day_ground_direct_irradiance[0].sum(axis=1),
-#     (
-#         _dim_x := polytunnel.meshgrid_resolution,
-#         _dim_y := polytunnel.length_wise_meshgrid_resolution,
-#     ),
-# )
-# heatmap = sns.heatmap(
-#     initial_data,
-#     vmin=vmin,
-#     vmax=vmax,
-#     cmap="viridis",
-#     cbar=True,
-#     ax=ax,
-#     cbar_kws={"label": "Irradiance / W/m$^2$"},
-# )
-
-# _ten_minutes: int = int(
-#     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
-# )
-
-# def update(time_index: int):
-#     ax.clear()  # clear previous heatmap
-#     data = np.reshape(
-#         (par_filter * direct_day_ground_direct_irradiance[time_index]).sum(axis=1),
-#         (_dim_x, _dim_y),
-#     )
-#     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
-#     ax.set_title(
-#         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
-#         f"Time: {time_index // _ten_minutes}:{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
-#     )
-
-# # Create the animation
-# ani = animation.FuncAnimation(
-#     fig,
-#     update,
-#     frames=len(direct_day_ground_direct_irradiance),
-#     interval=300,
-#     repeat=False,
-# )
-# ani.save(
-#     f"direct_day_ground_direct_par_wm2_{INDEX}.gif",
-#     writer="pillow",
-#     fps=5,
-# )
-# plt.show()
-
-########################
-# Plotting code No. 1d #
-########################
-
-# import matplotlib.pyplot as plt
-# import matplotlib.animation as animation
-# import seaborn as sns
-# import numpy as np
-
-# sns.set_context("notebook")
-
-# fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
-
-# # Create initial heatmap with dummy data
-# initial_data = np.reshape(
-#     diffuse_surface_irradiance.iloc[0],
-#     (
-#         _dim_x := polytunnel.meshgrid_resolution,
-#         _dim_y := polytunnel.length_wise_meshgrid_resolution,
-#     ),
-# )
-# vmin = 0
-# vmax = direct_day_total_diffuse_surface_irradiance.sum(axis=2).max(axis=1).max()
-# heatmap = sns.heatmap(
-#     initial_data,
-#     vmin=vmin,
-#     vmax=vmax,
-#     cmap="viridis",
-#     cbar=True,
-#     ax=ax,
-#     cbar_kws={"label": "Irradiance / W/m$^2$"},
-# )
-
-# _ten_minutes: int = int(
-#     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
-# )
-
-# def update(time_index: int):
-#     ax.clear()  # clear previous heatmap
-#     data = np.reshape(
-#         direct_day_total_diffuse_surface_irradiance[time_index].sum(axis=1),
-#         (_dim_x, _dim_y),
-#     )
-#     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
-#     ax.set_title(
-#         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
-#         f"Time: {time_index // _ten_minutes}:"
-#         f"{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
-#     )
-
-# # Create the animation
-# ani = animation.FuncAnimation(
-#     fig,
-#     update,
-#     frames=len(direct_day_total_diffuse_surface_irradiance),
-#     interval=300,
-#     repeat=False,
-# )
-# ani.save(
-#     f"direct_day_total_diffuse_surface_irradiance_{INDEX}.gif",
-#     writer="pillow",
-#     fps=5,
-# )
-# plt.show()
-
-# fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
-
-# # Create initial heatmap with dummy data
-# initial_data = np.reshape(
-#     diffuse_surface_irradiance.iloc[0],
-#     (
-#         _dim_x := polytunnel.meshgrid_resolution,
-#         _dim_y := polytunnel.length_wise_meshgrid_resolution,
-#     ),
-# )
-# vmin = 0
-# vmax = diffuse_day_total_diffuse_surface_irradiance.sum(axis=2).max(axis=1).max()
-# heatmap = sns.heatmap(
-#     initial_data,
-#     vmin=vmin,
-#     vmax=vmax,
-#     cmap="viridis",
-#     cbar=True,
-#     ax=ax,
-#     cbar_kws={"label": "Irradiance / W/m$^2$"},
-# )
-
-# _ten_minutes: int = int(
-#     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
-# )
-
-# def update(time_index: int):
-#     ax.clear()  # clear previous heatmap
-#     data = np.reshape(
-#         diffuse_day_total_diffuse_surface_irradiance[time_index].sum(axis=1),
-#         (_dim_x, _dim_y),
-#     )
-#     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
-#     ax.set_title(
-#         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
-#         f"Time: {time_index // _ten_minutes}:"
-#         f"{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
-#     )
-
-# # Create the animation
-# ani = animation.FuncAnimation(
-#     fig,
-#     update,
-#     frames=len(diffuse_day_total_diffuse_surface_irradiance),
-#     interval=300,
-#     repeat=False,
-# )
-# ani.save(
-#     f"diffuse_day_total_diffuse_surface_irradiance_{INDEX}.gif",
-#     writer="pillow",
-#     fps=5,
-# )
-# plt.show()
-
-# fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
-
-# # Create initial heatmap with dummy data
-# initial_data = np.reshape(
-#     diffuse_day_total_diffuse_surface_irradiance_sans_pv[0].sum(axis=1),
-#     (
-#         _dim_x := polytunnel.meshgrid_resolution,
-#         _dim_y := polytunnel.length_wise_meshgrid_resolution,
-#     ),
-# )
-# vmin = 0
-# heatmap = sns.heatmap(
-#     initial_data,
-#     vmin=vmin,
-#     vmax=vmax,
-#     cmap="viridis",
-#     cbar=True,
-#     ax=ax,
-#     cbar_kws={"label": "Irradiance / W/m$^2$"},
-# )
-
-# _ten_minutes: int = int(
-#     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
-# )
-
-# def update(time_index: int):
-#     ax.clear()  # clear previous heatmap
-#     data = np.reshape(
-#         diffuse_day_total_diffuse_surface_irradiance_sans_pv[time_index].sum(
-#             axis=1
-#         ),
-#         (_dim_x, _dim_y),
-#     )
-#     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
-#     ax.set_title(
-#         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
-#         f"Time: {time_index // _ten_minutes}:"
-#         f"{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
-#     )
-
-# # Create the animation
-# ani = animation.FuncAnimation(
-#     fig,
-#     update,
-#     frames=len(diffuse_day_total_diffuse_surface_irradiance_sans_pv),
-#     interval=300,
-#     repeat=False,
-# )
-# ani.save(
-#     f"diffuse_day_total_diffuse_surface_irradiance_sans_pv_{INDEX}.gif",
-#     writer="pillow",
-#     fps=5,
-# )
-# plt.show()
-
-# fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
-
-# # Create initial heatmap with dummy data
-# initial_data = np.reshape(
-#     direct_day_total_diffuse_surface_irradiance_with_pv[0].sum(axis=1),
-#     (
-#         _dim_x := polytunnel.meshgrid_resolution,
-#         _dim_y := polytunnel.length_wise_meshgrid_resolution,
-#     ),
-# )
-# vmin = 0
-# heatmap = sns.heatmap(
-#     initial_data,
-#     vmin=vmin,
-#     vmax=vmax,
-#     cmap="viridis",
-#     cbar=True,
-#     ax=ax,
-#     cbar_kws={"label": "Irradiance / W/m$^2$"},
-# )
-
-# _ten_minutes: int = int(
-#     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
-# )
-
-# def update(time_index: int):
-#     ax.clear()  # clear previous heatmap
-#     data = np.reshape(
-#         direct_day_total_diffuse_surface_irradiance_with_pv[time_index].sum(
-#             axis=1
-#         ),
-#         (_dim_x, _dim_y),
-#     )
-#     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
-#     ax.set_title(
-#         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
-#         f"Time: {time_index // _ten_minutes}:"
-#         f"{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
-#     )
-
-# # Create the animation
-# ani = animation.FuncAnimation(
-#     fig,
-#     update,
-#     frames=len(diffuse_day_total_diffuse_surface_irradiance_sans_pv),
-#     interval=300,
-#     repeat=False,
-# )
-# ani.save(
-#     f"direct_day_total_diffuse_surface_irradiance__pv_only_{INDEX}.gif",
-#     writer="pillow",
-#     fps=5,
-# )
-# plt.show()
-
-# fig, ax = plt.subplots(figsize=(171 * MM, 120 * MM))
-
-# # Create initial heatmap with dummy data
-# initial_data = np.reshape(
-#     direct_day_total_diffuse_surface_irradiance_with_pv[0].sum(axis=1),
-#     (
-#         _dim_x := polytunnel.meshgrid_resolution,
-#         _dim_y := polytunnel.length_wise_meshgrid_resolution,
-#     ),
-# )
-# vmin = 0
-# vmax = (
-#     direct_day_total_diffuse_surface_irradiance_with_pv.sum(axis=2)
-#     .max(axis=1)
-#     .max()
-# )
-# heatmap = sns.heatmap(
-#     initial_data,
-#     vmin=vmin,
-#     vmax=vmax,
-#     cmap="viridis",
-#     cbar=True,
-#     ax=ax,
-#     cbar_kws={"label": "Irradiance / W/m$^2$"},
-# )
-
-# _ten_minutes: int = int(
-#     _ten_minutes := (60 / parsed_args.modelling_temporal_resolution)
-# )
-
-# def update(time_index: int):
-#     ax.clear()  # clear previous heatmap
-#     data = np.reshape(
-#         direct_day_total_diffuse_surface_irradiance_with_pv[time_index].sum(
-#             axis=1
-#         ),
-#         (_dim_x, _dim_y),
-#     )
-#     sns.heatmap(data, vmin=vmin, vmax=vmax, cbar=False, cmap="viridis", ax=ax)
-#     ax.set_title(
-#         f"Time index: {time_index}. Date: {time_index // (_ten_minutes * 24)}; "
-#         f"Time: {time_index // _ten_minutes}:"
-#         f"{int((time_index % _ten_minutes) * (6 / _ten_minutes))}0"
-#     )
-
-# # Create the animation
-# ani = animation.FuncAnimation(
-#     fig,
-#     update,
-#     frames=len(diffuse_day_total_diffuse_surface_irradiance_sans_pv),
-#     interval=300,
-#     repeat=False,
-# )
-# ani.save(
-#     f"direct_day_total_diffuse_surface_irradiance_pv_only_no_vmax_{INDEX}.gif",
-#     writer="pillow",
-#     fps=5,
-# )
-# plt.show()
-
-#######################
-# Plotting code No. 3 #
-#######################
-
-# from matplotlib import colors as m_colors
-
-# # sns.set_palette(
-# #     [
-# #         "#77AADD",
-# #         "#99DDFF",
-# #         "#44BB99",
-# #         "#BBCC33",
-# #         "#AAA000",
-# #         "#EEDD88",
-# #         "#EE8866",
-# #         "#FFAABB",
-# #         "#DDDDDD",
-# #     ] * ((len(polytunnel.ground_mesh) // 9) + 1)
-# # )
-# sns.set_palette(sns.cubehelix_palette(start=0.4, rot=-25, n_colors=len(polytunnel.ground_mesh)))
-# cmap = sns.color_palette(sns.color_palette().as_hex(), as_cmap=True, n_colors=10)
-
-# plt.figure(figsize=(171 * MM, 120 * MM))
-# sns.heatmap(np.reshape(surface_index_of_illuminating_meshpoint.iloc[12], (10, 50)), square=False, cmap=cmap, cbar=False)
-# norm = plt.Normalize(
-#     0 - 0.5,
-#     len(polytunnel.ground_mesh) + 1,
-# )
-# scalar_mappable = plt.cm.ScalarMappable(
-#     cmap=m_colors.LinearSegmentedColormap.from_list(
-#         "Custom", sns.color_palette().as_hex(), len(polytunnel.ground_mesh) + 1
-#     ),
-#     norm=norm,
-# )
-
-# colorbar = (axis := plt.gca()).figure.colorbar(
-#     scalar_mappable,
-#     ax=axis,
-#     label="Surface-mesh index",
-#     pad=(_pad := 0.025),
-# )
-# plt.show()
-
-# #######################
-# # Plotting code No. 4 #
-# #######################
-
-# from matplotlib import colors as m_colors
-
-# # Plot the spectra at a specific hour for each element within the ground mesh.
-# # NOTE: Colours indicate the index of the element providing surface irradiation.
-
-# # Determine the number of non-zero elements
-# _hour: int = 12
-# num_grid_indices: int = 0
-# for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
-#     if (
-#         clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][_hour]
-#         > 0
-#     ):
-#         num_grid_indices += 1
-
-# sns.set_palette(
-#     sns.cubehelix_palette(
-#         start=0.4, rot=-1.2, n_colors=num_grid_indices, reverse=True
-#     )
-# )
-# sns.set_palette("viridis", n_colors=num_grid_indices)
-
-# plt.figure(figsize=(171 * MM, 120 * MM))
-# dashes = Dashes()
-# _zorder = 0
-# grid_indices: list[int] = []
-# for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
-#     if (
-#         clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][_hour]
-#         > 0
-#     ):
-#         _color = f"C{grid_index}"
-#         _zorder += 1
-#         grid_indices.append(grid_index)
-#     else:
-#         _color = "C0"
-#     plt.plot(
-#         wavelength_range,
-#         clearsky_ground_direct_irradiance_map_with_pv_module_and_spectra[_hour][
-#             grid_index
-#         ],
-#         dashes=next(dashes),
-#         label=f"#{_color}" if _color != "C0" else None,
-#         color=_color,
-#         zorder=0 if _color == "C0" else _zorder,
-#     )
-
-# plt.legend().remove()
-
-# norm = plt.Normalize(
-#     -0.5,
-#     clearsky_ground_direct_irradiance_map_with_pv_module.shape[1] + 0.5,
-# )
-# scalar_mappable = plt.cm.ScalarMappable(
-#     cmap=m_colors.LinearSegmentedColormap.from_list(
-#         "Custom",
-#         sns.color_palette().as_hex(),
-#         num_grid_indices,
-#     ),
-#     norm=norm,
-# )
-
-# colorbar = (axis := plt.gca()).figure.colorbar(
-#     scalar_mappable,
-#     ax=axis,
-#     label="Surface index illuminating",
-#     pad=(_pad := 0.125),
-# )
-# colorbar.set_ticks(grid_indices)
-# colorbar.set_ticklabels(
-#     [
-#         entry if index % 3 == 0 else None
-#         for index, entry in enumerate(grid_indices)
-#     ]
-# )
-
-# axis.tick_params(axis="both", which="major", labelsize=7)
-# plt.xlabel("Wavelength / nm", fontsize=7)
-# plt.ylabel("Irradiance / W/m$^2$nm", fontsize=7)
-
-# (right_axis := axis.twinx()).plot(
-#     wavelength_range,
-#     pyranometer_adjusted_interpolated_spectra.direct.values,
-#     "--",
-#     color="C9",
-# )
-# right_axis.set_ylabel("Direct-irradiance response / normalised units")
-# right_axis.tick_params(axis="both", which="major", labelsize=7)
-
-# plt.savefig(
-#     f"ground_through_pv_spectra_profiles_{_hour}_{INDEX}.pdf",
-#     format="pdf",
-#     bbox_inches="tight",
-#     pad_inches=0.05,
-# )
-# plt.savefig(
-#     f"ground_through_pv_spectra_profiles_{_hour}_{INDEX}.png",
-#     format="png",
-#     bbox_inches="tight",
-#     pad_inches=0.05,
-#     transparent=True,
-#     dpi=1200,
-# )
-# plt.show()
-
-# # Plot the total irradiance where spectra are coloured based on whether they passed
-# # through PV modules (green) or not (yellow) from viridis to match the colours used
-# # in the JULIA tmm.
-
-# sns.set_palette(sns.color_palette(["#FDE725", "#21908C", "#31688E", "#440154"]))
-# plt.figure(figsize=(171 * MM, 120 * MM))
-# _zorder = 0
-# _hour = 12
-# grid_indices: list[int] = []
-# for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
-#     if (
-#         clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][_hour]
-#         > 0
-#     ):
-#         _color: str = "C1"
-#         _dashes: str = "--"
-#         _label: str = "Through-PV"
-#         grid_indices.append(grid_index)
-#     elif sum(clearsky_ground_direct_irradiance_map[_hour][grid_index]) == 0:
-#         _color: str = "C3"
-#         _dashes = ":"
-#         _label = "No direct sunlight"
-#     else:
-#         _color = "C0"
-#         _dashes = ""
-#         _label = "Through-polytunnel"
-#     plt.plot(
-#         wavelength_range,
-#         clearsky_ground_direct_irradiance_map[_hour][grid_index],
-#         _dashes,
-#         label=_label,
-#         color=_color,
-#         zorder=0 if _color == "C0" else 1,
-#         alpha=0.3,
-#     )
-
-# # Determine unique labels and only keep these.
-# handles, labels = (axis := plt.gca()).get_legend_handles_labels()
-# unique_handles_labels: list[tuple[mlines.Line2D]] = []
-# unique_labels: set[str] = set()
-# for handle, label in zip(handles, labels):
-#     if label not in unique_labels:
-#         unique_handles_labels.append((handle, label))
-#         unique_labels.add(label)
-
-# plt.legend().remove()
-# plt.legend(
-#     [entry[0] for entry in unique_handles_labels],
-#     [entry[1] for entry in unique_handles_labels],
-#     fontsize=7,
-# )
-
-# axis.tick_params(axis="both", which="major", labelsize=7)
-# plt.xlabel("Wavelength / nm", fontsize=7)
-# plt.ylabel("Irradiance / W/m$^2$nm", fontsize=7)
-
-# (right_axis := axis.twinx()).plot(
-#     wavelength_range,
-#     pyranometer_adjusted_interpolated_spectra.direct.values,
-#     "--",
-#     color="C9",
-# )
-# right_axis.set_ylabel("Direct-irradiance response / normalised units")
-# right_axis.tick_params(axis="both", which="major", labelsize=7)
-
-# plt.savefig(
-#     f"ground_total_with_pv_spectra_profiles_{_hour}_{INDEX}.pdf",
-#     format="pdf",
-#     bbox_inches="tight",
-#     pad_inches=0.05,
-# )
-# plt.savefig(
-#     f"ground_total_with_pv_spectra_profiles_{_hour}_{INDEX}.png",
-#     format="png",
-#     bbox_inches="tight",
-#     pad_inches=0.05,
-#     transparent=True,
-#     dpi=1200,
-# )
-# plt.show()
-
-# sns.set_palette(sns.color_palette(["#FDE725", "#21908C", "#31688E", "#440154"]))
-# plt.figure(figsize=(171 * MM, 120 * MM))
-# _zorder = 0
-# _hour = 12
-# grid_indices: list[int] = []
-# for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
-#     if (
-#         clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][_hour]
-#         > 0
-#     ):
-#         _color: str = "C1"
-#         _dashes: str = "--"
-#         _label: str = "Through-PV"
-#         grid_indices.append(grid_index)
-#     elif sum(clearsky_ground_direct_irradiance_map[_hour][grid_index]) == 0:
-#         _color: str = "C3"
-#         _dashes = ":"
-#         _label = "No direct sunlight"
-#     else:
-#         _color = "C0"
-#         _dashes = ""
-#         _label = "Through-polytunnel"
-#     plt.plot(
-#         wavelength_range,
-#         spectrum_to_flux(
-#             clearsky_ground_direct_irradiance_map[_hour][grid_index],
-#             wavelength_range,
-#         ),
-#         _dashes,
-#         label=_label,
-#         color=_color,
-#         zorder=0 if _color == "C0" else 1,
-#         alpha=0.3,
-#     )
-
-# # Determine unique labels and only keep these.
-# handles, labels = (axis := plt.gca()).get_legend_handles_labels()
-# unique_handles_labels: list[tuple[mlines.Line2D]] = []
-# unique_labels: set[str] = set()
-# for handle, label in zip(handles, labels):
-#     if label not in unique_labels:
-#         unique_handles_labels.append((handle, label))
-#         unique_labels.add(label)
-
-# axis.tick_params(axis="both", which="major", labelsize=7)
-# plt.xlabel("Wavelength / nm", fontsize=7)
-# plt.ylabel("Photon flux ($\Phi$) / $\mu$mol/cm$^2$nm", fontdict={"size": 7})
-
-# # (right_axis := axis.twinx()).plot(
-# #     wavelength_range,        sns.set_palette(sns.color_palette(["#FDE725", "#21908C", "#31688E", "#440154"]))
-# plt.figure(figsize=(171 * MM, 120 * MM))
-# _zorder = 0
-# _hour = 12
-# grid_indices: list[int] = []
-# for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
-#     if (
-#         clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][_hour]
-#         > 0
-#     ):
-#         _color: str = "C1"
-#         _dashes: str = "--"
-#         _label: str = "Through-PV"
-#         grid_indices.append(grid_index)
-#     elif sum(clearsky_ground_direct_irradiance_map[_hour][grid_index]) == 0:
-#         _color: str = "C3"
-#         _dashes = ":"
-#         _label = "No direct sunlight"
-#     else:
-#         _color = "C0"
-#         _dashes = ""
-#         _label = "Through-polytunnel"
-#     plt.plot(
-#         wavelength_range,
-#         spectrum_to_flux(
-#             clearsky_ground_direct_irradiance_map[_hour][grid_index],
-#             wavelength_range,
-#         ),
-#         _dashes,
-#         label=_label,
-#         color=_color,
-#         zorder=0 if _color == "C0" else 1,
-#         alpha=0.3,
-#     )
-
-# # Determine unique labels and only keep these.
-# handles, labels = (axis := plt.gca()).get_legend_handles_labels()
-# unique_handles_labels: list[tuple[mlines.Line2D]] = []
-# unique_labels: set[str] = set()
-# for handle, label in zip(handles, labels):
-#     if label not in unique_labels:
-#         unique_handles_labels.append((handle, label))
-#         unique_labels.add(label)
-
-# axis.tick_params(axis="both", which="major", labelsize=7)
-# plt.xlabel("Wavelength / nm", fontsize=7)
-# plt.ylabel("Photon flux ($\Phi$) / $\mu$mol/cm$^2$nm", fontdict={"size": 7})
-
-# # (right_axis := axis.twinx()).plot(
-# #     wavelength_range,
-# #     spectrum_to_flux(pyranometer_adjusted_interpolated_spectra.direct.values, wavelength_range),
-# #     "--",
-# #     color="C2",
-# #     label="Incident spectrum"
-# # )
-# # right_axis.set_ylabel("Direct-irradiance response / normalised units")
-# # right_axis.tick_params(axis="both", which="major", labelsize=7)
-# # right_labels, right_handles = right_axis.get_legend_handles_labels()
-
-# plt.legend().remove()
-# plt.legend(
-#     [entry[0] for entry in unique_handles_labels], # + right_labels,
-#     [entry[1] for entry in unique_handles_labels], # + right_handles,
-#     fontsize=7,
-# )
-
-# plt.savefig(
-#     f"ground_total_with_pv_flux_profiles_{_hour}_{INDEX}.pdf",
-#     format="pdf",
-#     bbox_inches="tight",
-#     pad_inches=0.05,
-# )
-# plt.savefig(
-#     f"ground_total_with_pv_flux_profiles_{_hour}_{INDEX}.png",
-#     format="png",
-#     bbox_inches="tight",
-#     pad_inches=0.05,
-#     transparent=True,
-#     dpi=1200,
-# )
-# plt.show()
-
-# plt.figure(figsize=(73 * MM, 60 * MM))
-# _zorder = 0
-# _hour = 12
-# grid_indices: list[int] = []
-# for grid_index in range(len(clearsky_ground_direct_irradiance_map[_hour])):
-#     if (
-#         clearsky_ground_direct_irradiance_map_with_pv_module[grid_index][_hour]
-#         > 0
-#     ):
-#         _color: str = "C1"
-#         _dashes: str = "--"
-#         _label: str = "Through-PV"
-#         grid_indices.append(grid_index)
-#     elif sum(clearsky_ground_direct_irradiance_map[_hour][grid_index]) == 0:
-#         _color: str = "C3"
-#         _dashes = ":"
-#         _label = "No direct sunlight"
-#     else:
-#         _color = "C0"
-#         _dashes = ""
-#         _label = "Through-polytunnel"
-#     plt.plot(
-#         wavelength_range,
-#         spectrum_to_flux(
-#             clearsky_ground_direct_irradiance_map[_hour][grid_index],
-#             wavelength_range,
-#         ),
-#         _dashes,
-#         label=_label,
-#         color=_color,
-#         zorder=0 if _color == "C0" else 1,
-#         alpha=0.3,
-#     )
-
-# # Determine unique labels and only keep these.
-# handles, labels = (axis := plt.gca()).get_legend_handles_labels()
-# unique_handles_labels: list[tuple[mlines.Line2D]] = []
-# unique_labels: set[str] = set()
-# for handle, label in zip(handles, labels):
-#     if label not in unique_labels:
-#         unique_handles_labels.append((handle, label))
-#         unique_labels.add(label)
-
-# axis.tick_params(axis="both", which="major", labelsize=7)
-# plt.xlabel("Wavelength / nm", fontsize=7)
-# plt.ylabel("Photon flux ($\Phi$) / $\mu$mol/cm$^2$nm", fontdict={"size": 7})
-
-# # (right_axis := axis.twinx()).plot(
-# #     wavelength_range,
-# #     spectrum_to_flux(pyranometer_adjusted_interpolated_spectra.direct.values, wavelength_range),
-# #     "--",
-# #     color="C2",
-# #     label="Incident spectrum"
-# # )
-# # right_axis.set_ylabel("Direct-irradiance response / normalised units")
-# # right_axis.tick_params(axis="both", which="major", labelsize=7)
-# # right_labels, right_handles = right_axis.get_legend_handles_labels()
-
-# plt.legend().remove()
-# plt.legend(
-#     [entry[0] for entry in unique_handles_labels], # + right_labels,
-#     [entry[1] for entry in unique_handles_labels], # + right_handles,
-#     fontsize=7,
-# )
-
-# plt.savefig(
-#     f"ground_total_with_pv_flux_profiles_small_{_hour}_{INDEX}.pdf",
-#     format="pdf",
-#     bbox_inches="tight",
-#     pad_inches=0.05,
-# )
-# plt.savefig(
-#     f"ground_total_with_pv_flux_profiles_small_{_hour}_{INDEX}.png",
-#     format="png",
-#     bbox_inches="tight",
-#     pad_inches=0.05,
-#     transparent=True,
-#     dpi=1200,
-# )
-# plt.show()
-
-#######################
-# Plotting code No. 5 #
-#######################
-
-# # Plot an average power spectrum over the ground.
-# hourly_spectra = {
-#     index: SpectralDistribution(
-#         (spectrum := direct_day_ground_direct_irradiance.mean(axis=1)[index])
-#         / max(spectrum),
-#         wavelength_range,
-#         name=f"{index}:00",
-#     )
-#     for index in range(len(direct_day_ground_direct_irradiance.mean(axis=1)))
-#     if direct_day_ground_direct_irradiance[index].mean(axis=1).sum() > 0
-# }
-# # for index, spectrum in hourly_spectra.items():
-# #     colour.plotting.plot_single_sd(spectrum)
-
-# sns.set_palette(
-#     [
-#         "#77AADD",
-#         "#99DDFF",
-#         "#44BB99",
-#         "#BBCC33",
-#         "#AAA000",
-#         "#EEDD88",
-#         "#EE8866",
-#         "#FFAABB",
-#         "#DDDDDD",
-#     ]
-# )
-
-# fig, axis = colour.plotting.plot_multi_sds(
-#     list(hourly_spectra.values()),
-#     figsize=(171 * MM, 120 * MM),
-#     plot_kwargs=[{"alpha": 0.8}] * len(sns.color_palette())
-#     + [{"use_sd_colours": False, "linestyle": "dashed", "alpha": 0.8}]
-#     * (len(hourly_spectra) - len(sns.color_palette())),
-# )
-# axis.tick_params(axis="both", which="major", labelsize=7)
-# axis.set_xlabel(axis.get_xlabel(), fontsize=7)
-# axis.set_ylabel(axis.get_ylabel(), fontsize=7)
-# axis.legend(*axis.get_legend_handles_labels(), fontsize=7, title="Time of day", title_fontsize=7)
-# fig.savefig(f"average_direct_ground_power_spectrum_{INDEX}.pdf", format="pdf", bbox_inches="tight", pad_inches=0.05)
-
-# hourly_spectra = {
-#     index: SpectralDistribution(
-#         spectrum_to_flux(direct_day_ground_direct_irradiance.mean(axis=1)[index], wavelength_range),
-#         wavelength_range,
-#         name=f"{index}:00",
-#     )
-#     for index in range(len(direct_day_ground_direct_irradiance.mean(axis=1)))
-#     if direct_day_ground_direct_irradiance[index].mean(axis=1).sum() > 0
-# }
-# # for index, spectrum in hourly_spectra.items():
-# #     colour.plotting.plot_single_sd(spectrum)
-
-# sns.set_palette(
-#     [
-#         "#77AADD",
-#         "#99DDFF",
-#         "#44BB99",
-#         "#BBCC33",
-#         "#AAA000",
-#         "#EEDD88",
-#         "#EE8866",
-#         "#FFAABB",
-#         "#DDDDDD",
-#     ]
-# )
-
-# fig, axis = colour.plotting.plot_multi_sds(
-#     list(hourly_spectra.values()),
-#     figsize=(171 * MM, 120 * MM),
-#     plot_kwargs=[{"alpha": 0.8}] * len(sns.color_palette())
-#     + [{"use_sd_colours": False, "linestyle": "dashed", "alpha": 0.8}]
-#     * (len(hourly_spectra) - len(sns.color_palette())),
-# )
-# axis.tick_params(axis="both", which="major", labelsize=7)
-# axis.set_xlabel(axis.get_xlabel(), fontsize=7)
-# axis.set_ylabel("Photon flux ($\Phi$) / $\mu$mol/cm$^2$nm", fontsize=7)
-# axis.legend(*axis.get_legend_handles_labels(), fontsize=7, title="Time of day", title_fontsize=7)
-# fig.savefig(f"average_direct_ground_flux_spectrum_{INDEX}.pdf", format="pdf", bbox_inches="tight", pad_inches=0.05)
-
-# fig, axis = colour.plotting.plot_multi_sds(
-#     list(hourly_spectra.values()),
-#     figsize=(83 * MM, 60 * MM),
-#     plot_kwargs=[{"alpha": 0.8}] * len(sns.color_palette())
-#     + [{"use_sd_colours": False, "linestyle": "dashed", "alpha": 0.8}]
-#     * (len(hourly_spectra) - len(sns.color_palette())),
-# )
-# axis.tick_params(axis="both", which="major", labelsize=7)
-# axis.set_xlabel(axis.get_xlabel(), fontsize=7)
-# axis.set_ylabel("Photon flux ($\Phi$) / $\mu$mol/cm$^2$nm", fontsize=7)
-# axis.legend(*axis.get_legend_handles_labels(), fontsize=7, ncols=2, title="Time of day", title_fontsize=7)
-# fig.set_size_inches((83 * MM, 60 * MM))
-# fig.savefig(f"average_direct_ground_flux_spectrum_small_{INDEX}.pdf", format="pdf", bbox_inches="tight", pad_inches=0.05)
-
-# colour.plotting.plot_multi_sds(
-#     [
-#         SpectralDistribution(
-#             pyranometer_adjusted_interpolated_spectra[column], wavelength_range
-#         )
-#         for column in pyranometer_adjusted_interpolated_spectra
-#     ]
-# )
-
-#######################
-# Plotting code No. 6 #
-#######################
-
-# fig, axes = plt.subplots(5, 1, figsize=(83 * MM, 120 * MM))
-# fig.subplots_adjust(hspace=0.25)
-# heatmap = sns.heatmap(
-#     np.reshape(ground_to_surface_projection_frame[0], (10, 50)),
-#     cmap="viridis",
-#     ax=axes[0],
-#     square=True,
-#     vmax=0.0325,
-#     annot_kws={"fontsize": 7},
-# )
-# heatmap.figure.axes[-1].tick_params(which="both", labelsize=7)
-# heatmap = sns.heatmap(
-#     np.reshape(ground_to_surface_projection_frame[165], (10, 50)),
-#     cmap="viridis",
-#     ax=axes[1],
-#     square=True,
-#     vmax=0.0325,
-#     annot_kws={"fontsize": 7},
-# )
-# heatmap.figure.axes[-1].tick_params(which="both", labelsize=7)
-# heatmap = sns.heatmap(
-#     np.reshape(ground_to_surface_projection_frame[250], (10, 50)),
-#     cmap="viridis",
-#     ax=axes[2],
-#     square=True,
-#     vmax=0.0325,
-#     annot_kws={"fontsize": 7},
-#     cbar_kws={"label": "Projection factor"},
-# )
-# heatmap.figure.axes[-1].tick_params(which="both", labelsize=7)
-# heatmap = sns.heatmap(
-#     np.reshape(ground_to_surface_projection_frame[275], (10, 50)),
-#     cmap="viridis",
-#     ax=axes[3],
-#     square=True,
-#     vmax=0.0325,
-#     annot_kws={"fontsize": 7},
-# )
-# heatmap.figure.axes[-1].tick_params(which="both", labelsize=7)
-# heatmap = sns.heatmap(
-#     np.reshape(ground_to_surface_projection_frame[410], (10, 50)),
-#     cmap="viridis",
-#     ax=axes[4],
-#     square=True,
-#     vmax=0.0325,
-#     annot_kws={"fontsize": 7},
-# )
-# heatmap.figure.axes[-1].tick_params(which="both", labelsize=7)
-# plt.xlabel("Depth index", fontsize=7)
-# axes[2].set_ylabel("Width index", fontsize=7)
-# axes[0].set_title("Index 0", fontsize=7, fontweight="bold")
-# axes[1].set_title("Index 165", fontsize=7, fontweight="bold")
-# axes[2].set_title("Index 250", fontsize=7, fontweight="bold")
-# axes[3].set_title("Index 275", fontsize=7, fontweight="bold")
-# axes[4].set_title("Index 410", fontsize=7, fontweight="bold")
-# for axis in axes[:-1]:
-#     axis.tick_params(bottom=False, labelbottom=False)
-
-# for axis in axes:
-#     axis.tick_params(which="both", size=7, labelsize=7)
-#     sns.despine(fig, axis, bottom=True)
-#     # axis.set_ylabel("Width index", fontsize=7)
-
-# for label, axis in zip(["a", "b", "c", "d", "e"], axes):
-#     axis.text(
-#         -0.12,
-#         1.35,
-#         f"{label}.",
-#         transform=axis.transAxes,
-#         fontsize=7,
-#         fontweight="bold",
-#         va="top",
-#         ha="right",
-#     )
-
-# plt.savefig(
-#     f"distance_example_heatmap_small_{INDEX}.pdf",
-#     format="pdf",
-#     bbox_inches="tight",
-#     pad_inches=0.05,
-# )
-# plt.show()
-
-# fig, axes = plt.subplots(5, 1, figsize=(171 * MM, 171 * MM))
-# fig.subplots_adjust(hspace=0.25)
-# heatmap = sns.heatmap(
-#     np.reshape(ground_to_surface_projection_frame[0], (10, 50)),
-#     cmap="viridis",
-#     ax=axes[0],
-#     square=True,
-#     vmax=0.0325,
-#     annot_kws={"fontsize": 7},
-# )
-# heatmap.figure.axes[-1].tick_params(which="both", labelsize=7)
-# heatmap = sns.heatmap(
-#     np.reshape(ground_to_surface_projection_frame[165], (10, 50)),
-#     cmap="viridis",
-#     ax=axes[1],
-#     square=True,
-#     vmax=0.0325,
-#     annot_kws={"fontsize": 7},
-# )
-# heatmap.figure.axes[-1].tick_params(which="both", labelsize=7)
-# heatmap = sns.heatmap(
-#     np.reshape(ground_to_surface_projection_frame[250], (10, 50)),
-#     cmap="viridis",
-#     ax=axes[2],
-#     square=True,
-#     vmax=0.0325,
-#     annot_kws={"fontsize": 7},
-#     cbar_kws={"label": "Projection factor"},
-# )
-# heatmap.figure.axes[-1].tick_params(which="both", labelsize=7)
-# heatmap = sns.heatmap(
-#     np.reshape(ground_to_surface_projection_frame[275], (10, 50)),
-#     cmap="viridis",
-#     ax=axes[3],
-#     square=True,
-#     vmax=0.0325,
-#     annot_kws={"fontsize": 7},
-# )
-# heatmap.figure.axes[-1].tick_params(which="both", labelsize=7)
-# heatmap = sns.heatmap(
-#     np.reshape(ground_to_surface_projection_frame[410], (10, 50)),
-#     cmap="viridis",
-#     ax=axes[4],
-#     square=True,
-#     vmax=0.0325,
-#     annot_kws={"fontsize": 7},
-# )
-# heatmap.figure.axes[-1].tick_params(which="both", labelsize=7)
-# plt.xlabel("Depth index", fontsize=7)
-# axes[2].set_ylabel("Width index", fontsize=7)
-# axes[0].set_title("Index 0", fontsize=7, fontweight="bold")
-# axes[1].set_title("Index 165", fontsize=7, fontweight="bold")
-# axes[2].set_title("Index 250", fontsize=7, fontweight="bold")
-# axes[3].set_title("Index 275", fontsize=7, fontweight="bold")
-# axes[4].set_title("Index 410", fontsize=7, fontweight="bold")
-# for axis in axes[:-1]:
-#     axis.tick_params(bottom=False, labelbottom=False)
-
-# for axis in axes:
-#     axis.tick_params(which="both", size=7, labelsize=7)
-#     sns.despine(fig, axis, bottom=True)
-#     # axis.set_ylabel("Width index", fontsize=7)
-
-# for label, axis in zip(["a", "b", "c", "d", "e"], axes):
-#     axis.text(
-#         -0.08,
-#         1.1,
-#         f"{label}.",
-#         transform=axis.transAxes,
-#         fontsize=7,
-#         fontweight="bold",
-#         va="top",
-#         ha="right",
-#     )
-
-# plt.savefig(
-#     f"distance_example_heatmap_{INDEX}.pdf",
-#     format="pdf",
-#     bbox_inches="tight",
-#     pad_inches=0.05,
-# )
-# plt.show()
-
-# fig, axes = plt.subplots(5, 1, figsize=(83 * MM, 120 * MM))
-# fig.subplots_adjust(hspace=0.25)
-# _norm = m_colors.LogNorm(0.00001, 0.0325)
-# heatmap = sns.heatmap(
-#     np.reshape(ground_to_surface_projection_frame[0], (10, 50)),
-#     cmap="viridis",
-#     ax=axes[0],
-#     square=True,
-#     vmax=0.0325,
-#     annot_kws={"fontsize": 7},
-#     norm=_norm,
-# )
-# heatmap.figure.axes[-1].tick_params(which="both", labelsize=7)
-# heatmap = sns.heatmap(
-#     np.reshape(ground_to_surface_projection_frame[165], (10, 50)),
-#     cmap="viridis",
-#     ax=axes[1],
-#     square=True,
-#     vmax=0.0325,
-#     annot_kws={"fontsize": 7},
-#     norm=_norm,
-# )
-# heatmap.figure.axes[-1].tick_params(which="both", labelsize=7)
-# heatmap = sns.heatmap(
-#     np.reshape(ground_to_surface_projection_frame[250], (10, 50)),
-#     cmap="viridis",
-#     ax=axes[2],
-#     square=True,
-#     vmax=0.0325,
-#     annot_kws={"fontsize": 7},
-#     cbar_kws={"label": "Projection factor"},
-#     norm=_norm,
-# )
-# heatmap.figure.axes[-1].tick_params(which="both", labelsize=7)
-# heatmap = sns.heatmap(
-#     np.reshape(ground_to_surface_projection_frame[275], (10, 50)),
-#     cmap="viridis",
-#     ax=axes[3],
-#     square=True,
-#     vmax=0.0325,
-#     annot_kws={"fontsize": 7},
-#     norm=_norm,
-# )
-# heatmap.figure.axes[-1].tick_params(which="both", labelsize=7)
-# heatmap = sns.heatmap(
-#     np.reshape(ground_to_surface_projection_frame[410], (10, 50)),
-#     cmap="viridis",
-#     ax=axes[4],
-#     square=True,
-#     vmax=0.0325,
-#     annot_kws={"fontsize": 7},
-#     norm=_norm,
-# )
-# heatmap.figure.axes[-1].tick_params(which="both", labelsize=7)
-# plt.xlabel("Depth index", fontsize=7)
-# axes[2].set_ylabel("Width index", fontsize=7)
-# axes[0].set_title("Index 0", fontsize=7, fontweight="bold")
-# axes[1].set_title("Index 165", fontsize=7, fontweight="bold")
-# axes[2].set_title("Index 250", fontsize=7, fontweight="bold")
-# axes[3].set_title("Index 275", fontsize=7, fontweight="bold")
-# axes[4].set_title("Index 410", fontsize=7, fontweight="bold")
-# for axis in axes[:-1]:
-#     axis.tick_params(bottom=False, labelbottom=False)
-
-# for axis in axes:
-#     axis.tick_params(which="both", size=7, labelsize=7)
-#     sns.despine(fig, axis, bottom=True)
-#     # axis.set_ylabel("Width index", fontsize=7)
-
-# for label, axis in zip(["a", "b", "c", "d", "e"], axes):
-#     axis.text(
-#         -0.12,
-#         1.35,
-#         f"{label}.",
-#         transform=axis.transAxes,
-#         fontsize=7,
-#         fontweight="bold",
-#         va="top",
-#         ha="right",
-#     )
-
-# plt.savefig(
-#     f"distance_example_heatmap_small_log_{INDEX}.pdf",
-#     format="pdf",
-#     bbox_inches="tight",
-#     pad_inches=0.05,
-# )
-# plt.show()
-
-# fig, axes = plt.subplots(5, 1, figsize=(171 * MM, 171 * MM))
-# fig.subplots_adjust(hspace=0.25)
-# heatmap = sns.heatmap(
-#     np.reshape(ground_to_surface_projection_frame[0], (10, 50)),
-#     cmap="viridis",
-#     ax=axes[0],
-#     square=True,
-#     vmax=0.0325,
-#     annot_kws={"fontsize": 7},
-#     norm=_norm,
-# )
-# heatmap.figure.axes[-1].tick_params(which="both", labelsize=7)
-# heatmap = sns.heatmap(
-#     np.reshape(ground_to_surface_projection_frame[165], (10, 50)),
-#     cmap="viridis",
-#     ax=axes[1],
-#     square=True,
-#     vmax=0.0325,
-#     annot_kws={"fontsize": 7},
-#     norm=_norm,
-# )
-# heatmap.figure.axes[-1].tick_params(which="both", labelsize=7)
-# heatmap = sns.heatmap(
-#     np.reshape(ground_to_surface_projection_frame[250], (10, 50)),
-#     cmap="viridis",
-#     ax=axes[2],
-#     square=True,
-#     vmax=0.0325,
-#     annot_kws={"fontsize": 7},
-#     norm=_norm,
-#     cbar_kws={"label": "Projection factor"},
-# )
-# heatmap.figure.axes[-1].tick_params(which="both", labelsize=7)
-# heatmap = sns.heatmap(
-#     np.reshape(ground_to_surface_projection_frame[275], (10, 50)),
-#     cmap="viridis",
-#     ax=axes[3],
-#     square=True,
-#     vmax=0.0325,
-#     annot_kws={"fontsize": 7},
-#     norm=_norm,
-# )
-# heatmap.figure.axes[-1].tick_params(which="both", labelsize=7)
-# heatmap = sns.heatmap(
-#     np.reshape(ground_to_surface_projection_frame[410], (10, 50)),
-#     cmap="viridis",
-#     ax=axes[4],
-#     square=True,
-#     vmax=0.0325,
-#     annot_kws={"fontsize": 7},
-#     norm=_norm,
-# )
-# heatmap.figure.axes[-1].tick_params(which="both", labelsize=7)
-# plt.xlabel("Depth index", fontsize=7)
-# axes[2].set_ylabel("Width index", fontsize=7)
-# axes[0].set_title("Index 0", fontsize=7, fontweight="bold")
-# axes[1].set_title("Index 165", fontsize=7, fontweight="bold")
-# axes[2].set_title("Index 250", fontsize=7, fontweight="bold")
-# axes[3].set_title("Index 275", fontsize=7, fontweight="bold")
-# axes[4].set_title("Index 410", fontsize=7, fontweight="bold")
-# for axis in axes[:-1]:
-#     axis.tick_params(bottom=False, labelbottom=False)
-
-# for axis in axes:
-#     axis.tick_params(which="both", size=7, labelsize=7)
-#     sns.despine(fig, axis, bottom=True)
-#     # axis.set_ylabel("Width index", fontsize=7)
-
-# for label, axis in zip(["a", "b", "c", "d", "e"], axes):
-#     axis.text(
-#         -0.08,
-#         1.1,
-#         f"{label}.",
-#         transform=axis.transAxes,
-#         fontsize=7,
-#         fontweight="bold",
-#         va="top",
-#         ha="right",
-#     )
-
-# plt.savefig(
-#     f"distance_example_heatmap_log_{INDEX}.pdf",
-#     format="pdf",
-#     bbox_inches="tight",
-#     pad_inches=0.05,
-# )
-# plt.show()
-
-#######################
-# Plotting code No. 7 #
-#######################
-
-# plt.figure(figsize=(171 * MM, 120 * MM))
-# sns.set_palette(sns.blend_palette(["#36C7B8", "#423252"], n_colors=50))
-# _hour: int = 12
-
-# for entry in direct_day_total_diffuse_surface_irradiance[_hour]:
-#     plt.plot(
-#         wavelength_range, spectrum_to_flux(entry, wavelength_range), alpha=0.3
-#     )
-
-# norm = plt.Normalize(
-#     -0.5,
-#     50.51,
-# )
-# scalar_mappable = plt.cm.ScalarMappable(
-#     cmap=m_colors.LinearSegmentedColormap.from_list(
-#         "Custom", sns.color_palette().as_hex(), 50
-#     ),
-#     norm=norm,
-# )
-
-# colorbar = (axis := plt.gca()).figure.colorbar(
-#     scalar_mappable,
-#     ax=axis,
-#     label="Length-wise surface-mesh index",
-#     pad=(_pad := 0.025),
-# )
-# plt.legend().remove()
-# plt.xlabel("Wavelength ($\lambda$) / nm")
-# plt.ylabel("Photon flux ($\Phi$) / $\mu$mol/cm$^2$nm", fontdict={"size": 7})
-# plt.savefig(
-#     f"surface_direct_day_diffuse_spectra_z_wise_{INDEX}.pdf",
-#     format="pdf",
-#     bbox_inches="tight",
-#     pad_inches=0.05,
-# )
-# plt.show()
-
-# plt.figure(figsize=(171 * MM, 120 * MM))
-# sns.set_palette(sns.blend_palette(["#36C7B8", "#423252"], n_colors=10))
-# _hour: int = 12
-
-# for index, entry in enumerate(
-#     direct_day_total_diffuse_surface_irradiance[_hour]
-# ):
-#     plt.plot(
-#         wavelength_range,
-#         spectrum_to_flux(entry, wavelength_range),
-#         alpha=0.3,
-#         color=f"C{index // 50}",
-#     )
-
-# norm = plt.Normalize(
-#     -0.5,
-#     50.51,
-# )
-# scalar_mappable = plt.cm.ScalarMappable(
-#     cmap=m_colors.LinearSegmentedColormap.from_list(
-#         "Custom", sns.color_palette().as_hex(), 50
-#     ),
-#     norm=norm,
-# )
-
-# colorbar = (axis := plt.gca()).figure.colorbar(
-#     scalar_mappable,
-#     ax=axis,
-#     label="Rotational surface-mesh index",
-#     pad=(_pad := 0.025),
-# )
-# plt.legend().remove()
-# plt.xlabel("Wavelength ($\lambda$) / nm")
-# plt.ylabel("Photon flux ($\Phi$) / $\mu$mol/cm$^2$nm", fontdict={"size": 7})
-# plt.savefig(
-#     f"surface_direct_day_diffuse_spectra_phi_wise_{INDEX}.pdf",
-#     format="pdf",
-#     bbox_inches="tight",
-#     pad_inches=0.05,
-# )
-# plt.show()
-
-# plt.figure(figsize=(83 * MM, 60 * MM))
-# sns.set_palette(sns.blend_palette(["#36C7B8", "#423252"], n_colors=50))
-# _hour: int = 12
-
-# for entry in direct_day_total_diffuse_surface_irradiance[_hour]:
-#     plt.plot(
-#         wavelength_range, spectrum_to_flux(entry, wavelength_range), alpha=0.3
-#     )
-
-# norm = plt.Normalize(
-#     -0.5,
-#     50.51,
-# )
-# scalar_mappable = plt.cm.ScalarMappable(
-#     cmap=m_colors.LinearSegmentedColormap.from_list(
-#         "Custom", sns.color_palette().as_hex(), 50
-#     ),
-#     norm=norm,
-# )
-
-# colorbar = (axis := plt.gca()).figure.colorbar(
-#     scalar_mappable,
-#     ax=axis,
-#     label="Length-wise surface-mesh index",
-#     pad=(_pad := 0.025),
-# )
-# plt.xlabel("Wavelength ($\lambda$) / nm")
-# plt.ylabel("Photon flux ($\Phi$) / $\mu$mol/cm$^2$nm", fontdict={"size": 7})
-# plt.legend().remove()
-# plt.savefig(
-#     f"surface_direct_day_diffuse_spectra_z_wise_small_{INDEX}.pdf",
-#     format="pdf",
-#     bbox_inches="tight",
-#     pad_inches=0.05,
-# )
-# plt.show()
-
-# plt.figure(figsize=(83 * MM, 60 * MM))
-# sns.set_palette(sns.blend_palette(["#36C7B8", "#423252"], n_colors=10))
-# _hour: int = 12
-
-# for index, entry in enumerate(
-#     direct_day_total_diffuse_surface_irradiance[_hour]
-# ):
-#     plt.plot(
-#         wavelength_range,
-#         spectrum_to_flux(entry, wavelength_range),
-#         alpha=0.3,
-#         color=f"C{index // 50}",
-#     )
-
-# norm = plt.Normalize(
-#     -0.5,
-#     50.51,
-# )
-# scalar_mappable = plt.cm.ScalarMappable(
-#     cmap=m_colors.LinearSegmentedColormap.from_list(
-#         "Custom", sns.color_palette().as_hex(), 50
-#     ),
-#     norm=norm,
-# )
-
-# colorbar = (axis := plt.gca()).figure.colorbar(
-#     scalar_mappable,
-#     ax=axis,
-#     label="Rotational surface-mesh index",
-#     pad=(_pad := 0.025),
-# )
-# plt.legend().remove()
-# plt.xlabel("Wavelength ($\lambda$) / nm")
-# plt.ylabel("Photon flux ($\Phi$) / $\mu$mol/cm$^2$nm", fontdict={"size": 7})
-# plt.savefig(
-#     f"surface_direct_day_diffuse_spectra_phi_wise_small_{INDEX}.pdf",
-#     format="pdf",
-#     bbox_inches="tight",
-#     pad_inches=0.05,
-# )
-# plt.show()
-
-# plt.figure(figsize=(171 * MM, 120 * MM))
-# sns.set_palette(sns.blend_palette(["#dbe9f6", "#4A688B"], n_colors=50))
-# _hour: int = 12
-
-# for entry in diffuse_day_total_diffuse_surface_irradiance[_hour]:
-#     plt.plot(
-#         wavelength_range, spectrum_to_flux(entry, wavelength_range), alpha=0.3
-#     )
-
-# norm = plt.Normalize(
-#     -0.5,
-#     50.51,
-# )
-# scalar_mappable = plt.cm.ScalarMappable(
-#     cmap=m_colors.LinearSegmentedColormap.from_list(
-#         "Custom", sns.color_palette().as_hex(), 50
-#     ),
-#     norm=norm,
-# )
-
-# colorbar = (axis := plt.gca()).figure.colorbar(
-#     scalar_mappable,
-#     ax=axis,
-#     label="Length-wise surface-mesh index",
-#     pad=(_pad := 0.025),
-# )
-# plt.legend().remove()
-# plt.xlabel("Wavelength ($\lambda$) / nm")
-# plt.ylabel("Photon flux ($\Phi$) / $\mu$mol/cm$^2$nm", fontdict={"size": 7})
-# plt.savefig(
-#     f"surface_diffuse_day_diffuse_spectra_z_wise_{INDEX}.pdf",
-#     format="pdf",
-#     bbox_inches="tight",
-#     pad_inches=0.05,
-# )
-# plt.show()
-
-# plt.figure(figsize=(171 * MM, 120 * MM))
-# sns.set_palette(sns.blend_palette(["#dbe9f6", "#4A688B"], n_colors=10))
-# _hour: int = 12
-
-# for index, entry in enumerate(
-#     diffuse_day_total_diffuse_surface_irradiance[_hour]
-# ):
-#     plt.plot(
-#         wavelength_range,
-#         spectrum_to_flux(entry, wavelength_range),
-#         alpha=0.3,
-#         color=f"C{index // 50}",
-#     )
-
-# norm = plt.Normalize(
-#     -0.5,
-#     50.51,
-# )
-# scalar_mappable = plt.cm.ScalarMappable(
-#     cmap=m_colors.LinearSegmentedColormap.from_list(
-#         "Custom", sns.color_palette().as_hex(), 50
-#     ),
-#     norm=norm,
-# )
-
-# colorbar = (axis := plt.gca()).figure.colorbar(
-#     scalar_mappable,
-#     ax=axis,
-#     label="Rotational surface-mesh index",
-#     pad=(_pad := 0.025),
-# )
-# plt.xlabel("Wavelength ($\lambda$) / nm")
-# plt.ylabel("Photon flux ($\Phi$) / $\mu$mol/cm$^2$nm", fontdict={"size": 7})
-# plt.legend().remove()
-# plt.savefig(
-#     f"surface_diffuse_day_diffuse_spectra_phi_wise_{INDEX}.pdf",
-#     format="pdf",
-#     bbox_inches="tight",
-#     pad_inches=0.05,
-# )
-# plt.show()
-
-# plt.figure(figsize=(83 * MM, 60 * MM))
-# sns.set_palette(sns.blend_palette(["#dbe9f6", "#4A688B"], n_colors=50))
-# _hour: int = 12
-
-# for entry in diffuse_day_total_diffuse_surface_irradiance[_hour]:
-#     plt.plot(
-#         wavelength_range, spectrum_to_flux(entry, wavelength_range), alpha=0.3
-#     )
-
-# norm = plt.Normalize(
-#     -0.5,
-#     50.51,
-# )
-# scalar_mappable = plt.cm.ScalarMappable(
-#     cmap=m_colors.LinearSegmentedColormap.from_list(
-#         "Custom", sns.color_palette().as_hex(), 50
-#     ),
-#     norm=norm,
-# )
-
-# colorbar = (axis := plt.gca()).figure.colorbar(
-#     scalar_mappable,
-#     ax=axis,
-#     label="Length-wise surface-mesh index",
-#     pad=(_pad := 0.025),
-# )
-# plt.xlabel("Wavelength ($\lambda$) / nm")
-# plt.ylabel("Photon flux ($\Phi$) / $\mu$mol/cm$^2$nm", fontdict={"size": 7})
-# plt.legend().remove()
-# plt.savefig(
-#     f"surface_diffuse_day_diffuse_spectra_z_wise_small_{INDEX}.pdf",
-#     format="pdf",
-#     bbox_inches="tight",
-#     pad_inches=0.05,
-# )
-# plt.show()
-
-# plt.figure(figsize=(83 * MM, 60 * MM))
-# sns.set_palette(sns.blend_palette(["#dbe9f6", "#4A688B"], n_colors=10))
-# _hour: int = 12
-
-# for index, entry in enumerate(
-#     diffuse_day_total_diffuse_surface_irradiance[_hour]
-# ):
-#     plt.plot(
-#         wavelength_range,
-#         spectrum_to_flux(entry, wavelength_range),
-#         alpha=0.3,
-#         color=f"C{index // 50}",
-#     )
-
-# norm = plt.Normalize(
-#     -0.5,
-#     50.51,
-# )
-# scalar_mappable = plt.cm.ScalarMappable(
-#     cmap=m_colors.LinearSegmentedColormap.from_list(
-#         "Custom", sns.color_palette().as_hex(), 50
-#     ),
-#     norm=norm,
-# )
-
-# colorbar = (axis := plt.gca()).figure.colorbar(
-#     scalar_mappable,
-#     ax=axis,
-#     label="Rotational surface-mesh index",
-#     pad=(_pad := 0.025),
-# )
-# plt.xlabel("Wavelength ($\lambda$) / nm")
-# plt.ylabel("Photon flux ($\Phi$) / $\mu$mol/cm$^2$nm", fontdict={"size": 7})
-# plt.legend().remove()
-# plt.savefig(
-#     f"surface_diffuse_day_diffuse_spectra_phi_wise_small_{INDEX}.pdf",
-#     format="pdf",
-#     bbox_inches="tight",
-#     pad_inches=0.05,
-# )
-# plt.show()
 
 
 if __name__ == "__main__":
