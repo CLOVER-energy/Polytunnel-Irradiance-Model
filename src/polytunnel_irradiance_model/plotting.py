@@ -2650,3 +2650,409 @@ def plot_spectrum(
 #     pad_inches=0.05,
 # )
 # plt.show()
+
+#######################
+# Plotting code No. 6 #
+#######################
+
+# plt.figure(figsize=(83 * MM, 60 * MM))
+# sns.boxplot(
+#     dif_day_gnd_tot_val.reset_index(drop=True).transpose()[:-13],
+#     boxprops=dict(alpha=0.75),
+#     color="C3",
+#     label="Diffuse-day prediction",
+#     saturation=1,
+#     # linecolor="C3",
+#     zorder=0,
+# )
+# sns.boxplot(
+#     dir_day_gnd_tot_val.reset_index(drop=True).transpose()[:-13],
+#     boxprops=dict(alpha=0.75),
+#     color="C4",
+#     label="Direct-day prediction",
+#     # linecolor="C4",
+#     saturation=1,
+#     zorder=0,
+# )
+# sns.scatterplot(
+#     x=range(len(dir_day_gnd_tot_val)),
+#     y=dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] * 0.48,
+#     color="C0",
+#     label="Total PAR",
+#     marker="H",
+#     s=60,
+#     zorder=1,
+# )
+# plt.plot(
+#     range(len(dir_day_gnd_tot_val)),
+#     dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] * 0.48,
+#     color="C0",
+#     zorder=1,
+# )
+# plt.errorbar(
+#     x=range(len(dir_day_gnd_tot_val)),
+#     y=dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] * 0.48,
+#     yerr=dir_day_gnd_dir_val[ValidationColumns.TOTAL_ERROR.value]
+#     * 0.48,
+#     ls="none",
+#     color="C0",
+#     zorder=1,
+# )
+# plt.xlabel("Time / h")
+# plt.ylabel(r"PPFD ($\Phi$) / $\mu$mol/m$^2$")
+
+# axis_right = (axis_left := plt.gca()).twinx()
+# axis_left.tick_params(axis="both", which="major", labelsize=7)
+# axis_right.tick_params(axis="both", which="major", labelsize=7)
+# axis_right.set_ylabel("Diffusivity")
+# sns.scatterplot(
+#     x=range(len(dir_day_gnd_tot_val)),
+#     y=dir_day_gnd_tot_val["diffusivity"],
+#     alpha=0.7,
+#     color="C1",
+#     label="Diffusivity",
+#     marker="D",
+#     s=40,
+#     zorder=1,
+# )
+# left_handles, left_labels = axis_left.get_legend_handles_labels()
+# axis_left.legend().remove()
+# right_handles, right_labels = axis_right.get_legend_handles_labels()
+# axis_right.legend().remove()
+
+# plt.legend(
+#     left_handles + right_handles,
+#     left_labels + right_labels,
+#     loc="upper right",
+#     fontsize=7,
+# )
+# axis_right.set_ylim(-0.05, 1.05)
+# axis_left.set_ylim(-25, 1600)
+
+# plt.xticks(
+#     plt.xticks()[0][::3],
+#     [entry for entry in dir_day_gnd_tot_val.index][::3],
+# )
+
+# plt.savefig(
+#     "validation_total_map_boxplot_"
+#     f"{polytunnel_diffusivity}_{polytunnel.name}_{alt_weather}"
+#     f"{parsed_args.start_time.replace(':','_')}_"
+#     f"{parsed_args.end_time.replace(':','_')}_{INDEX}.pdf",
+#     format="pdf",
+#     bbox_inches="tight",
+#     pad_inches=0.05,
+# )
+# pbar.update(1)
+
+# #######################
+# # Plotting code No. 7 #
+# #######################
+
+# plt.figure(figsize=(83 * MM, 60 * MM))
+# sns.boxplot(
+#     dif_day_gnd_tot_val.reset_index(drop=True).transpose()[:-13],
+#     boxprops=dict(alpha=0.75),
+#     color="C3",
+#     label="Diffuse-day prediction",
+#     saturation=1,
+#     # linecolor="C3",
+#     zorder=0,
+# )
+# sns.boxplot(
+#     dir_day_gnd_dif_val.reset_index(drop=True).transpose()[:-13],
+#     boxprops=dict(alpha=0.75),
+#     color="C4",
+#     label="Direct-day prediction",
+#     # linecolor="C4",
+#     saturation=1,
+#     zorder=0,
+# )
+# sns.scatterplot(
+#     x=range(len(dir_day_gnd_dir_val)),
+#     y=dir_day_gnd_dir_val[ValidationColumns.DIFFUSE_PAR.value] * 0.48,
+#     color="C1",
+#     label="Diffuse PAR",
+#     marker="H",
+#     s=60,
+#     zorder=1,
+# )
+# plt.plot(
+#     range(len(dir_day_gnd_dir_val)),
+#     dir_day_gnd_dir_val[ValidationColumns.DIFFUSE_PAR.value] * 0.48,
+#     color="C1",
+#     zorder=1,
+# )
+# plt.errorbar(
+#     x=range(len(dir_day_gnd_dir_val)),
+#     y=dir_day_gnd_dir_val[ValidationColumns.DIFFUSE_PAR.value] * 0.48,
+#     yerr=dir_day_gnd_dir_val[ValidationColumns.DIFFUSE_ERROR.value]
+#     * 0.48,
+#     ls="none",
+#     color="C1",
+#     zorder=1,
+# )
+# plt.xlabel("Time / h")
+# plt.ylabel(r"PPFD ($\Phi$) / $\mu$mol/m$^2$")
+
+# axis_right = (axis_left := plt.gca()).twinx()
+# axis_left.tick_params(axis="both", which="major", labelsize=7)
+# axis_right.tick_params(axis="both", which="major", labelsize=7)
+# sns.scatterplot(
+#     x=range(len(dir_day_gnd_dir_val)),
+#     y=dir_day_gnd_dir_val["diffusivity"],
+#     alpha=0.7,
+#     color="C1",
+#     label="Diffusivity",
+#     marker="D",
+#     s=40,
+#     zorder=1,
+# )
+# left_handles, left_labels = axis_left.get_legend_handles_labels()
+# axis_left.legend().remove()
+# right_handles, right_labels = axis_right.get_legend_handles_labels()
+# axis_right.legend().remove()
+# axis_right.set_ylabel("Diffusivity")
+
+# plt.legend(
+#     left_handles + right_handles,
+#     left_labels + right_labels,
+#     loc="upper right",
+#     fontsize=7,
+# )
+# axis_right.set_ylim(-0.05, 1.05)
+# axis_left.set_ylim(-25, 1600)
+
+# plt.xticks(
+#     plt.xticks()[0][::3],
+#     [entry for entry in dir_day_gnd_dir_val.index][::3],
+# )
+
+# plt.savefig(
+#     "validation_diffuse_map_boxplot_"
+#     f"{polytunnel_diffusivity}_{polytunnel.name}_{alt_weather}"
+#     f"{parsed_args.start_time.replace(':','_')}_"
+#     f"{parsed_args.end_time.replace(':','_')}_{INDEX}.pdf",
+#     format="pdf",
+#     bbox_inches="tight",
+#     pad_inches=0.05,
+# )
+# pbar.update(1)
+
+# #######################
+# # Plotting code No. 8 #
+# #######################
+
+# plt.figure(figsize=(83 * MM, 60 * MM))
+# sns.scatterplot(
+#     x=range(len(dir_day_gnd_dir_val)),
+#     y=dir_day_gnd_dir_val.reset_index(drop=True)
+#     .transpose()[:-13]
+#     .mean(axis=0),
+#     # boxprops=dict(alpha=0.75),
+#     color="C4",
+#     label="Direct-day prediction",
+#     # linecolor="C4",
+#     marker="h",
+#     s=60,
+#     # saturation=1,
+#     zorder=0,
+# )
+# plt.plot(
+#     range(len(dir_day_gnd_dir_val)),
+#     dir_day_gnd_dir_val.reset_index(drop=True)
+#     .transpose()[:-13]
+#     .mean(axis=0),
+#     color="C4",
+#     zorder=0,
+# )
+# sns.scatterplot(
+#     x=range(len(dir_day_gnd_dir_val)),
+#     y=dir_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value] * 0.48,
+#     color="C1",
+#     label="Direct PAR",
+#     marker="H",
+#     s=60,
+#     zorder=1,
+# )
+# plt.plot(
+#     range(len(dir_day_gnd_dir_val)),
+#     dir_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value] * 0.48,
+#     color="C1",
+#     zorder=1,
+# )
+# plt.errorbar(
+#     x=range(len(dir_day_gnd_dir_val)),
+#     y=dir_day_gnd_dir_val[ValidationColumns.DIRECT_PAR.value] * 0.48,
+#     yerr=dir_day_gnd_dir_val[ValidationColumns.DIRECT_ERROR.value]
+#     * 0.48,
+#     ls="none",
+#     color="C1",
+#     zorder=1,
+# )
+# plt.xlabel("Time / h")
+# plt.ylabel(r"PPFD ($\Phi$) / $\mu$mol/m$^2$")
+
+# axis_right = (axis_left := plt.gca()).twinx()
+# axis_left.tick_params(axis="both", which="major", labelsize=7)
+# axis_right.tick_params(axis="both", which="major", labelsize=7)
+# axis_right.set_ylabel("Diffusivity")
+# sns.scatterplot(
+#     x=range(len(dir_day_gnd_dir_val)),
+#     y=dir_day_gnd_dir_val["diffusivity"],
+#     alpha=0.7,
+#     color="C1",
+#     label="Diffusivity",
+#     marker="D",
+#     s=40,
+#     zorder=1,
+# )
+# left_handles, left_labels = axis_left.get_legend_handles_labels()
+# axis_left.legend().remove()
+# right_handles, right_labels = axis_right.get_legend_handles_labels()
+# axis_right.legend().remove()
+
+# plt.legend(
+#     left_handles + right_handles,
+#     left_labels + right_labels,
+#     loc="upper right",
+#     fontsize=7,
+# )
+# axis_right.set_ylim(-0.05, 1.05)
+# axis_left.set_ylim(-25, 1600)
+
+# plt.xticks(
+#     list(range(len(dir_day_gnd_dir_val.index)))[::3],
+#     [entry for entry in dir_day_gnd_dir_val.index][::3],
+# )
+
+# plt.savefig(
+#     "validation_direct_map_boxplot_"
+#     f"{polytunnel_diffusivity}_{polytunnel.name}_{alt_weather}"
+#     f"{parsed_args.start_time.replace(':','_')}_"
+#     f"{parsed_args.end_time.replace(':','_')}_{INDEX}.pdf",
+#     format="pdf",
+#     bbox_inches="tight",
+#     pad_inches=0.05,
+# )
+# pbar.update(1)
+
+# #######################
+# # Plotting code No. 9 #
+# #######################
+
+# # Compute the cloudiness based on the on-the-ground PAR seen.
+# diffusivity: pd.Series = (
+#     dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] * 0.48
+#     - dir_day_gnd_tot_val[parsed_args.validation_index]
+# ) / (
+#     dif_day_gnd_tot_val[parsed_args.validation_index]
+#     - dir_day_gnd_tot_val[parsed_args.validation_index]
+# )
+
+# diffusivity_error = abs(diffusivity * 0.1)
+
+# plt.figure(figsize=(83 * MM, 60 * MM))
+# axis_right = (axis_left := plt.gca()).twinx()
+
+# sns.scatterplot(
+#     x=range(len(dir_day_gnd_tot_val)),
+#     y=dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] * 0.48,
+#     ax=axis_left,
+#     color="C0",
+#     label="Total PAR",
+#     marker="H",
+#     s=60,
+#     zorder=1,
+# )
+# axis_left.plot(
+#     range(len(dir_day_gnd_tot_val)),
+#     dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] * 0.48,
+#     color="C0",
+#     zorder=1,
+# )
+# axis_left.errorbar(
+#     x=range(len(dir_day_gnd_tot_val)),
+#     y=dir_day_gnd_tot_val[ValidationColumns.TOTAL_PAR.value] * 0.48,
+#     yerr=dir_day_gnd_dir_val[ValidationColumns.TOTAL_ERROR.value]
+#     * 0.48,
+#     ls="none",
+#     color="C0",
+#     zorder=1,
+# )
+# plt.xlabel("Time / h")
+# plt.ylabel(r"PPFD ($\Phi$) / $\mu$mol/m$^2$")
+
+# sns.scatterplot(
+#     x=range(len(diffusivity)),
+#     y=diffusivity,
+#     alpha=0.7,
+#     ax=axis_right,
+#     color="C2",
+#     label="Predicted weather diffusivity",
+#     marker="X",
+#     s=40,
+#     zorder=1,
+# )
+# axis_right.errorbar(
+#     x=(x_range := range(len(dir_day_gnd_dir_val))),
+#     y=diffusivity,
+#     yerr=diffusivity_error,
+#     ls="none",
+#     color="C2",
+#     zorder=1,
+# )
+# axis_right.set_xlabel("Time / h")
+# axis_left.set_ylabel(r"PPFD ($\Phi$) / $\mu$mol/m$^2$")
+# axis_right.set_ylabel("Diffusivity")
+
+# plt.xticks(
+#     list(range(len(dir_day_gnd_dir_val.index)))[::4],
+#     [entry for entry in dir_day_gnd_dir_val.index][::4],
+# )
+
+# lower_ylim: float = -0.75
+# upper_ylim: float = 4.75
+# axis_right.fill_between(
+#     x_range,
+#     [lower_ylim] * len(x_range),
+#     [0] * len(x_range),
+#     alpha=0.3,
+#     color="grey",
+#     hatch="//",
+#     zorder=0,
+#     label="Out-of-bounds result",
+# )
+# axis_right.fill_between(
+#     x_range,
+#     [1] * len(x_range),
+#     [upper_ylim] * len(x_range),
+#     alpha=0.3,
+#     color="grey",
+#     hatch="//",
+#     zorder=0,
+# )
+
+# axis_left.set_ylim(-25, 1600)
+# axis_right.set_ylim(lower_ylim, upper_ylim)
+
+# handles_l, labels_l = axis_left.get_legend_handles_labels()
+# handles_r, labels_r = axis_right.get_legend_handles_labels()
+
+# axis_left.tick_params(axis="both", which="major", labelsize=7)
+# axis_right.tick_params(axis="both", which="major", labelsize=7)
+
+# axis_left.legend().remove()
+# axis_right.legend().remove()
+# axis_right.legend(handles_l + handles_r, labels_l + labels_r)
+
+# plt.savefig(
+#     "validation_diffusivity_prediction_"
+#     f"{polytunnel_diffusivity}_{polytunnel.name}_{alt_weather}"
+#     f"{parsed_args.start_time.replace(':','_')}_"
+#     f"{parsed_args.end_time.replace(':','_')}_{INDEX}.pdf",
+#     format="pdf",
+#     bbox_inches="tight",
+#     pad_inches=0.05,
+# )
+# pbar.update(1)

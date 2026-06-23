@@ -139,6 +139,8 @@ def power_spectrum_to_par_spectrum(
     spectrum: pd.Series | np.ndarray,
     par_wavelength_series: pd.Series | np.ndarray,
     wavelength_series: pd.Series | np.ndarray,
+    *,
+    m2: bool = False
 ) -> pd.Series | np.ndarray:
     """
     Convert a solar spectrum into a flux of photosynthetically-active photons (PAR).
@@ -151,6 +153,9 @@ def power_spectrum_to_par_spectrum(
 
     :param: wavelength_series:
         The wavelength data in nm that match up with the spectrum.
+
+    :param:
+        Whether to return in m2 (`True`) or cm2 (`False`).
 
     :returns:
         The spectrum as a photosnthetically-active photon flux spectrum in micro-moles
@@ -178,4 +183,8 @@ def power_spectrum_to_par_spectrum(
             "Function only implemented for 2D and 3D calculations of PAR."
         )
 
-    return par_spectrum * 10**6 / (energy_series * 10**4 * constants.N_A)
+    return (
+        par_spectrum
+        * 10**6
+        / (energy_series * (10**4 if not m2 else 1) * constants.N_A)
+    )

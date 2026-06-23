@@ -263,9 +263,111 @@ def tmm(
     plt.ylabel("Fraction reflected, transmitted or absorbed")
     plt.ylim(0, 1)
     plt.legend(loc="upper right")
+    plt.gca().tick_params(axis="both", which="major", labelsize=7)
     plt.savefig(
         f"python_tmm_{INDEX}.pdf", format="pdf", bbox_inches="tight", pad_inches=0.05
     )
+
+    plt.figure(figsize=(171 * MM, 120 * MM))
+    sns.set_style("whitegrid")
+    data = pd.DataFrame(
+        {
+            "Reflectance": reflectance,
+            "Transmittance": transmittance,
+            "Absorptance": absorptance,
+        }
+    )
+    data.index = wavelength_series
+    plt.plot(data.index, data.Absorptance, color="#440154", label="Absorptance")
+    plt.plot(
+        data.index,
+        data.Absorptance + data.Transmittance,
+        "--",
+        color="#21908C",
+        label="Transmittance",
+    )
+    plt.plot(
+        data.index, [1] * len(data.index), "-.", color="#FDE725", label="Reflectance"
+    )
+    plt.fill_between(
+        data.index, [0] * len(data.index), data.Absorptance, color="#440154", alpha=0.3
+    )
+    plt.fill_between(
+        data.index,
+        data.Absorptance,
+        data.Absorptance + data.Transmittance,
+        color="#21908C",
+        alpha=0.3,
+    )
+    plt.fill_between(
+        data.index,
+        data.Absorptance + data.Transmittance,
+        [1] * len(data.index),
+        color="#FDE725",
+        alpha=0.3,
+    )
+    plt.xlabel("Wavelength / nm")
+    plt.ylabel("Fraction reflected, transmitted or absorbed")
+    plt.ylim(0, 1)
+    plt.legend(loc="upper right")
+    plt.gca().tick_params(axis="both", which="major", labelsize=7)
+    plt.savefig(
+        f"python_tmm_stacked_{INDEX}.pdf",
+        format="pdf",
+        bbox_inches="tight",
+        pad_inches=0.05,
+    )
+
+    plt.figure(figsize=(83 * MM, 60 * MM))
+    sns.set_style("whitegrid")
+    data = pd.DataFrame(
+        {
+            "Reflectance": reflectance,
+            "Transmittance": transmittance,
+            "Absorptance": absorptance,
+        }
+    )
+    data.index = wavelength_series
+    plt.plot(data.index, data.Absorptance, color="#440154", label="Absorptance")
+    plt.plot(
+        data.index,
+        data.Absorptance + data.Transmittance,
+        "--",
+        color="#21908C",
+        label="Transmittance",
+    )
+    plt.plot(
+        data.index, [1] * len(data.index), "-.", color="#FDE725", label="Reflectance"
+    )
+    plt.fill_between(
+        data.index, [0] * len(data.index), data.Absorptance, color="#440154", alpha=0.3
+    )
+    plt.fill_between(
+        data.index,
+        data.Absorptance,
+        data.Absorptance + data.Transmittance,
+        color="#21908C",
+        alpha=0.3,
+    )
+    plt.fill_between(
+        data.index,
+        data.Absorptance + data.Transmittance,
+        [1] * len(data.index),
+        color="#FDE725",
+        alpha=0.3,
+    )
+    plt.xlabel("Wavelength / nm")
+    plt.ylabel("Fraction reflected, transmitted or absorbed")
+    plt.ylim(0, 1)
+    plt.legend(loc="upper right")
+    plt.gca().tick_params(axis="both", which="major", labelsize=7)
+    plt.savefig(
+        f"python_tmm_stacked_small_{INDEX}.pdf",
+        format="pdf",
+        bbox_inches="tight",
+        pad_inches=0.05,
+    )
+
     sns.set_style("ticks")
 
     absorption: dict[int, list[float]] = {}
@@ -904,7 +1006,7 @@ def tmm(
     # Run the computation to determine the absorptance for each wavelength.
     layerwise_absorption: dict[int, list[float]] = {}
     for wavelength in tqdm(
-        range(300, 1000), desc="Active-layer absorption calculation", unit="nm"
+        wavelength_series, desc="Active-layer absorption calculation", unit="nm"
     ):
         # Save the absorptance as a function of depth
         coh_tmm_data = coh_tmm("p", _stack_nk, _stack_thicknesses, 0, wavelength)
@@ -914,10 +1016,6 @@ def tmm(
     layerwise_absorption_frame.columns = pd.Index(
         [_sanitise_label(layer.material) for layer in stack]
     )
-
-    import pdb
-
-    pdb.set_trace()
 
     plt.figure(figsize=(171 * MM, 120 * MM))
     sns.lineplot(
@@ -929,7 +1027,26 @@ def tmm(
     axis.legend(fontsize=7)
 
     plt.savefig(
-        f"absorptance_in_layers_{INDEX}.pdf",
+        f"relative_absorptance_in_layers_{INDEX}.pdf",
+        format="pdf",
+        bbox_inches="tight",
+        pad_inches=0.05,
+    )
+
+    plt.figure(figsize=(171 * MM, 120 * MM))
+    sns.lineplot(
+        layerwise_absorption_frame.mul(data.Absorptance, axis=0),
+        palette=BACKGROUND_PALETTE,
+        ax=(axis := plt.gca()),
+    )
+    axis.set_xlabel("Wavelength / nm", fontsize=7)
+    axis.set_ylabel("Absorptance", fontsize=7)
+    axis.tick_params(axis="both", which="major", labelsize=7)
+    axis.legend(fontsize=7)
+    axis.set_ylim(0, 1)
+
+    plt.savefig(
+        f"absolute_absorptance_in_layers_{INDEX}.pdf",
         format="pdf",
         bbox_inches="tight",
         pad_inches=0.05,
@@ -945,7 +1062,26 @@ def tmm(
     axis.legend(fontsize=7)
 
     plt.savefig(
-        f"absorptance_in_layers_small_{INDEX}.pdf",
+        f"relative_absorptance_in_layers_small_{INDEX}.pdf",
+        format="pdf",
+        bbox_inches="tight",
+        pad_inches=0.05,
+    )
+
+    plt.figure(figsize=(83 * MM, 60 * MM))
+    sns.lineplot(
+        layerwise_absorption_frame.mul(data.Absorptance, axis=0),
+        palette=BACKGROUND_PALETTE,
+        ax=(axis := plt.gca()),
+    )
+    axis.set_xlabel("Wavelength / nm", fontsize=7)
+    axis.set_ylabel("Absorptance", fontsize=7)
+    axis.tick_params(axis="both", which="major", labelsize=7)
+    axis.legend(fontsize=7)
+    axis.set_ylim(0, 1)
+
+    plt.savefig(
+        f"absolute_absorptance_in_layers_small_{INDEX}.pdf",
         format="pdf",
         bbox_inches="tight",
         pad_inches=0.05,
@@ -965,7 +1101,27 @@ def tmm(
     axis.legend(fontsize=7)
 
     plt.savefig(
-        f"absorptance_in_active_layer_{INDEX}.pdf",
+        f"relative_absorptance_in_active_layer_{INDEX}.pdf",
+        format="pdf",
+        bbox_inches="tight",
+        pad_inches=0.05,
+    )
+
+    plt.figure(figsize=(171 * MM, 120 * MM))
+    sns.lineplot(
+        x=layerwise_absorption_frame.index,
+        y=layerwise_absorption_frame.mul(data.Absorptance, axis=0)[ACTIVE_LAYER],
+        ax=(axis := plt.gca()),
+        label=ACTIVE_LAYER,
+    )
+    axis.set_xlabel("Wavelength / nm", fontsize=7)
+    axis.set_ylabel("Absorptance", fontsize=7)
+    axis.tick_params(axis="both", which="major", labelsize=7)
+    axis.legend(fontsize=7)
+    axis.set_ylim(0, 1)
+
+    plt.savefig(
+        f"absolute_absorptance_in_active_layer_{INDEX}.pdf",
         format="pdf",
         bbox_inches="tight",
         pad_inches=0.05,
@@ -984,7 +1140,27 @@ def tmm(
     axis.legend(fontsize=7)
 
     plt.savefig(
-        f"absorptance_in_active_layer_small_{INDEX}.pdf",
+        f"relative_absorptance_in_active_layer_small_{INDEX}.pdf",
+        format="pdf",
+        bbox_inches="tight",
+        pad_inches=0.05,
+    )
+
+    plt.figure(figsize=(83 * MM, 60 * MM))
+    sns.lineplot(
+        x=layerwise_absorption_frame.index,
+        y=layerwise_absorption_frame.mul(data.Absorptance, axis=0)[ACTIVE_LAYER],
+        ax=(axis := plt.gca()),
+        label=ACTIVE_LAYER,
+    )
+    axis.set_xlabel("Wavelength / nm", fontsize=7)
+    axis.set_ylabel("Absorptance", fontsize=7)
+    axis.tick_params(axis="both", which="major", labelsize=7)
+    axis.legend(fontsize=7)
+    axis.set_ylim(0, 1)
+
+    plt.savefig(
+        f"absolute_absorptance_in_active_layer_small_{INDEX}.pdf",
         format="pdf",
         bbox_inches="tight",
         pad_inches=0.05,
@@ -1003,7 +1179,26 @@ def tmm(
     axis.legend(fontsize=7)
 
     plt.savefig(
-        f"absorptance_in_active_layer_purple_{INDEX}.pdf",
+        f"relative_absorptance_in_active_layer_purple_{INDEX}.pdf",
+        format="pdf",
+        bbox_inches="tight",
+        pad_inches=0.05,
+    )
+
+    plt.figure(figsize=(171 * MM, 120 * MM))
+    sns.lineplot(
+        x=layerwise_absorption_frame.index,
+        y=layerwise_absorption_frame.mul(data.Absorptance, axis=0)[ACTIVE_LAYER],
+        ax=(axis := plt.gca()),
+    )
+    axis.set_xlabel("Wavelength / nm", fontsize=7)
+    axis.set_ylabel("Absorptance", fontsize=7)
+    axis.tick_params(axis="both", which="major", labelsize=7)
+    axis.legend(fontsize=7)
+    axis.set_ylim(0, 1)
+
+    plt.savefig(
+        f"absolute_absorptance_in_active_layer_purple_{INDEX}.pdf",
         format="pdf",
         bbox_inches="tight",
         pad_inches=0.05,
@@ -1021,7 +1216,27 @@ def tmm(
     axis.legend(fontsize=7)
 
     plt.savefig(
-        f"absorptance_in_active_layer_purple_small_{INDEX}.pdf",
+        f"relative_absorptance_in_active_layer_purple_small_{INDEX}.pdf",
+        format="pdf",
+        bbox_inches="tight",
+        pad_inches=0.05,
+    )
+    # plt.show()
+
+    plt.figure(figsize=(83 * MM, 60 * MM))
+    sns.lineplot(
+        x=layerwise_absorption_frame.mul(data.Absorptance, axis=0).index,
+        y=layerwise_absorption_frame[ACTIVE_LAYER],
+        ax=(axis := plt.gca()),
+    )
+    axis.set_xlabel("Wavelength / nm", fontsize=7)
+    axis.set_ylabel("Absorptance", fontsize=7)
+    axis.tick_params(axis="both", which="major", labelsize=7)
+    axis.legend(fontsize=7)
+    axis.set_ylim(0, 1)
+
+    plt.savefig(
+        f"absolute_absorptance_in_active_layer_purple_small_{INDEX}.pdf",
         format="pdf",
         bbox_inches="tight",
         pad_inches=0.05,
