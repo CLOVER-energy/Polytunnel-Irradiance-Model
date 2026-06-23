@@ -1,28 +1,16 @@
 #!/usr/bin/python3
 
-import argparse
-import collections
-import enum
-import itertools
-import json
-import math
 import matplotlib.colors as mcolors
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import os
-import pdb
 import re
-import sys
 
 from matplotlib import rc
-from matplotlib import ticker
-from typing import Any
 
-import numpy as np
 import pandas as pd
 import seaborn as sns
 
-from tqdm import tqdm
 
 # DPI:
 #   The DPI to use when saving figures.
