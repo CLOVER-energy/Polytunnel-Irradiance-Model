@@ -14,10 +14,6 @@ This module contains some irradiance calculations.
 """
 
 
-import tracing as tracer
-import os
-import torch
-
 from math import pi, sqrt
 from scipy.integrate import trapezoid
 
