@@ -12,22 +12,18 @@ import os
 from dataclasses import dataclass
 from matplotlib import rc, rcParams
 
-import matplotlib.colors as pltcolors
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 
-from numpy import pi, linspace, inf, array
+from numpy import linspace, inf, array
 from scipy.interpolate import interp1d
 from tqdm import tqdm
 from tmm import (
     absorp_in_each_layer,
     coh_tmm,
-    ellips,
     find_in_structure_with_inf,
-    inc_tmm,
     position_resolved,
-    unpolarized_RT,
 )
 
 # Plotting context

@@ -15,11 +15,8 @@ This module contains some irradiance calculations.
 
 
 from math import pi, sqrt
-from scipy.integrate import trapezoid
 
-import numpy as np
 import pandas as pd
-import tmm_fast as tmm
 
 from src.polytunnel_irradiance_model.__utils__ import NotInterceptError
 from src.polytunnel_irradiance_model.polytunnel import (

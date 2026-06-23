@@ -20,11 +20,7 @@ from math import cos, pi, radians, sin
 from typing import Any, Generator, TypeVar
 
 import pandas as pd
-import numpy as np
 import pvlib
-
-from pvlib import spectrum, solarposition, irradiance, atmosphere, location
-from scipy.integrate import trapezoid
 
 from src.polytunnel_irradiance_model.__utils__ import Location
 from src.polytunnel_irradiance_model.polytunnel import Vector

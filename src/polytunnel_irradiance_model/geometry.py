@@ -3,8 +3,8 @@ import warnings
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from math import acos, asin, cos, degrees, isnan, radians, pi, sin
-from typing import Any, AsyncGenerator, Iterable, Iterator, TypeVar
+from math import acos, cos, degrees, isnan, radians, pi, sin
+from typing import Any, Iterable, Iterator, TypeVar
 
 import numpy as np
 

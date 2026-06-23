@@ -15,7 +15,8 @@ distribution within a curved structure, _e.g._, a polytunnel.
 """
 
 import argparse
-import colour.plotting
+
+# import colour.plotting
 import csv
 import datetime
 import enum
@@ -28,15 +29,16 @@ import time
 
 from collections import defaultdict
 from collections.abc import Sequence
-from colour import SpectralDistribution, XYZ_to_sRGB, sd_to_XYZ
+
+# from colour import SpectralDistribution, XYZ_to_sRGB, sd_to_XYZ
 from contextlib import contextmanager
-from dataclasses import dataclass
 from math import ceil, cos, floor, pi, sqrt
 from typing import Any, Callable, Generator, Iterator, Match, Pattern
 
 import json
-import matplotlib.colors as m_colors
-import matplotlib.lines as mlines
+
+# import matplotlib.colors as m_colors
+# import matplotlib.lines as mlines
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -46,8 +48,6 @@ import yaml
 
 from matplotlib import rc, rcParams
 from numpy import inf
-from scipy import constants
-from scipy.integrate import trapezoid
 from scipy.interpolate import interp1d
 from tqdm import tqdm
 
@@ -57,31 +57,22 @@ from src.polytunnel_irradiance_model.plotting import *
 from src.polytunnel_irradiance_model.polytunnel import (
     calculate_adjacent_polytunnel_shading,
     calculate_adjacent_polytunnel_solid_angle_as_function_of_theta,
-    calculate_and_update_intercept_planes,
     calculate_solid_angles,
     EndType,
-    MeshPoint,
-    NotInterceptError,
     Polytunnel,
-    Plane,
     solid_angle_weighted_tmm,
 )
 from src.polytunnel_irradiance_model.solar import (
     calculate_solar_position,
     calculate_clearsky_data_new,
-    SolarPositionVector,
 )
 from src.polytunnel_irradiance_model.irradiance import (
     ground_direct_irradiance,
     open_end_direct_irradiance,
 )
-from src.polytunnel_irradiance_model.tracing import Tracing
-import src.polytunnel_irradiance_model.visualisation as viz
 
 
 import warnings
-
-import numpy as np
 
 warnings.filterwarnings(
     "ignore", category=UserWarning, module=r".*vectorized_tmm_dispersive_multistack.*"
