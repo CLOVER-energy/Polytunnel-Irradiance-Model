@@ -11,8 +11,9 @@
 #     benedict.winchester@gmail.com                                                    #
 ########################################################################################
 #PBS -l walltime=72:00:00
-#PBS -l select=1:ncpus=8:mem=128Gb
+#PBS -l select=1:ncpus=8:mem=32Gb
 #PBS -N ppv-pir
+#PBS -J 1-3137
 
 # Depending on the environmental variable, run the appropriate HPC job.
 module load anaconda3/personal
@@ -23,7 +24,4 @@ source activate ppv
 cd $PBS_O_WORKDIR
 
 # Determine the scenario to run
-python -m src.polytunnel_irradiance_model -pt circular_narrow_short_mariano \
-    -mres 10 -st 2024-06-01T00:00:00Z -et 2024-06-30T23:59:59Z \
-    -d 0.55 -vi 275 -wf ninja_16_25_kent.csv -wado -mtr 60 \
-    -lat 51.249814 -lon 0.347779 -sp -hwf cosmos_hadlow_1624.csv 
+python -m src.polytunnel_irradiance_model.hpc
