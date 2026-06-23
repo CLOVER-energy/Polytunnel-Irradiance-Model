@@ -199,6 +199,55 @@ function tmm(
     figure = plot(
         Spectrum1D(),
         sol.Beam.λ,
+        [
+            1.0 .- (sol.Spectra.Rp .+ sol.Spectra.Tp),
+            1.0 .- (sol.Spectra.Rp),
+            1.0 .+ (0 .* sol.Spectra.Rp),
+        ],
+        label = ["Absorbance" "Transmittance" "Reflectance"],
+        line = ([:solid :dash :dashdot]),
+        ylims = (0.0, 1.0),
+        xlims = (sol.Beam.λ[1], sol.Beam.λ[end]),
+        palette = palette(:viridis, 3, rev = false),
+        size = (171*MM, 120*MM),
+        dpi = 600,
+        xtickfontsize = 7,
+        ytickfontsize = 7,
+        xguidefontsize = 7,
+        yguidefontsize = 7,
+        legendfontsize = 7,
+    );
+    plot!(
+        sol.Beam.λ,
+        (0 .* sol.Spectra.Rp),
+        fillrange = 1.0 .- (sol.Spectra.Rp .+ sol.Spectra.Tp),
+        fillalpha = 0.3,
+        color = palette(:viridis, 3, rev = false).colors[1],
+        label = ""
+    )
+    plot!(
+        sol.Beam.λ,
+        1.0 .- (sol.Spectra.Rp .+ sol.Spectra.Tp),
+        fillrange = 1.0 .- (sol.Spectra.Rp),
+        fillalpha = 0.3,
+        color = palette(:viridis, 3, rev = false).colors[2],
+        label = ""
+    )
+    plot!(
+        sol.Beam.λ,
+        1.0 .- (sol.Spectra.Rp),
+        fillrange = 1.0 .+ (0 .* (sol.Spectra.Rp)),
+        fillalpha = 0.3,
+        color = palette(:viridis, 3, rev = false).colors[3],
+        label = ""
+    )
+    xlabel!("Wavelength / nm")
+    ylabel!("Fraction refelcted, transmitted or absorbed")
+    savefig(figure, "tmm_stacked.pdf")
+
+    figure = plot(
+        Spectrum1D(),
+        sol.Beam.λ,
         [sol.Spectra.Rp, sol.Spectra.Tp, 1.0 .- (sol.Spectra.Rp .+ sol.Spectra.Tp)],
         label = ["Reflectance" "Transmittance" "Absorbance"],
         line = ([:solid :dash :dashdot]),
@@ -216,6 +265,55 @@ function tmm(
     xlabel!("Wavelength / nm")
     ylabel!("Fraction refelcted, transmitted\nor absorbed")
     savefig(figure, "tmm_small.pdf")
+
+    figure = plot(
+        Spectrum1D(),
+        sol.Beam.λ,
+        [
+            1.0 .- (sol.Spectra.Rp .+ sol.Spectra.Tp),
+            1.0 .- (sol.Spectra.Rp),
+            1.0 .+ (0 .* sol.Spectra.Rp),
+        ],
+        label = ["Absorbance" "Transmittance" "Reflectance"],
+        line = ([:solid :dash :dashdot]),
+        ylims = (0.0, 1.0),
+        xlims = (sol.Beam.λ[1], sol.Beam.λ[end]),
+        palette = palette(:viridis, 3, rev = false),
+        size = (83*MM, 60*MM),
+        dpi = 600,
+        xtickfontsize = 7,
+        ytickfontsize = 7,
+        xguidefontsize = 7,
+        yguidefontsize = 7,
+        legendfontsize = 7,
+    );
+    plot!(
+        sol.Beam.λ,
+        (0 .* sol.Spectra.Rp),
+        fillrange = 1.0 .- (sol.Spectra.Rp .+ sol.Spectra.Tp),
+        fillalpha = 0.3,
+        color = palette(:viridis, 3, rev = false).colors[1],
+        label = ""
+    )
+    plot!(
+        sol.Beam.λ,
+        1.0 .- (sol.Spectra.Rp .+ sol.Spectra.Tp),
+        fillrange = 1.0 .- (sol.Spectra.Rp),
+        fillalpha = 0.3,
+        color = palette(:viridis, 3, rev = false).colors[2],
+        label = ""
+    )
+    plot!(
+        sol.Beam.λ,
+        1.0 .- (sol.Spectra.Rp),
+        fillrange = 1.0 .+ (0 .* (sol.Spectra.Rp)),
+        fillalpha = 0.3,
+        color = palette(:viridis, 3, rev = false).colors[3],
+        label = ""
+    )
+    xlabel!("Wavelength / nm")
+    ylabel!("Fraction refelcted, transmitted\nor absorbed")
+    savefig(figure, "tmm_stacked_small.pdf")
 
     # figure = plot(
     #     EMF2D(),
@@ -269,8 +367,8 @@ function tmm(
     for layer in stack
         layer_name = String(layer.material)
         if layer_name * "_wavelength" ∉ database_columns ||
-           layer_name * "_n" ∉ database_columns ||
-           layer_name * "_k" ∉ database_columns
+            layer_name * "_n" ∉ database_columns ||
+            layer_name * "_k" ∉ database_columns
             throw("Layer '" * layer_name * "' is missing data in database.")
         end
     end
