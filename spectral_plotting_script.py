@@ -31,7 +31,7 @@ plt.rcParams["font.size"] = 7
 
 # INDEX:
 #   Index used for plotting code.
-INDEX: int = 2
+INDEX: int = 3
 
 # MM:
 #   Conversion factor from mm to inches.
@@ -479,7 +479,8 @@ def main(args: list[Any]) -> None:
         loc="upper right",
     )
     plt.xlabel("Wavelength ($\lambda$) / nm", fontdict={"size": 7})
-    plt.ylabel("Photon flux ($\Phi$) / $\mu$mol/cm$^2$nm", fontdict={"size": 7})
+    axis.set_ylabel("Photon flux ($\Phi$) / $\mu$mol/cm$^2$nm", fontdict={"size": 7})
+    axis_right.set_ylabel("Normalised photo-response intensity")
 
     plt.savefig(
         f"brecl_solar_flux_small_avec_response_{INDEX}.pdf",
@@ -530,7 +531,8 @@ def main(args: list[Any]) -> None:
         loc="upper right",
     )
     plt.xlabel("Wavelength ($\lambda$) / nm", fontdict={"size": 7})
-    plt.ylabel("Photon flux ($\Phi$) / $\mu$mol/cm$^2$nm", fontdict={"size": 7})
+    axis.set_ylabel("Photon flux ($\Phi$) / $\mu$mol/cm$^2$nm", fontdict={"size": 7})
+    axis_right.set_ylabel("Normalised photo-response intensity")
 
     plt.savefig(
         f"brecl_solar_flux_small_sans_response_{INDEX}.pdf",
@@ -614,7 +616,8 @@ def main(args: list[Any]) -> None:
         loc="upper right",
     )
     plt.xlabel("Wavelength ($\lambda$) / nm", fontdict={"size": 7})
-    plt.ylabel("Photon flux ($\Phi$) / $\mu$mol/cm$^2$nm", fontdict={"size": 7})
+    axis.set_ylabel("Photon flux ($\Phi$) / $\mu$mol/cm$^2$nm", fontdict={"size": 7})
+    axis_right.set_ylabel("Normalised photo-response intensity")
 
     plt.savefig(
         f"brecl_solar_flux_large_avec_response_{INDEX}.pdf",
@@ -666,7 +669,8 @@ def main(args: list[Any]) -> None:
         loc="upper right",
     )
     plt.xlabel("Wavelength ($\lambda$) / nm", fontdict={"size": 7})
-    plt.ylabel("Photon flux ($\Phi$) / $\mu$mol/cm$^2$nm", fontdict={"size": 7})
+    axis.set_ylabel("Photon flux ($\Phi$) / $\mu$mol/cm$^2$nm", fontdict={"size": 7})
+    axis_right.set_ylabel("Normalised photo-response intensity")
 
     plt.savefig(
         f"brecl_solar_flux_large_sans_response_{INDEX}.pdf",
