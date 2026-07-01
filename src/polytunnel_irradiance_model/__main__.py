@@ -120,6 +120,10 @@ DIFFUSE_PAR_ERROR: float = 0.12
 #   Snippet to print when code is succesffully executed.
 DONE: str = "[  DONE  ]"
 
+# EPHEMERAL_ENV_VAR:
+#   The name of the environment variable for ephemeral.
+EPHEMERAL_ENV_VAR: str = "EPHEMERAL"
+
 # FAILED:
 #   Snippet to print when code fails to execute.
 FAILED: str = "[ FAILED ]"
@@ -151,6 +155,10 @@ MODULES: str = "modules"
 # MM:
 #   Conversion factor from mm to inches.
 MM: float = 1 / 25.4
+
+# OUTPUT_DIRECTORY_NAME:
+#   The name of the output directory to save information into.
+OUTPUT_DIRECTORY_NAME: str = "output_files"
 
 # PAR_WAVELENGTH_RANGE:
 #   The range of photosynthetically-active radiation.
@@ -748,6 +756,16 @@ def main(args: list[Any]) -> None:
 
     # Parse the command-line arguments.
     parsed_args = parse_args(args)
+
+    # Determine the output directory to save outputs.
+    if parsed_args.hpc:
+        output_directory_name: str = os.path.join(
+            os.environ[EPHEMERAL_ENV_VAR], f"ppv_{OUTPUT_DIRECTORY_NAME}"
+        )
+    else:
+        output_directory_name = os.path.join(os.getcwd(), OUTPUT_DIRECTORY_NAME)
+
+    os.makedirs(output_directory_name, exist_ok=True)
 
     # Open the material information.
     with open(parsed_args.solar_cells_file, "r", encoding="UTF-8") as solar_cells_file:
@@ -2197,9 +2215,12 @@ def main(args: list[Any]) -> None:
         wavelength_step_nm,
     )
     with open(
-        f"clearsky_par_umol_m2_{polytunnel.name}_"
-        f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-        f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+        os.path.join(
+            output_directory_name,
+            f"clearsky_par_umol_m2_{polytunnel.name}_"
+            f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+            f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+        ),
         "w",
         encoding="UTF-8",
     ) as csv_file:
@@ -2214,9 +2235,12 @@ def main(args: list[Any]) -> None:
         wavelength_step_nm,
     )
     with open(
-        f"direct_sky_par_umol_m2_{polytunnel.name}_"
-        f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-        f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+        os.path.join(
+            output_directory_name,
+            f"direct_sky_par_umol_m2_{polytunnel.name}_"
+            f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+            f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+        ),
         "w",
         encoding="UTF-8",
     ) as csv_file:
@@ -2231,9 +2255,12 @@ def main(args: list[Any]) -> None:
         wavelength_step_nm,
     )
     with open(
-        f"cloudy_sky_par_umol_m2_{polytunnel.name}_"
-        f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-        f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+        os.path.join(
+            output_directory_name,
+            f"cloudy_sky_par_umol_m2_{polytunnel.name}_"
+            f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+            f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+        ),
         "w",
         encoding="UTF-8",
     ) as csv_file:
@@ -2243,54 +2270,72 @@ def main(args: list[Any]) -> None:
     # that the runs aren't being done on the HPC.
     if not parsed_args.hpc:
         with open(
-            f"clearsky_mean_par_umol_m2_{polytunnel.name}_"
-            f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-            f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            os.path.join(
+                output_directory_name,
+                f"clearsky_mean_par_umol_m2_{polytunnel.name}_"
+                f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+                f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            ),
             "w",
             encoding="UTF-8",
         ) as csv_file:
             clearsky_frame.mean(axis=1).to_csv(csv_file)
 
         with open(
-            f"clearsky_stddev_par_umol_m2_{polytunnel.name}_"
-            f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-            f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            os.path.join(
+                output_directory_name,
+                f"clearsky_stddev_par_umol_m2_{polytunnel.name}_"
+                f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+                f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            ),
             "w",
             encoding="UTF-8",
         ) as csv_file:
             clearsky_frame.std(axis=1).to_csv(csv_file)
 
         with open(
-            f"direct_sky_mean_par_umol_m2_{polytunnel.name}_"
-            f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-            f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            os.path.join(
+                output_directory_name,
+                f"direct_sky_mean_par_umol_m2_{polytunnel.name}_"
+                f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+                f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            ),
             "w",
             encoding="UTF-8",
         ) as csv_file:
             direct_frame.mean(axis=1).to_csv(csv_file)
 
         with open(
-            f"direct_sky_stddev_par_umol_m2_{polytunnel.name}_"
-            f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-            f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            os.path.join(
+                output_directory_name,
+                f"direct_sky_stddev_par_umol_m2_{polytunnel.name}_"
+                f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+                f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            ),
             "w",
             encoding="UTF-8",
         ) as csv_file:
             direct_frame.std(axis=1).to_csv(csv_file)
 
         with open(
-            f"cloudy_sky_mean_par_umol_m2_{polytunnel.name}_"
-            f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-            f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            os.path.join(
+                output_directory_name,
+                f"cloudy_sky_mean_par_umol_m2_{polytunnel.name}_"
+                f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+                f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            ),
             "w",
             encoding="UTF-8",
         ) as csv_file:
             cloudy_frame.mean(axis=1).to_csv(csv_file)
 
         with open(
-            f"cloudy_sky_stddev_par_umol_m2_{polytunnel.name}_"
-            f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-            f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            os.path.join(
+                output_directory_name,
+                f"cloudy_sky_stddev_par_umol_m2_{polytunnel.name}_"
+                f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+                f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            ),
             "w",
             encoding="UTF-8",
         ) as csv_file:
@@ -2304,9 +2349,12 @@ def main(args: list[Any]) -> None:
             wavelength_step_nm,
         )
         with open(
-            f"clearsky_flux_umol_m2_{polytunnel.name}_"
-            f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-            f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            os.path.join(
+                output_directory_name,
+                f"clearsky_flux_umol_m2_{polytunnel.name}_"
+                f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+                f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            ),
             "w",
             encoding="UTF-8",
         ) as csv_file:
@@ -2319,9 +2367,12 @@ def main(args: list[Any]) -> None:
             wavelength_step_nm,
         )
         with open(
-            f"direct_sky_flux_umol_m2_{polytunnel.name}_"
-            f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-            f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            os.path.join(
+                output_directory_name,
+                f"direct_sky_flux_umol_m2_{polytunnel.name}_"
+                f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+                f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            ),
             "w",
             encoding="UTF-8",
         ) as csv_file:
@@ -2334,9 +2385,12 @@ def main(args: list[Any]) -> None:
             wavelength_step_nm,
         )
         with open(
-            f"cloudy_sky_flux_umol_m2_{polytunnel.name}_"
-            f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-            f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            os.path.join(
+                output_directory_name,
+                f"cloudy_sky_flux_umol_m2_{polytunnel.name}_"
+                f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+                f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            ),
             "w",
             encoding="UTF-8",
         ) as csv_file:
@@ -2344,54 +2398,72 @@ def main(args: list[Any]) -> None:
 
         # Save the mean PAR and stddev in the PAR across the ground at each hour.
         with open(
-            f"clearsky_mean_flux_umol_m2_{polytunnel.name}_"
-            f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-            f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            os.path.join(
+                output_directory_name,
+                f"clearsky_mean_flux_umol_m2_{polytunnel.name}_"
+                f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+                f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            ),
             "w",
             encoding="UTF-8",
         ) as csv_file:
             clearsky_frame.mean(axis=1).to_csv(csv_file)
 
         with open(
-            f"clearsky_stddev_flux_umol_m2_{polytunnel.name}_"
-            f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-            f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            os.path.join(
+                output_directory_name,
+                f"clearsky_stddev_flux_umol_m2_{polytunnel.name}_"
+                f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+                f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            ),
             "w",
             encoding="UTF-8",
         ) as csv_file:
             clearsky_frame.std(axis=1).to_csv(csv_file)
 
         with open(
-            f"direct_sky_mean_flux_umol_m2_{polytunnel.name}_"
-            f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-            f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            os.path.join(
+                output_directory_name,
+                f"direct_sky_mean_flux_umol_m2_{polytunnel.name}_"
+                f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+                f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            ),
             "w",
             encoding="UTF-8",
         ) as csv_file:
             direct_frame.mean(axis=1).to_csv(csv_file)
 
         with open(
-            f"direct_sky_stddev_flux_umol_m2_{polytunnel.name}_"
-            f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-            f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            os.path.join(
+                output_directory_name,
+                f"direct_sky_stddev_flux_umol_m2_{polytunnel.name}_"
+                f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+                f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            ),
             "w",
             encoding="UTF-8",
         ) as csv_file:
             direct_frame.std(axis=1).to_csv(csv_file)
 
         with open(
-            f"cloudy_sky_mean_flux_umol_m2_{polytunnel.name}_"
-            f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-            f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            os.path.join(
+                output_directory_name,
+                f"cloudy_sky_mean_flux_umol_m2_{polytunnel.name}_"
+                f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+                f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            ),
             "w",
             encoding="UTF-8",
         ) as csv_file:
             cloudy_frame.mean(axis=1).to_csv(csv_file)
 
         with open(
-            f"cloudy_sky_stddev_flux_umol_m2_{polytunnel.name}_"
-            f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-            f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            os.path.join(
+                output_directory_name,
+                f"cloudy_sky_stddev_flux_umol_m2_{polytunnel.name}_"
+                f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+                f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            ),
             "w",
             encoding="UTF-8",
         ) as csv_file:
@@ -2456,9 +2528,12 @@ def main(args: list[Any]) -> None:
         )
 
         with open(
-            f"predicted_day_diffuse_flux_umol_m2_{polytunnel.name}_"
-            f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-            f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            os.path.join(
+                output_directory_name,
+                f"predicted_day_diffuse_flux_umol_m2_{polytunnel.name}_"
+                f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+                f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            ),
             "w",
             encoding="UTF-8",
         ) as csv_file:
@@ -2466,17 +2541,23 @@ def main(args: list[Any]) -> None:
 
         if not parsed_args.hpc:
             with open(
-                f"predicted_day_mean_diffuse_flux_umol_m2_{polytunnel.name}_"
-                f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-                f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+                os.path.join(
+                    output_directory_name,
+                    f"predicted_day_mean_diffuse_flux_umol_m2_{polytunnel.name}_"
+                    f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+                    f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+                ),
                 "w",
                 encoding="UTF-8",
             ) as csv_file:
                 frame.mean(axis=1).to_csv(csv_file)
             with open(
-                f"predicted_day_std_diffuse_flux_umol_m2_{polytunnel.name}_"
-                f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-                f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+                os.path.join(
+                    output_directory_name,
+                    f"predicted_day_std_diffuse_flux_umol_m2_{polytunnel.name}_"
+                    f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+                    f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+                ),
                 "w",
                 encoding="UTF-8",
             ) as csv_file:
@@ -2493,9 +2574,12 @@ def main(args: list[Any]) -> None:
         )
 
         with open(
-            f"predicted_day_direct_flux_umol_m2_{polytunnel.name}_"
-            f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-            f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            os.path.join(
+                output_directory_name,
+                f"predicted_day_direct_flux_umol_m2_{polytunnel.name}_"
+                f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+                f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            ),
             "w",
             encoding="UTF-8",
         ) as csv_file:
@@ -2503,17 +2587,23 @@ def main(args: list[Any]) -> None:
 
         if not parsed_args.hpc:
             with open(
-                f"predicted_day_mean_direct_flux_umol_m2_{polytunnel.name}_"
-                f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-                f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+                os.path.join(
+                    output_directory_name,
+                    f"predicted_day_mean_direct_flux_umol_m2_{polytunnel.name}_"
+                    f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+                    f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+                ),
                 "w",
                 encoding="UTF-8",
             ) as csv_file:
                 frame.mean(axis=1).to_csv(csv_file)
             with open(
-                f"predicted_day_std_direct_flux_umol_m2_{polytunnel.name}_"
-                f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-                f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+                os.path.join(
+                    output_directory_name,
+                    f"predicted_day_std_direct_flux_umol_m2_{polytunnel.name}_"
+                    f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+                    f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+                ),
                 "w",
                 encoding="UTF-8",
             ) as csv_file:
@@ -2530,9 +2620,12 @@ def main(args: list[Any]) -> None:
         )
 
         with open(
-            f"predicted_day_total_flux_umol_m2_{polytunnel.name}_"
-            f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-            f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            os.path.join(
+                output_directory_name,
+                f"predicted_day_total_flux_umol_m2_{polytunnel.name}_"
+                f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+                f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+            ),
             "w",
             encoding="UTF-8",
         ) as csv_file:
@@ -2540,17 +2633,23 @@ def main(args: list[Any]) -> None:
 
         if not parsed_args.hpc:
             with open(
-                f"predicted_day_mean_flux_umol_m2_{polytunnel.name}_"
-                f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-                f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+                os.path.join(
+                    output_directory_name,
+                    f"predicted_day_mean_flux_umol_m2_{polytunnel.name}_"
+                    f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+                    f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+                ),
                 "w",
                 encoding="UTF-8",
             ) as csv_file:
                 frame.mean(axis=1).to_csv(csv_file)
             with open(
-                f"predicted_day_std_flux_umol_m2_{polytunnel.name}_"
-                f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
-                f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+                os.path.join(
+                    output_directory_name,
+                    f"predicted_day_std_flux_umol_m2_{polytunnel.name}_"
+                    f"{simulation_start_datetime.strftime("%Y_%m_%d_%H_%M")}_to_"
+                    f"{simulation_end_datetime.strftime("%Y_%m_%d_%H_%M")}_{INDEX}.csv",
+                ),
                 "w",
                 encoding="UTF-8",
             ) as csv_file:
