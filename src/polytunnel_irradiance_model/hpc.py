@@ -26,7 +26,7 @@ from src.polytunnel_irradiance_model.__main__ import main as ppv_model_main
 BASE_ARGUMENTS: str = (
     "-pt circular_narrow_short_mariano -mres 10 -st {start_time} -et {end_time} "
     "-d 0.55 -vi 275 -wf ninja_16_25_kent.csv -wado -mtr 60 -lat 51.249814 "
-    "-lon 0.347779 -sp -hwf cosmos_hadlow_1624.csv"
+    "-lon 0.347779 -sp -hwf cosmos_hadlow_1624.csv -hpc"
 )
 
 # HPC_JOB_NUMBER_VAR:
