@@ -13,7 +13,6 @@ This module contains some irradiance calculations.
 
 """
 
-
 from math import pi, sqrt
 
 import pandas as pd
