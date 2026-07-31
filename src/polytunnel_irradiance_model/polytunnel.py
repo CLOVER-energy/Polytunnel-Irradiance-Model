@@ -29,7 +29,6 @@ from tqdm import tqdm
 
 from src.polytunnel_irradiance_model.__utils__ import NAME, NotInterceptError
 
-
 # AXIS_AZIMUTH:
 #   Keyword for parsing the axis azimuth information.
 AXIS_AZIMUTH: str = "axis_azimuth"

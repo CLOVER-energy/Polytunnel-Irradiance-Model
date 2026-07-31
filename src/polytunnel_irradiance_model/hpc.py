@@ -13,6 +13,7 @@ Entry point for the model when running on the hpc.
 
 """
 
+import argparse
 import datetime
 import os
 import sys
@@ -24,7 +25,7 @@ from src.polytunnel_irradiance_model.__main__ import main as ppv_model_main
 # BASE_ARGUMENTS:
 #   The base arguments to pass through to the main module..
 BASE_ARGUMENTS: str = (
-    "-pt circular_narrow_short_mariano -mres 10 -st {start_time} -et {end_time} "
+    "-pt {polytunnel} -mres 10 -st {start_time} -et {end_time} "
     "-d 0.55 -vi 275 -wf ninja_16_25_kent.csv -wado -mtr 60 -lat 51.249814 "
     "-lon 0.347779 -sp -hwf cosmos_hadlow_1624.csv -hpc"
 )
@@ -36,6 +37,27 @@ HPC_JOB_NUMBER_VAR: str = "PBS_ARRAY_INDEX"
 # START_DATE:
 #   The hard-coded start date.
 START_DATE: datetime.datetime = datetime.datetime(2016, 10, 28)
+
+
+def parse_args(args: list[Any]) -> argparse.Namespace:
+    """
+    Parse the command-line arguments.
+
+    :param: args:
+        The un-parsed command-line arguments.
+
+    :returns:
+        The parsed arugments.
+
+    """
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--polytunnel", "-pt", type=str, default=None, help="The polytunnel name"
+    )
+
+    return parser.parse_args(args)
 
 
 def main(args: list[Any]) -> None:
@@ -58,11 +80,19 @@ def main(args: list[Any]) -> None:
     except ValueError:
         raise Exception("Environment variable is not of the correct type.")
 
+    # Parse the command-line arguments
+    parsed_args = parse_args(args)
+    if parsed_args.polytunnel is None:
+        raise Exception(
+            "Must provide the name of the polytunnel in the updated script run."
+        )
+
     # Determine the date based on the variable provided
     _timedelta = datetime.timedelta(days=run_number - 1)
 
     # Create the command string.
     updated_arguments = BASE_ARGUMENTS.format(
+        polytunnel=parsed_args.polytunnel,
         start_time=(START_DATE + _timedelta).strftime("%Y-%m-%dT%H:%M:%SZ"),
         end_time=(
             START_DATE

@@ -10,7 +10,7 @@
 # For more information, please email:                                                  #
 #     benedict.winchester@gmail.com                                                    #
 ########################################################################################
-#PBS -l walltime=72:00:00
+#PBS -l walltime=00:30:00
 #PBS -l select=1:ncpus=8:mem=32Gb
 #PBS -N ppv-pir
 #PBS -J 1-3137
@@ -24,4 +24,4 @@ source activate ppv
 cd $PBS_O_WORKDIR
 
 # Determine the scenario to run
-python -m src.polytunnel_irradiance_model.hpc
+python -m src.polytunnel_irradiance_model.hpc -pt circular_control

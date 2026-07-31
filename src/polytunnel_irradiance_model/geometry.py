@@ -10,7 +10,6 @@ import numpy as np
 
 from src.polytunnel_irradiance_model.__utils__ import MESHGRID_RESOLUTION, NAME
 
-
 # CURVE:
 #   Keyword for parsing curve information.
 CURVE: str = "curve"

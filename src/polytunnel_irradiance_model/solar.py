@@ -25,7 +25,6 @@ import pvlib
 from src.polytunnel_irradiance_model.__utils__ import Location
 from src.polytunnel_irradiance_model.polytunnel import Vector
 
-
 __all__ = ("SolarPosition",)
 
 # APPARENT_ELEVATION:
