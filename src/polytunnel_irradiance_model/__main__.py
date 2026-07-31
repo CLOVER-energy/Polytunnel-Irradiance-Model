@@ -1260,8 +1260,9 @@ def main(args: list[Any]) -> None:
             )
 
     # Make the auto-generated directory.
-    os.makedirs(AUTO_GENERATED, exist_ok=True)
-    os.makedirs(os.path.join(AUTO_GENERATED, polytunnel.name), exist_ok=True)
+    if not parsed_args.hpc:
+        os.makedirs(AUTO_GENERATED, exist_ok=True)
+        os.makedirs(os.path.join(AUTO_GENERATED, polytunnel.name), exist_ok=True)
 
     if (
         not os.path.isfile(
@@ -1274,6 +1275,7 @@ def main(args: list[Any]) -> None:
             )
         )
         or parsed_args.regenerate
+        or parsed_args.hpc
     ):
         with time_execution("Surface shading calculation"):
             # Determine whether any of the modules are shaded by neighbouring polytunnels,
@@ -1300,10 +1302,11 @@ def main(args: list[Any]) -> None:
                 }
             )
 
-        with open(
-            surface_shaded_map_filename, "w", encoding="UTF-8"
-        ) as surface_shaded_file:
-            surface_shaded_map.to_csv(surface_shaded_file)
+        if not parsed_args.hpc:
+            with open(
+                surface_shaded_map_filename, "w", encoding="UTF-8"
+            ) as surface_shaded_file:
+                surface_shaded_map.to_csv(surface_shaded_file)
 
     else:
         with time_execution("Opening surface-shading data"):
@@ -1344,6 +1347,7 @@ def main(args: list[Any]) -> None:
             )
         )
         or parsed_args.regenerate
+        or parsed_args.hpc
     ):
 
         # Determine the intercept lines with neighbouring polytunnels.
@@ -1382,31 +1386,32 @@ def main(args: list[Any]) -> None:
             # Plotting code No. 1 #
             #######################
 
-        with open(
-            os.path.join(
-                AUTO_GENERATED,
-                polytunnel.name,
-                f"{polytunnel.name}_diffuse_surface_irradiance_"
-                f"{parsed_args.start_time.replace(":","_")}_"
-                f"{parsed_args.end_time.replace(":","_")}.csv",
-            ),
-            "w",
-            encoding="UTF-8",
-        ) as output_file:
-            diffuse_surface_irradiance.to_csv(output_file)
+        if not parsed_args.hpc:
+            with open(
+                os.path.join(
+                    AUTO_GENERATED,
+                    polytunnel.name,
+                    f"{polytunnel.name}_diffuse_surface_irradiance_"
+                    f"{parsed_args.start_time.replace(":","_")}_"
+                    f"{parsed_args.end_time.replace(":","_")}.csv",
+                ),
+                "w",
+                encoding="UTF-8",
+            ) as output_file:
+                diffuse_surface_irradiance.to_csv(output_file)
 
-        with open(
-            os.path.join(
-                AUTO_GENERATED,
-                polytunnel.name,
-                f"{polytunnel.name}_direct_surface_irradiance_"
-                f"{parsed_args.start_time.replace(":","_")}_"
-                f"{parsed_args.end_time.replace(":","_")}.csv",
-            ),
-            "w",
-            encoding="UTF-8",
-        ) as output_file:
-            direct_surface_irradiance.to_csv(output_file)
+            with open(
+                os.path.join(
+                    AUTO_GENERATED,
+                    polytunnel.name,
+                    f"{polytunnel.name}_direct_surface_irradiance_"
+                    f"{parsed_args.start_time.replace(":","_")}_"
+                    f"{parsed_args.end_time.replace(":","_")}.csv",
+                ),
+                "w",
+                encoding="UTF-8",
+            ) as output_file:
+                direct_surface_irradiance.to_csv(output_file)
 
     else:
         with time_execution("Opening diffuse-surface data"):
@@ -1456,6 +1461,7 @@ def main(args: list[Any]) -> None:
             )
         )
         or parsed_args.regenerate_mesh
+        or parsed_args.hpc
     ):
         with time_execution("Mesh-mesh distance calculation"):
             # FIXME: Check this!
@@ -1495,8 +1501,9 @@ def main(args: list[Any]) -> None:
                 )
             }
 
-            with open(mesh_mesh_filename, "w", encoding="UTF-8") as mesh_mesh_file:
-                json.dump(ground_to_surface_projection_map, mesh_mesh_file)
+            if not parsed_args.hpc:
+                with open(mesh_mesh_filename, "w", encoding="UTF-8") as mesh_mesh_file:
+                    json.dump(ground_to_surface_projection_map, mesh_mesh_file)
 
     else:
         with time_execution("Opening mesh-mesh distance calculation"):
@@ -1940,20 +1947,21 @@ def main(args: list[Any]) -> None:
                     ]
                 ).astype(float)
 
-                with open(
-                    os.path.join(
-                        AUTO_GENERATED,
-                        polytunnel.name,
-                        f"{polytunnel.name}_end_irradiance_"
-                        f"{parsed_args.start_time.replace(":","_")}_"
-                        f"{parsed_args.end_time.replace(":","_")}.csv",
-                    ),
-                    "w",
-                    encoding="UTF-8",
-                ) as end_irradiance_file:
-                    csv.writer(end_irradiance_file, delimiter=",").writerows(
-                        end_direct_irradiance_map.tolist()
-                    )
+                if not parsed_args.hpc:
+                    with open(
+                        os.path.join(
+                            AUTO_GENERATED,
+                            polytunnel.name,
+                            f"{polytunnel.name}_end_irradiance_"
+                            f"{parsed_args.start_time.replace(":","_")}_"
+                            f"{parsed_args.end_time.replace(":","_")}.csv",
+                        ),
+                        "w",
+                        encoding="UTF-8",
+                    ) as end_irradiance_file:
+                        csv.writer(end_irradiance_file, delimiter=",").writerows(
+                            end_direct_irradiance_map.tolist()
+                        )
                     # end_direct_irradiance_map.to_csv(end_irradiance_file)
 
                 #######################
