@@ -943,6 +943,18 @@ def main(args: list[Any]) -> None:
         )(entry)
         for entry in wavelength_range
     ]
+    clearsky_diffuse_spectrum = [
+        interp1d(
+            reference_day_spectra.index,
+            clearsky_diffuse_day_spectrum := (
+                reference_day_spectra[SpectrumType.CLEARSKY_GLOBAL.value]
+                - reference_day_spectra[SpectrumType.CLEARSKY_DIRECT.value]
+            ),
+            fill_value=(0, 0),
+            bounds_error=False,
+        )(entry)
+        for entry in wavelength_range
+    ]
     cloudy_spectrum = [
         interp1d(
             cloudy_day_spectra.index,
@@ -954,8 +966,7 @@ def main(args: list[Any]) -> None:
     ]
     interpolated_spectra = pd.DataFrame(
         {
-            SpectrumType.CLEARSKY_DIFFUSE.value: pd.Series(global_spectrum)
-            - pd.Series(direct_spectrum),
+            SpectrumType.CLEARSKY_DIFFUSE.value: clearsky_diffuse_spectrum,
             SpectrumType.CLEARSKY_DIRECT.value: direct_spectrum,
             SpectrumType.CLEARSKY_GLOBAL.value: global_spectrum,
             SpectrumType.CLOUDY_DAY.value: cloudy_spectrum,
@@ -1033,8 +1044,8 @@ def main(args: list[Any]) -> None:
 
             _diffuse_spectrum = [
                 interp1d(
-                    interpolated_spectra.index,
-                    interpolated_spectra[SpectrumType.CLEARSKY_DIFFUSE.value],
+                    reference_day_spectra.index,
+                    clearsky_diffuse_day_spectrum,
                     fill_value=(0, 0),
                     bounds_error=False,
                 )(entry)
@@ -1134,7 +1145,7 @@ def main(args: list[Any]) -> None:
                 os.path.join(parsed_args.hadlow_weather_filename), "r", encoding="UTF-8"
             ) as hadlow_weather_file:
                 hadlow_weather_data: pd.DataFrame = (
-                    pd.read_csv(hadlow_weather_file)
+                    pd.read_csv(hadlow_weather_file, low_memory=False)
                     .drop([0, 1])
                     .set_index("parameter-id")
                 )
@@ -3041,6 +3052,8 @@ def main(args: list[Any]) -> None:
                 )
             )
             sns.set_palette("viridis", n_colors=num_grid_indices)
+
+            import matplotlib.pyplot as plt
 
             plt.figure(figsize=(171 * MM, 120 * MM))
             dashes = Dashes()
